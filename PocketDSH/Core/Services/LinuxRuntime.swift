@@ -12,7 +12,7 @@ final class LinuxRuntime {
     private var rootfsURL: URL?
     private var prepared = false
 
-    func run(command: String, workspaceRoot: URL? = nil) async -> ToolExecutionResult {
+    func run(command: String) async -> ToolExecutionResult {
         guard !busy else {
             return .failure("Tier C shell is busy. One Linux command is supported per app launch in this experimental build.")
         }
@@ -47,25 +47,6 @@ final class LinuxRuntime {
                 ? "Linux command started; no output was captured in the observation window. Tier C shell remains experimental."
                 : "Linux output (Tier C, experimental):\n\(output)"
         )
-    }
-
-    @discardableResult
-    private func copyWorkspace(_ source: URL, into rootfs: URL) -> Bool {
-        let destination = rootfs.appendingPathComponent("data", isDirectory: true)
-            .appendingPathComponent("workspace", isDirectory: true)
-        let fm = FileManager.default
-        try? fm.removeItem(at: destination)
-        do {
-            try fm.copyItem(at: source, to: destination)
-        } catch {
-            return false
-        }
-        let registered = destination.path.withCString { workspacePointer in
-            rootfs.path.withCString { rootPointer in
-                pocket_ish_register_workspace(rootPointer, workspacePointer)
-            }
-        }
-        return registered == 0
     }
 
     private func prepareRootfs() -> URL? {
