@@ -7,10 +7,10 @@
 | 日期 | 2026-11-15 |
 | 仓库 | [zqlnys/PocketDSH](https://github.com/zqlnys/PocketDSH)（private） |
 | Workflow | iOS CI |
-| Run | [#43722906858](https://github.com/zqlnys/PocketDSH/actions/runs/43722906858) |
-| Commit | `dafa69d` |
+| Run | [#43723369452](https://github.com/zqlnys/PocketDSH/actions/runs/43723369452) |
+| Commit | `24485c3` |
 | 结果 | **success** |
-| 耗时 | 约 3 分 40 秒 |
+| 耗时 | 约 4 分 9 秒 |
 | Runner | `macos-15` |
 | Xcode | 26.3 (17C529) |
 | 模拟器 | iPhone 17 Pro Max, iOS 26.2 (arm64) |
@@ -44,7 +44,7 @@
 - `JITCapability` 在真机上用 mmap 探测可执行内存映射，不执行任何动态代码；
 - 模拟器直接报告无 JIT，避免把 Runner 能力误报成设备能力；
 - 没有 JIT 时自动使用 Tier A；
-- 有 JIT 时 UI 会显示 Tier C 偏好，但 **Tier C 后端尚未集成**，仍回退 Tier A；
+- 运行时偏好可选 Automatic / Tier A / Tier C；选择 Tier C 会显示受限提示，但 **Tier C 后端尚未集成**，仍回退 Tier A；
 - 开关只保存偏好，不能授予 JIT entitlement。
 
 ### 插件验证
@@ -67,21 +67,21 @@ iOS 测试 `PluginLifecycleTests.testInstallEnableInvokeConfigureDisableUninstal
 
 | 项目 | 值 |
 | --- | --- |
-| Artifact | `pocketdsh-ios-14/PocketDSH-unsigned.ipa` |
+| Artifact | `pocketdsh-ios-15/PocketDSH-unsigned.ipa` |
 | Bundle ID | `com.example.pocketdsh` |
 | Version | 0.1.0 (1) |
 | MinimumOSVersion | 17.0 |
 | UIDeviceFamily | `[1]`（iPhone） |
 | 架构 | `arm64` Mach-O |
 | 签名 | **未签名**；无 `_CodeSignature` / `mobileprovision` |
-| 大小 | 1,465,881 bytes |
-| SHA-256 | `0adcb5c8ae871eac100a91d6ec59d60639c2c57232bd96449565a7103bca35c9` |
+| 大小 | 1,474,017 bytes |
+| SHA-256 | `3606cc8995bda79253aa8541b1b24fa0a458adfef523db937ac5b6b581943b9a` |
 
 下载：
 
 ```bash
-gh run download 43722906858 -n pocketdsh-ios-14 -D ./download
-gh run download 43722906858 -n pocketdsh-test-results-14 -D ./test-results
+gh run download 43723369452 -n pocketdsh-ios-15 -D ./download
+gh run download 43723369452 -n pocketdsh-test-results-15 -D ./test-results
 ```
 
 ### Warnings

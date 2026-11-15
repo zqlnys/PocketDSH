@@ -19,9 +19,9 @@
 | --- | --- | --- |
 | 源码与工作区 UI | 已完成 | SwiftUI 多项目 / 文件树 / 编辑器 / 搜索 / diff |
 | 核心与 Lua 测试 | 通过 | 16 个 SwiftPM 测试 |
-| iOS 编译 | **通过** | run [#43722906858](https://github.com/zqlnys/PocketDSH/actions/runs/43722906858)，Xcode 26.3 |
+| iOS 编译 | **通过** | run [#43723369452](https://github.com/zqlnys/PocketDSH/actions/runs/43723369452)，Xcode 26.3 |
 | iOS 模拟器测试 | **通过** | 6/6，含插件完整生命周期测试 |
-| 未签名 arm64 IPA | **已生成** | 1,465,881 bytes，SHA-256 `0adcb5c8…35c9` |
+| 未签名 arm64 IPA | **已生成** | 1,474,017 bytes，SHA-256 `3606cc89…b9a` |
 | 插件系统 | **已实现并测试** | 安装 / 加载 / 配置 / 启停 / 卸载 / 工具接入 |
 | JIT / 运行时状态 | **已探测，Tier C 未实现** | mmap 探测 + 自动 Tier A；不会伪造 JIT 权限 |
 | 首次启动引导 | **已实现** | API Key 弹窗，可跳过并继续本地工作区 |
