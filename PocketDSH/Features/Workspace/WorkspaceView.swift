@@ -144,17 +144,6 @@ struct WorkspaceView: View {
             }
 
             Spacer(minLength: 8)
-
-            Button {
-                selection = .settings
-            } label: {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 16, weight: .regular))
-                    .foregroundStyle(PocketTheme.secondaryText)
-                    .frame(width: 36, height: 36)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Settings")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
@@ -170,7 +159,8 @@ struct WorkspaceView: View {
             AgentView(
                 session: session,
                 agent: session.agent,
-                onOpenSettings: { selection = .settings }
+                onOpenSettings: { selection = .settings },
+                embedded: true
             )
         case .changes:
             ChangesView(session: session)
