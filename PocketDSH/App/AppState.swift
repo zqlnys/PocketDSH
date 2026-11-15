@@ -83,6 +83,7 @@ final class AppState: ObservableObject {
 
     @Published var activeSession: WorkspaceSession?
     @Published var errorMessage: String?
+    @Published private(set) var isPluginDemo = false
 
     init() {
         projectStore = ProjectStore()
@@ -90,6 +91,12 @@ final class AppState: ObservableObject {
         keychain = KeychainStore()
         settings = SettingsStore()
         luaEngine = LuaEngine()
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-PocketDSHPluginDemo") {
+            try? pluginStore.installExample()
+            isPluginDemo = true
+        }
+        #endif
     }
 
     func open(_ project: ProjectRecord) {

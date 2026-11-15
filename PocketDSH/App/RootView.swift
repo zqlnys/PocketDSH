@@ -5,7 +5,11 @@ struct RootView: View {
 
     var body: some View {
         Group {
-            if let session = appState.activeSession {
+            if appState.isPluginDemo {
+                NavigationStack {
+                    PluginsView()
+                }
+            } else if let session = appState.activeSession {
                 WorkspaceView(session: session)
                     .id(session.id)
             } else {
