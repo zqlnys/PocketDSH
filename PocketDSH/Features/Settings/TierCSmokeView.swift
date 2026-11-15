@@ -25,7 +25,7 @@ struct TierCSmokeView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(PocketTheme.background)
         .task {
-            let workspace = appState.activeSession?.rootURL
+            let workspace = appState.activeSession?.rootURL ?? Self.makeSmokeWorkspace()
             let command = "ls -la /workspace; echo; cat /workspace/README.md"
             let result = await appState.linuxRuntime.run(
                 command: command,
@@ -33,5 +33,17 @@ struct TierCSmokeView: View {
             )
             output = result.content
         }
+    }
+
+    private static func makeSmokeWorkspace() -> URL {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PocketDSH-TierC-Smoke", isDirectory: true)
+        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try? "# Tier C workspace\n\nRead-only smoke fixture.".write(
+            to: root.appendingPathComponent("README.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        return root
     }
 }
