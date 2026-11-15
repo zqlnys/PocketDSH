@@ -44,7 +44,7 @@ gh run watch
 gh run download <run-id> -n pocketdsh-ios-<run-number> -D ./download
 ```
 
-已验证 run `43725221625` 的 artifact 包含：
+已验证 run `43730663808` 的 artifact 包含：
 
 ```text
 PocketDSH-unsigned.ipa
@@ -59,7 +59,7 @@ logs/
 IPA SHA-256：
 
 ```text
-0ade9946d13ab0985f7eceb22510efcb834f4a7d4196eb271e4c4cd26ee803d4
+14ba61f03bf645cfae6e64336684762fd243d8c80f610daf48268960f7d4bcaa
 ```
 
 这条路径使用 GitHub macOS Runner，**不是**纯 Linux 构建。

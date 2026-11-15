@@ -7,10 +7,10 @@
 | 日期 | 2026-11-15 |
 | 仓库 | [zqlnys/PocketDSH](https://github.com/zqlnys/PocketDSH)（private） |
 | Workflow | iOS CI |
-| Run | [#43725221625](https://github.com/zqlnys/PocketDSH/actions/runs/43725221625) |
-| Commit | `fa405d7` |
+| Run | [#43730663808](https://github.com/zqlnys/PocketDSH/actions/runs/43730663808) |
+| Commit | `32fed39` |
 | 结果 | **success** |
-| 耗时 | 约 4 分 10 秒 |
+| 耗时 | 约 3 分 46 秒 |
 | Runner | `macos-15` |
 | Xcode | 26.3 (17C529) |
 | 模拟器 | iPhone 17 Pro Max, iOS 26.2 (arm64) |
@@ -36,9 +36,10 @@
 iSH 的无 JIT Linux 路径已做两项验证：
 
 - Linux 主机：iSH CLI + Alpine 3.20.3，实际输出 `Linux ... i686` 和 `3.20.3`；
-- iOS：在 macOS runner 构建出 arm64 `libish.a`、`libish_emu.a`、`libfakefs.a`，run `43726162035`。
+- iOS：在 macOS runner 构建出 arm64 `libish.a`、`libish_emu.a`、`libfakefs.a`，run `43726162035`；
+- iOS 模拟器：独立 `TierCProbe` target 实际执行 Alpine `/bin/sh`，输出 `Linux pocketdsh ... i686 Linux`，run `43730347674`，无 JIT。
 
-这还不是 App 内的 Tier C 后端；集成状态和方案见 [TIER-C.md](TIER-C.md)。
+这还不是主 App 内的 Tier C 后端；probe 生命周期和主 App 集成仍未完成，详见 [TIER-C.md](TIER-C.md)。
 
 ### 系统动作
 
@@ -86,7 +87,7 @@ iOS 测试 `PluginLifecycleTests.testInstallEnableInvokeConfigureDisableUninstal
 
 | 项目 | 值 |
 | --- | --- |
-| Artifact | `pocketdsh-ios-17/PocketDSH-unsigned.ipa` |
+| Artifact | `pocketdsh-ios-38/PocketDSH-unsigned.ipa` |
 | Bundle ID | `com.example.pocketdsh` |
 | Version | 0.1.0 (1) |
 | MinimumOSVersion | 17.0 |
@@ -94,13 +95,13 @@ iOS 测试 `PluginLifecycleTests.testInstallEnableInvokeConfigureDisableUninstal
 | 架构 | `arm64` Mach-O |
 | 签名 | **未签名**；无 `_CodeSignature` / `mobileprovision` |
 | 大小 | 1,513,378 bytes |
-| SHA-256 | `0ade9946d13ab0985f7eceb22510efcb834f4a7d4196eb271e4c4cd26ee803d4` |
+| SHA-256 | `14ba61f03bf645cfae6e64336684762fd243d8c80f610daf48268960f7d4bcaa` |
 
 下载：
 
 ```bash
-gh run download 43725221625 -n pocketdsh-ios-17 -D ./download
-gh run download 43725221625 -n pocketdsh-test-results-17 -D ./test-results
+gh run download 43730663808 -n pocketdsh-ios-38 -D ./download
+gh run download 43730663808 -n pocketdsh-test-results-38 -D ./test-results
 ```
 
 ### Warnings
