@@ -7,10 +7,10 @@
 | 日期 | 2026-11-15 |
 | 仓库 | [zqlnys/PocketDSH](https://github.com/zqlnys/PocketDSH)（private） |
 | Workflow | iOS CI |
-| Run | [#43759394529](https://github.com/zqlnys/PocketDSH/actions/runs/43759394529) |
-| Commit | `6f1812f` |
+| Run | [#43762685654](https://github.com/zqlnys/PocketDSH/actions/runs/43762685654) |
+| Commit | `f3ccd5e` |
 | 结果 | **success** |
-| 耗时 | 约 13 分 38 秒 |
+| 耗时 | 约 12 分 6 秒 |
 | Runner | `macos-15` |
 | Xcode | 26.3 (17C529) |
 | 模拟器 | iPhone 17 Pro Max, iOS 26.2 (arm64) |
@@ -93,21 +93,21 @@ iOS 测试 `PluginLifecycleTests.testInstallEnableInvokeConfigureDisableUninstal
 
 | 项目 | 值 |
 | --- | --- |
-| Artifact | `pocketdsh-ios-77/PocketDSH-unsigned.ipa` |
+| Artifact | `pocketdsh-ios-82/PocketDSH-unsigned.ipa` |
 | Bundle ID | `com.example.pocketdsh` |
 | Version | 0.1.0 (1) |
 | MinimumOSVersion | 17.0 |
 | UIDeviceFamily | `[1]`（iPhone） |
 | 架构 | `arm64` Mach-O |
 | 签名 | **未签名**；无 `_CodeSignature` / `mobileprovision` |
-| 大小 | 5,294,283 bytes |
-| SHA-256 | `90f19d924acf408206401eae5c5b9e14dfcbc26fdcf5fb1657e1f60e8b16abca` |
+| 大小 | 5,295,234 bytes |
+| SHA-256 | `630b8196f6e86d7d55850cfa82f24548f6a6fcdea6e4a16129b6a98bba48a3e3` |
 
 下载：
 
 ```bash
-gh run download 43759394529 -n pocketdsh-ios-77 -D ./download
-gh run download 43759394529 -n pocketdsh-test-results-77 -D ./test-results
+gh run download 43762685654 -n pocketdsh-ios-82 -D ./download
+gh run download 43762685654 -n pocketdsh-test-results-82 -D ./test-results
 ```
 
 ### Warnings
