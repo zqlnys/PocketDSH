@@ -296,6 +296,14 @@ struct SettingsView: View {
             }
             .tint(PocketTheme.accent)
 
+            Picker("Runtime preference", selection: $runtime.preferredTier) {
+                ForEach(RuntimeTier.allCases) { tier in
+                    Text(tier.title).tag(tier)
+                }
+            }
+            .pickerStyle(.menu)
+            .tint(PocketTheme.accent)
+
             LabeledContent("JIT probe", value: runtime.jit.entitlementSummary)
                 .font(.caption)
             LabeledContent("Active backend", value: runtime.activeTier.title)
@@ -303,11 +311,11 @@ struct SettingsView: View {
             LabeledContent("Automatic preference", value: runtime.automaticTier.title)
                 .font(.caption)
 
-            if runtime.automaticTier == .tierC {
+            if runtime.wantsTierC {
                 Banner(
                     icon: "exclamationmark.triangle",
                     title: "Tier C is not integrated",
-                    message: "JIT is visible, but the Linux/Node backend is not available in this build. Tier A remains active.",
+                    message: "Tier C was requested, but the Linux/Node backend is not available in this build. Tier A remains active.",
                     tint: PocketTheme.amber
                 )
             }

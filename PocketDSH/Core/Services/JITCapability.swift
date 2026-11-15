@@ -90,6 +90,10 @@ final class RuntimeCapabilityStore: ObservableObject {
         didSet { defaults.set(preferJIT, forKey: Keys.preferJIT) }
     }
 
+    @Published var preferredTier: RuntimeTier {
+        didSet { defaults.set(preferredTier.rawValue, forKey: Keys.preferredTier) }
+    }
+
     let jit: JITCapability
 
     private let defaults: UserDefaults
@@ -98,6 +102,8 @@ final class RuntimeCapabilityStore: ObservableObject {
         self.defaults = defaults
         self.jit = JITCapability.detect()
         self.preferJIT = defaults.object(forKey: Keys.preferJIT) as? Bool ?? true
+        self.preferredTier = defaults.string(forKey: Keys.preferredTier)
+            .flatMap(RuntimeTier.init(rawValue:)) ?? .automatic
     }
 
     var automaticTier: RuntimeTier {
@@ -110,11 +116,15 @@ final class RuntimeCapabilityStore: ObservableObject {
         .tierA
     }
 
+    var wantsTierC: Bool {
+        preferredTier == .tierC || (preferredTier == .automatic && jit.isAvailable)
+    }
+
     var statusLine: String {
-        if jit.isAvailable {
-            return NSLocalizedString("JIT probe passed · Tier C unavailable · Tier A active", comment: "")
+        if wantsTierC {
+            return NSLocalizedString("Tier C requested · backend unavailable · Tier A active", comment: "")
         }
-        return NSLocalizedString("No JIT · Tier A active", comment: "")
+        return NSLocalizedString("Tier A active", comment: "")
     }
 
     var detail: String {
@@ -126,5 +136,6 @@ final class RuntimeCapabilityStore: ObservableObject {
 
     private enum Keys {
         static let preferJIT = "pocketdsh.runtime.preferJIT"
+        static let preferredTier = "pocketdsh.runtime.preferredTier"
     }
 }

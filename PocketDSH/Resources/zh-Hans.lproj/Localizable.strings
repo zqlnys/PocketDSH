@@ -182,3 +182,9 @@
 "Thinking mode" = "思考模式";
 "Off by default for predictable tool use. DeepSeek thinking mode may add latency." = "默认关闭以保证工具调用稳定；DeepSeek 思考模式可能增加延迟。";
 "Thinking" = "思考";
+
+"Tier C requested · backend unavailable · Tier A active" = "已请求 Tier C · 后端不可用 · Tier A 运行中";
+
+"Tier A active" = "Tier A 运行中";
+
+"Runtime preference" = "运行时偏好";
