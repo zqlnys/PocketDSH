@@ -26,10 +26,7 @@ struct TierCSmokeView: View {
         .background(PocketTheme.background)
         .task {
             let command = "uname -a; cat /etc/alpine-release"
-            let result = await appState.linuxRuntime.run(
-                command: command,
-                workspaceRoot: workspace
-            )
+            let result = await appState.linuxRuntime.run(command: command)
             output = result.content
         }
     }
