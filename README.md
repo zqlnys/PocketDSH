@@ -18,10 +18,12 @@
 | --- | --- | --- |
 | 源码与工作区 UI | 已完成 | SwiftUI 多项目 / 文件树 / 编辑器 / 搜索 / diff |
 | 核心与 Lua 测试 | 通过 | 16 个 SwiftPM 测试 |
-| iOS 编译 | **通过** | run [#43719958908](https://github.com/zqlnys/PocketDSH/actions/runs/43719958908)，Xcode 26.3 |
+| iOS 编译 | **通过** | run [#43722241157](https://github.com/zqlnys/PocketDSH/actions/runs/43722241157)，Xcode 26.3 |
 | iOS 模拟器测试 | **通过** | 6/6，含插件完整生命周期测试 |
-| 未签名 arm64 IPA | **已生成** | 1,369,504 bytes，SHA-256 `874e421b…48bb` |
+| 未签名 arm64 IPA | **已生成** | 1,442,866 bytes，SHA-256 `0a5cc9fb…f567` |
 | 插件系统 | **已实现并测试** | 安装 / 加载 / 配置 / 启停 / 卸载 / 工具接入 |
+| JIT / 运行时状态 | **已探测，Tier C 未实现** | mmap 探测 + 自动 Tier A；不会伪造 JIT 权限 |
+| 首次启动引导 | **已实现** | API Key 弹窗，可跳过并继续本地工作区 |
 | 纯 Linux iOS 构建 | **受阻** | 需要 Apple Xcode.xip + xtool Darwin SDK；本机没有该文件 |
 | IPA 已签名 | 未执行 | 由用户的签名证书完成 |
 | 真机安装 | 未执行 | 需要实体 iPhone 和签名 |
@@ -30,13 +32,15 @@
 
 ## 界面预览（CI 模拟器实拍）
 
-| 首页 Light | 首页 Dark | 简体中文 |
-| --- | --- | --- |
-| <img src="docs/screenshots/home-light.jpg" width="220" alt="PocketDSH home light"> | <img src="docs/screenshots/home-dark.jpg" width="220" alt="PocketDSH home dark"> | <img src="docs/screenshots/home-zh.jpg" width="220" alt="PocketDSH 中文界面"> |
+| 首次启动 | 首页 Light | 首页 Dark | 简体中文 |
+| --- | --- | --- | --- |
+| <img src="docs/screenshots/onboarding.jpg" width="200" alt="PocketDSH API key onboarding"> | <img src="docs/screenshots/home-light.jpg" width="200" alt="PocketDSH home light"> | <img src="docs/screenshots/home-dark.jpg" width="200" alt="PocketDSH home dark"> | <img src="docs/screenshots/home-zh.jpg" width="200" alt="PocketDSH 中文界面"> |
 
-| 插件管理 |  |
-| --- | --- |
-| <img src="docs/screenshots/plugins.jpg" width="220" alt="PocketDSH plugins"> | 语言可在 Settings → Language 中切换。 |
+插件管理：
+
+<img src="docs/screenshots/plugins.jpg" width="220" alt="PocketDSH plugins">
+
+语言可在 Settings → Language 中切换。JIT 状态在 Settings → JIT & Runtime 中查看。
 
 截图由 CI 在 iPhone 17 Pro Max 模拟器中实际安装并启动 App 后抓取；不代表实体 iPhone 测试。
 
@@ -138,6 +142,7 @@ Agent 只会拿到相对路径。绝对路径、`..`、symlink 逃逸都会被 `
 - 未实现：Linux 用户态 ABI、完整系统仿真、Cordis/Node 原生插件、SSH/SFTP。
 - 未验证：真机安装、IPA 签名、TestFlight。
 - 纯 Linux 构建未完成；当前 IPA 来自 GitHub macOS Runner。
+- Tier C（内嵌 Linux/Node）未实现；JIT 开关只做能力探测和偏好，不能授予权限。
 
 ## 文档
 
@@ -146,6 +151,7 @@ Agent 只会拿到相对路径。绝对路径、`..`、symlink 逃逸都会被 `
 - [最新构建与 IPA 证据](docs/BUILD.md)
 - [DSH / dsh-Go 兼容范围](docs/DSH-COMPATIBILITY.md)
 - [PocketDSH 插件 SDK](docs/PLUGIN-SDK.md)
+- [闹钟 / 电话 / 消息的系统能力边界](docs/SYSTEM-ACTIONS.md)
 - [构建与安装](docs/BUILD-INSTALL.md)
 
 ## 许可

@@ -7,10 +7,10 @@
 | 日期 | 2026-11-15 |
 | 仓库 | [zqlnys/PocketDSH](https://github.com/zqlnys/PocketDSH)（private） |
 | Workflow | iOS CI |
-| Run | [#43719958908](https://github.com/zqlnys/PocketDSH/actions/runs/43719958908) |
-| Commit | `117f843` |
+| Run | [#43722241157](https://github.com/zqlnys/PocketDSH/actions/runs/43722241157) |
+| Commit | `a84bc72` |
 | 结果 | **success** |
-| 耗时 | 约 4 分 19 秒 |
+| 耗时 | 约 4 分 15 秒 |
 | Runner | `macos-15` |
 | Xcode | 26.3 (17C529) |
 | 模拟器 | iPhone 17 Pro Max, iOS 26.2 (arm64) |
@@ -27,9 +27,17 @@
 | Xcode 真机架构 Debug 编译 | PASS | `** BUILD SUCCEEDED **` |
 | iOS 模拟器测试 | PASS | 6/6，`** TEST SUCCEEDED **` |
 | 插件生命周期测试 | PASS | install → enable → invoke → configure → disable → uninstall |
-| 模拟器启动 | PASS | 首页浅色 / 深色 / 简体中文 / 插件页截图 |
+| 模拟器启动 | PASS | API 引导 / 首页浅色 / 深色 / 简体中文 / 插件页截图 |
 | Release 真机架构编译 | PASS | `** BUILD SUCCEEDED **` |
 | 未签名 IPA | PASS | `PocketDSH-unsigned.ipa` |
+
+### JIT 与运行时
+
+- `JITCapability` 在真机上用 mmap 探测可执行内存映射，不执行任何动态代码；
+- 模拟器直接报告无 JIT，避免把 Runner 能力误报成设备能力；
+- 没有 JIT 时自动使用 Tier A；
+- 有 JIT 时 UI 会显示 Tier C 偏好，但 **Tier C 后端尚未集成**，仍回退 Tier A；
+- 开关只保存偏好，不能授予 JIT entitlement。
 
 ### 插件验证
 
@@ -51,21 +59,21 @@ iOS 测试 `PluginLifecycleTests.testInstallEnableInvokeConfigureDisableUninstal
 
 | 项目 | 值 |
 | --- | --- |
-| Artifact | `pocketdsh-ios-9/PocketDSH-unsigned.ipa` |
+| Artifact | `pocketdsh-ios-13/PocketDSH-unsigned.ipa` |
 | Bundle ID | `com.example.pocketdsh` |
 | Version | 0.1.0 (1) |
 | MinimumOSVersion | 17.0 |
 | UIDeviceFamily | `[1]`（iPhone） |
 | 架构 | `arm64` Mach-O |
 | 签名 | **未签名**；无 `_CodeSignature` / `mobileprovision` |
-| 大小 | 1,369,504 bytes |
-| SHA-256 | `874e421be96c6ae0a05ab68d1764fe481410de5cafcdcc5c096fec962f4b48bb` |
+| 大小 | 1,442,866 bytes |
+| SHA-256 | `0a5cc9fbade4bdefd8b707ce63e89b5e76b12ddccf0ecee070e561bfe18df567` |
 
 下载：
 
 ```bash
-gh run download 43719958908 -n pocketdsh-ios-9 -D ./download
-gh run download 43719958908 -n pocketdsh-test-results-9 -D ./test-results
+gh run download 43722241157 -n pocketdsh-ios-13 -D ./download
+gh run download 43722241157 -n pocketdsh-test-results-13 -D ./test-results
 ```
 
 ### Warnings
@@ -79,9 +87,9 @@ gh run download 43719958908 -n pocketdsh-test-results-9 -D ./test-results
 
 ### 截图
 
-| 首页 Light | 首页 Dark | 简体中文 |
-| --- | --- | --- |
-| ![Home light](screenshots/home-light.jpg) | ![Home dark](screenshots/home-dark.jpg) | ![Chinese](screenshots/home-zh.jpg) |
+| 首次启动 | 首页 Light | 首页 Dark | 简体中文 |
+| --- | --- | --- | --- |
+| ![Onboarding](screenshots/onboarding.jpg) | ![Home light](screenshots/home-light.jpg) | ![Home dark](screenshots/home-dark.jpg) | ![Chinese](screenshots/home-zh.jpg) |
 
 插件管理：
 
