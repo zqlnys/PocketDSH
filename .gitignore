@@ -1,0 +1,42 @@
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+build/
+*.xcarchive
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# XcodeGen output
+PocketDSH/Resources/Info.plist
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# macOS
+.DS_Store
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.p12
+*.mobileprovision
+*.cer
+*.pem
+*.key
+AuthKey_*.p8
+*.p8
+
+# Artifacts
+artifacts/
+TestResults.xcresult
+*.log
+
+# Local tooling
+.venv/
+__pycache__/
+*.pyc

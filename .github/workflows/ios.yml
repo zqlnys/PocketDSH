@@ -1,0 +1,273 @@
+name: iOS CI
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - ".gitignore"
+      - ".gitattributes"
+  pull_request:
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - ".gitignore"
+      - ".gitattributes"
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PROJECT_NAME: PocketDSH
+  SCHEME: PocketDSH
+  BUNDLE_ID: com.example.pocketdsh
+  DERIVED_DATA: ${{ github.workspace }}/build/DerivedData
+  ARTIFACTS_DIR: ${{ github.workspace }}/artifacts
+  LOG_DIR: ${{ github.workspace }}/artifacts/logs
+
+jobs:
+  build-and-test:
+    name: Build, test and package IPA
+    runs-on: macos-15
+    timeout-minutes: 50
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$DERIVED_DATA" "$ARTIFACTS_DIR" "$LOG_DIR"
+          sw_vers
+          df -h /
+          xcode-select -p || true
+          command -v brew || true
+          command -v xcodegen || true
+          python3 --version
+          swift --version || true
+
+      - name: Select available Xcode
+        id: xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x scripts/select_xcode.sh scripts/package_ipa.sh
+          scripts/select_xcode.sh 2>&1 | tee "$LOG_DIR/xcode-selection.log"
+
+      - name: Install XcodeGen if needed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen 2>&1 | tee "$LOG_DIR/brew-xcodegen.log"
+          fi
+          xcodegen --version | tee "$LOG_DIR/xcodegen-version.log"
+
+      - name: Generate Xcode project
+        id: generate
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodegen generate --spec project.yml 2>&1 | tee "$LOG_DIR/xcodegen.log"
+          xcodebuild -list -project "$PROJECT_NAME.xcodeproj" 2>&1 | tee "$LOG_DIR/xcodebuild-list.log"
+
+      - name: Run core and Lua tests (SwiftPM)
+        id: package_tests
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          swift test --package-path Packages/PocketDSHKit 2>&1 | tee "$LOG_DIR/pocketdshkit-tests.log"
+
+      - name: Build app for device
+        id: build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -project "$PROJECT_NAME.xcodeproj" \
+            -scheme "$SCHEME" \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$DERIVED_DATA" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            2>&1 | tee "$LOG_DIR/build.log"
+
+      - name: Run iOS tests
+        id: tests
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          SIMULATOR_UDID="$(python3 scripts/select_simulator.py)"
+          printf '%s' "$SIMULATOR_UDID" > "$LOG_DIR/simulator-udid.txt"
+          echo "Simulator UDID: $SIMULATOR_UDID" | tee "$LOG_DIR/simulator.log"
+          xcrun simctl boot "$SIMULATOR_UDID" >/dev/null 2>&1 || true
+          xcrun simctl bootstatus "$SIMULATOR_UDID" -b 2>&1 | tee -a "$LOG_DIR/simulator.log"
+          rm -rf "$ARTIFACTS_DIR/TestResults.xcresult"
+          xcodebuild test \
+            -project "$PROJECT_NAME.xcodeproj" \
+            -scheme "$SCHEME" \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+            -derivedDataPath "$DERIVED_DATA" \
+            -resultBundlePath "$ARTIFACTS_DIR/TestResults.xcresult" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            2>&1 | tee "$LOG_DIR/tests.log"
+
+      - name: Launch app and capture simulator screenshots
+        id: screenshot
+        if: steps.tests.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          SIMULATOR_UDID="$(cat "$LOG_DIR/simulator-udid.txt")"
+          APP_PATH="$DERIVED_DATA/Build/Products/Debug-iphonesimulator/$PROJECT_NAME.app"
+          test -d "$APP_PATH"
+          xcrun simctl install "$SIMULATOR_UDID" "$APP_PATH" 2>&1 | tee "$LOG_DIR/simulator-install.log"
+          xcrun simctl launch "$SIMULATOR_UDID" "$BUNDLE_ID" 2>&1 | tee "$LOG_DIR/simulator-launch.log"
+          sleep 4
+          xcrun simctl io "$SIMULATOR_UDID" screenshot "$ARTIFACTS_DIR/pocketdsh-home.png" 2>&1 | tee "$LOG_DIR/screenshot.log"
+          file "$ARTIFACTS_DIR/pocketdsh-home.png"
+
+          xcrun simctl ui "$SIMULATOR_UDID" appearance dark 2>&1 | tee "$LOG_DIR/simulator-dark.log" || true
+          xcrun simctl terminate "$SIMULATOR_UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
+          xcrun simctl launch "$SIMULATOR_UDID" "$BUNDLE_ID" 2>&1 | tee -a "$LOG_DIR/simulator-launch.log"
+          sleep 3
+          xcrun simctl io "$SIMULATOR_UDID" screenshot "$ARTIFACTS_DIR/pocketdsh-home-dark.png" 2>&1 | tee "$LOG_DIR/screenshot-dark.log"
+          file "$ARTIFACTS_DIR/pocketdsh-home-dark.png"
+
+      - name: Build Release and package unsigned IPA
+        id: ipa
+        if: >-
+          steps.build.outcome == 'success' &&
+          steps.tests.outcome == 'success' &&
+          steps.package_tests.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -project "$PROJECT_NAME.xcodeproj" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$DERIVED_DATA" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            2>&1 | tee "$LOG_DIR/release-build.log"
+          APP_PATH="$DERIVED_DATA/Build/Products/Release-iphoneos/$PROJECT_NAME.app"
+          scripts/package_ipa.sh "$APP_PATH" "$ARTIFACTS_DIR" "$PROJECT_NAME" 2>&1 | tee "$LOG_DIR/package.log"
+
+      - name: Build report
+        if: always()
+        shell: bash
+        env:
+          GENERATE_OUTCOME: ${{ steps.generate.outcome }}
+          PACKAGE_TESTS_OUTCOME: ${{ steps.package_tests.outcome }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          TESTS_OUTCOME: ${{ steps.tests.outcome }}
+          IPA_OUTCOME: ${{ steps.ipa.outcome }}
+        run: |
+          set -euo pipefail
+          python3 scripts/summarize_logs.py "$LOG_DIR" "$ARTIFACTS_DIR/ci-summary.md"
+
+          status() {
+            case "${1:-skipped}" in
+              success) echo "PASS" ;;
+              failure) echo "FAIL" ;;
+              cancelled) echo "CANCELLED" ;;
+              skipped) echo "SKIPPED" ;;
+              *) echo "NOT RUN" ;;
+            esac
+          }
+
+          GENERATE_STATUS="$(status "$GENERATE_OUTCOME")"
+          PACKAGE_TESTS_STATUS="$(status "$PACKAGE_TESTS_OUTCOME")"
+          BUILD_STATUS="$(status "$BUILD_OUTCOME")"
+          TESTS_STATUS="$(status "$TESTS_OUTCOME")"
+          IPA_STATUS="$(status "$IPA_OUTCOME")"
+
+          {
+            echo "## PocketDSH CI result"
+            echo ""
+            echo "| Stage | Result |"
+            echo "| --- | --- |"
+            echo "| Source generation (XcodeGen) | $GENERATE_STATUS |"
+            echo "| Domain + Lua tests (SwiftPM) | $PACKAGE_TESTS_STATUS |"
+            echo "| Xcode compile (device) | $BUILD_STATUS |"
+            echo "| iOS tests (simulator) | $TESTS_STATUS |"
+            echo "| Unsigned IPA | $IPA_STATUS |"
+            echo ""
+            echo "> Signing and real-device installation are not performed by this workflow."
+            echo ""
+            cat "$ARTIFACTS_DIR/ci-summary.md"
+          } | tee "$ARTIFACTS_DIR/github-step-summary.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload IPA, logs and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pocketdsh-ios-${{ github.run_number }}
+          path: |
+            artifacts/*.ipa
+            artifacts/*.md
+            artifacts/*.png
+            artifacts/logs/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload test result bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pocketdsh-test-results-${{ github.run_number }}
+          path: artifacts/TestResults.xcresult
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Enforce pipeline result
+        if: always()
+        shell: bash
+        env:
+          PACKAGE_TESTS_OUTCOME: ${{ steps.package_tests.outcome }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          TESTS_OUTCOME: ${{ steps.tests.outcome }}
+          IPA_OUTCOME: ${{ steps.ipa.outcome }}
+        run: |
+          set -euo pipefail
+          failed=()
+          for entry in \
+            "domain and Lua tests:$PACKAGE_TESTS_OUTCOME" \
+            "device build:$BUILD_OUTCOME" \
+            "iOS tests:$TESTS_OUTCOME" \
+            "unsigned IPA:$IPA_OUTCOME"; do
+            name="${entry%%:*}"
+            value="${entry#*:}"
+            if [[ "$value" != "success" ]]; then
+              failed+=("$name ($value)")
+            fi
+          done
+          if [[ ${#failed[@]} -gt 0 ]]; then
+            echo "::error::Pipeline did not complete successfully: ${failed[*]}"
+            exit 1
+          fi
+          echo "All stages completed successfully."

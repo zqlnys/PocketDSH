@@ -1,0 +1,141 @@
+import Foundation
+import PocketDSHCore
+
+struct DeepSeekClient {
+    private let endpoint = URL(string: "https://api.deepseek.com/chat/completions")!
+
+    private struct ChatRequest: Encodable {
+        let model: String
+        let messages: [LLMMessage]
+        let tools: [LLMToolSpec]?
+        let toolChoice: String?
+        let stream: Bool
+        let temperature: Double
+        let maxTokens: Int
+
+        enum CodingKeys: String, CodingKey {
+            case model
+            case messages
+            case tools
+            case toolChoice = "tool_choice"
+            case stream
+            case temperature
+            case maxTokens = "max_tokens"
+        }
+    }
+
+    private struct ChatResponse: Decodable {
+        struct Choice: Decodable {
+            let message: LLMMessage
+            let finishReason: String?
+
+            enum CodingKeys: String, CodingKey {
+                case message
+                case finishReason = "finish_reason"
+            }
+        }
+
+        let choices: [Choice]
+    }
+
+    private struct ErrorEnvelope: Decodable {
+        struct APIError: Decodable {
+            let message: String?
+            let type: String?
+            let code: String?
+        }
+
+        let error: APIError?
+        let message: String?
+    }
+
+    enum DeepSeekError: Error, LocalizedError {
+        case missingKey
+        case invalidResponse
+        case http(Int, String)
+        case api(String)
+        case emptyChoices
+
+        var errorDescription: String? {
+            switch self {
+            case .missingKey:
+                return "DeepSeek API key is not configured. Add it in Settings."
+            case .invalidResponse:
+                return "DeepSeek returned an unreadable response."
+            case .http(let status, let message):
+                return "DeepSeek HTTP \(status): \(message)"
+            case .api(let message):
+                return "DeepSeek: \(message)"
+            case .emptyChoices:
+                return "DeepSeek returned no assistant message."
+            }
+        }
+    }
+
+    func complete(
+        apiKey: String,
+        model: String,
+        messages: [LLMMessage],
+        tools: [LLMToolSpec],
+        maxTokens: Int = 4096
+    ) async throws -> LLMMessage {
+        guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw DeepSeekError.missingKey
+        }
+
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 180
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+
+        let payload = ChatRequest(
+            model: model,
+            messages: messages,
+            tools: tools.isEmpty ? nil : tools,
+            toolChoice: tools.isEmpty ? nil : "auto",
+            stream: false,
+            temperature: 0.2,
+            maxTokens: maxTokens
+        )
+        request.httpBody = try JSONEncoder().encode(payload)
+
+        try Task.checkCancellation()
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Task.checkCancellation()
+
+        guard let http = response as? HTTPURLResponse else {
+            throw DeepSeekError.invalidResponse
+        }
+
+        guard (200..<300).contains(http.statusCode) else {
+            let message = decodeError(data)
+            throw DeepSeekError.http(http.statusCode, message)
+        }
+
+        do {
+            let decoded = try JSONDecoder().decode(ChatResponse.self, from: data)
+            guard let message = decoded.choices.first?.message else {
+                throw DeepSeekError.emptyChoices
+            }
+            return message
+        } catch let error as DeepSeekError {
+            throw error
+        } catch {
+            if let envelope = try? JSONDecoder().decode(ErrorEnvelope.self, from: data),
+               let message = envelope.error?.message ?? envelope.message {
+                throw DeepSeekError.api(message)
+            }
+            throw DeepSeekError.invalidResponse
+        }
+    }
+
+    private func decodeError(_ data: Data) -> String {
+        if let envelope = try? JSONDecoder().decode(ErrorEnvelope.self, from: data),
+           let message = envelope.error?.message ?? envelope.message {
+            return message
+        }
+        return String(data: data, encoding: .utf8)?.prefix(500).description ?? "Unknown error"
+    }
+}

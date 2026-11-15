@@ -1,0 +1,47 @@
+{
+  "id": "com.example.pocketdsh.workspace-inspector",
+  "name": "Workspace Inspector",
+  "version": "1.0.0",
+  "description": "A real local plugin: lists the iPhone workspace and writes a note through the guarded host API.",
+  "author": "PocketDSH",
+  "apiVersion": 1,
+  "entry": "main.lua",
+  "permissions": ["workspace.read", "workspace.write"],
+  "tools": [
+    {
+      "name": "workspace_report",
+      "description": "List real files in the current iPhone workspace.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "description": "Relative directory, default ." },
+          "depth": { "type": "integer", "description": "Recursive depth, default 2" }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "write_pocket_note",
+      "description": "Write a real Markdown note in the current workspace. Overwrites the target through the host backup path.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "message": { "type": "string", "description": "Note body" },
+          "path": { "type": "string", "description": "Target path, default POCKET_NOTE.md" }
+        },
+        "required": ["message"],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "config": [
+    {
+      "key": "prefix",
+      "title": "Note prefix",
+      "description": "Heading inserted before the note body.",
+      "type": "string",
+      "defaultValue": "Pocket note"
+    }
+  ]
+}
