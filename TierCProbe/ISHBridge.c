@@ -2,8 +2,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
-#include <execinfo.h>
-#include <setjmp.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -13,29 +12,45 @@
 #include "xX_main_Xx.h"
 #include "kernel/fs.h"
 #include "kernel/init.h"
-#include "kernel/task.h"
 #include "fs/devices.h"
 
 extern const char *uname_hostname_override;
 
-static sigjmp_buf ish_jump;
 static volatile int ish_exit_code;
-static volatile int crash_output_fd = -1;
-
-static void crash_handler(int signal_number) {
-    if (crash_output_fd >= 0) {
-        dprintf(crash_output_fd, "caught signal %d\n", signal_number);
-        void *frames[64];
-        int count = backtrace(frames, 64);
-        backtrace_symbols_fd(frames, count, crash_output_fd);
-    }
-    _exit(128 + signal_number);
-}
+static char thread_root[4096];
+static char thread_command[8192];
 
 static void pocket_exit_hook(struct task *task, int code) {
     (void)task;
     ish_exit_code = code;
-    siglongjmp(ish_jump, 1);
+    pthread_exit(NULL);
+}
+
+static void *ish_thread(void *unused) {
+    (void)unused;
+    char *argv[] = {
+        "ish",
+        "-f",
+        thread_root,
+        "/bin/sh",
+        "-c",
+        thread_command,
+        NULL
+    };
+    char envp[] = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\0";
+
+    uname_hostname_override = "pocketdsh";
+    int err = xX_main_Xx(6, argv, envp);
+    if (err < 0) {
+        ish_exit_code = err;
+        return NULL;
+    }
+    create_some_device_nodes();
+    do_mount(&procfs, "proc", "/proc", "", 0);
+    do_mount(&devptsfs, "devpts", "/dev/pts", "", 0);
+    exit_hook = pocket_exit_hook;
+    task_run_current();
+    return NULL;
 }
 
 int pocket_ish_run(const char *rootfs, const char *command, const char *output_path) {
@@ -55,55 +70,25 @@ int pocket_ish_run(const char *rootfs, const char *command, const char *output_p
         return -errno;
     }
 
+    snprintf(thread_root, sizeof(thread_root), "%s", rootfs);
+    snprintf(thread_command, sizeof(thread_command), "%s", command);
+    ish_exit_code = 0;
+
     dup2(output_fd, STDOUT_FILENO);
     dup2(output_fd, STDERR_FILENO);
-    dprintf(output_fd, "bridge-entry\n");
-    fsync(output_fd);
-    crash_output_fd = output_fd;
-    signal(SIGTRAP, crash_handler);
-    signal(SIGILL, crash_handler);
-    signal(SIGSEGV, crash_handler);
-    signal(SIGABRT, crash_handler);
 
-    char root_arg[4096];
-    char command_arg[8192];
-    snprintf(root_arg, sizeof(root_arg), "%s", rootfs);
-    snprintf(command_arg, sizeof(command_arg), "%s", command);
-
-    char *argv[] = {
-        "ish",
-        "-f",
-        root_arg,
-        "/bin/sh",
-        "-c",
-        command_arg,
-        NULL
-    };
-    char envp[] = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\0";
-
-    uname_hostname_override = "pocketdsh";
-    ish_exit_code = 0;
-    dprintf(output_fd, "before-xX_main\n");
-    fsync(output_fd);
-    if (sigsetjmp(ish_jump, 1) == 0) {
-        int err = xX_main_Xx(6, argv, envp);
-        dprintf(output_fd, "after-xX_main=%d\n", err);
-        fsync(output_fd);
-        if (err < 0) {
-            dprintf(output_fd, "iSH startup failed: %s\n", strerror(-err));
-            ish_exit_code = err;
-        } else {
-            create_some_device_nodes();
-            dprintf(output_fd, "after-devices\n");
-            do_mount(&procfs, "proc", "/proc", "", 0);
-            do_mount(&devptsfs, "devpts", "/dev/pts", "", 0);
-            dprintf(output_fd, "before-task-run\n");
-            fsync(output_fd);
-            exit_hook = pocket_exit_hook;
-            task_run_current();
-        }
+    pthread_t thread;
+    int create_error = pthread_create(&thread, NULL, ish_thread, NULL);
+    if (create_error != 0) {
+        dup2(saved_stdout, STDOUT_FILENO);
+        dup2(saved_stderr, STDERR_FILENO);
+        close(saved_stdout);
+        close(saved_stderr);
+        close(output_fd);
+        return -create_error;
     }
 
+    pthread_join(thread, NULL);
     fsync(output_fd);
     dup2(saved_stdout, STDOUT_FILENO);
     dup2(saved_stderr, STDERR_FILENO);
