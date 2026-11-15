@@ -47,50 +47,40 @@ struct PluginsView: View {
                     .listRowBackground(Color.clear)
                 } else {
                     ForEach(pluginStore.plugins) { plugin in
-                        HStack(spacing: 12) {
-                            IconTile(
-                                systemName: "puzzlepiece.extension.fill",
-                                tint: plugin.enabled ? PocketTheme.accent : PocketTheme.secondaryText,
-                                size: 38
-                            )
-
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(plugin.manifest.name)
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(PocketTheme.primaryText)
-                                Text("v\(plugin.manifest.version) · \(plugin.manifest.tools.count) tool(s)")
-                                    .font(.caption2.monospaced())
-                                    .foregroundStyle(PocketTheme.secondaryText)
-                                if let error = plugin.lastError, !error.isEmpty {
-                                    Text(error)
-                                        .font(.caption2)
-                                        .foregroundStyle(PocketTheme.red)
-                                        .lineLimit(2)
-                                }
-                            }
-
-                            Spacer(minLength: 4)
-
-                            Toggle(
-                                "",
-                                isOn: Binding(
-                                    get: { plugin.enabled },
-                                    set: { setEnabled($0, for: plugin) }
+                        NavigationLink {
+                            PluginDetailView(pluginID: plugin.manifest.id)
+                        } label: {
+                            HStack(spacing: 12) {
+                                IconTile(
+                                    systemName: "puzzlepiece.extension.fill",
+                                    tint: plugin.enabled ? PocketTheme.accent : PocketTheme.secondaryText,
+                                    size: 38
                                 )
-                            )
-                            .labelsHidden()
-                            .tint(PocketTheme.accent)
 
-                            NavigationLink {
-                                PluginDetailView(pluginID: plugin.manifest.id)
-                            } label: {
-                                Image(systemName: "chevron.right")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(PocketTheme.secondaryText)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(plugin.manifest.name)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(PocketTheme.primaryText)
+                                    Text("v\(plugin.manifest.version) · \(plugin.manifest.tools.count) tool(s)")
+                                        .font(.caption2.monospaced())
+                                        .foregroundStyle(PocketTheme.secondaryText)
+                                    if let error = plugin.lastError, !error.isEmpty {
+                                        Text(error)
+                                            .font(.caption2)
+                                            .foregroundStyle(PocketTheme.red)
+                                            .lineLimit(2)
+                                    }
+                                }
+
+                                Spacer(minLength: 4)
+
+                                StatusPill(
+                                    text: plugin.enabled ? "Enabled" : "Disabled",
+                                    tint: plugin.enabled ? PocketTheme.accent : PocketTheme.secondaryText
+                                )
                             }
-                            .fixedSize()
+                            .padding(.vertical, 2)
                         }
-                        .padding(.vertical, 2)
                     }
                 }
             }
@@ -136,11 +126,6 @@ struct PluginsView: View {
         } message: {
             Text("Adds Workspace Inspector with workspace.read/workspace.write permissions and two real tools.")
         }
-    }
-
-    private func setEnabled(_ enabled: Bool, for plugin: InstalledPlugin) {
-        pluginStore.setEnabled(enabled, for: plugin.manifest.id)
-        appState.activeSession?.pluginRuntime.reload()
     }
 
     private func install(_ result: Result<URL, Error>) {
