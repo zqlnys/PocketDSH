@@ -86,6 +86,14 @@ struct AgentView: View {
         }
     }
 
+    private var modelLabel: String {
+        switch settings.model {
+        case "deepseek-flash": "Flash"
+        case "deepseek-v4-pro": "V4 Pro"
+        default: settings.model
+        }
+    }
+
     private var statusHeader: some View {
         HStack(spacing: 12) {
             ZStack {
@@ -101,7 +109,7 @@ struct AgentView: View {
                 Text(agent.phase.label)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(PocketTheme.primaryText)
-                Text("\(session.project.name) · \(settings.model)")
+                Text(embedded ? "Local workspace" : "\(session.project.name) · \(settings.model)")
                     .font(.caption2.monospaced())
                     .foregroundStyle(PocketTheme.secondaryText)
                     .lineLimit(1)
@@ -122,7 +130,7 @@ struct AgentView: View {
                     }
                 }
             } label: {
-                Text(settings.model)
+                Text(modelLabel)
                     .font(.caption2.monospaced())
                     .foregroundStyle(PocketTheme.secondaryText)
                     .padding(.horizontal, 8)
