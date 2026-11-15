@@ -169,7 +169,7 @@ public final class LuaEngine: @unchecked Sendable {
             retainedBuffer.release()
         }
 
-        var utf8 = source.utf8CString
+        let utf8 = source.utf8CString
         let status = utf8.withUnsafeBufferPointer { pointer -> Int32 in
             guard let baseAddress = pointer.baseAddress else {
                 return 1

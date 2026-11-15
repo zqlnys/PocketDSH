@@ -3,7 +3,7 @@ import LuaRuntime
 import PocketDSHCore
 
 @MainActor
-final class WorkspaceSession: ObservableObject, Identifiable {
+final class WorkspaceSession: ObservableObject {
     let project: ProjectRecord
     let rootURL: URL
     let metadataRoot: URL

@@ -103,7 +103,7 @@ final class ProjectStore: ObservableObject {
         let bookmark: Data
         do {
             bookmark = try sourceURL.bookmarkData(
-                options: [.withSecurityScope],
+                options: [.minimalBookmark],
                 includingResourceValuesForKeys: nil,
                 relativeTo: nil
             )
@@ -142,7 +142,7 @@ final class ProjectStore: ObservableObject {
             var stale = false
             let url = try URL(
                 resolvingBookmarkData: bookmark,
-                options: [.withSecurityScope],
+                options: [.withoutUI],
                 relativeTo: nil,
                 bookmarkDataIsStale: &stale
             )
