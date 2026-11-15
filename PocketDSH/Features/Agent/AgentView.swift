@@ -109,7 +109,7 @@ struct AgentView: View {
                 Text(agent.phase.label)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(PocketTheme.primaryText)
-                Text(embedded ? "Local workspace" : "\(session.project.name) · \(settings.model)")
+                Text(embedded ? "Local" : "\(session.project.name) · \(settings.model)")
                     .font(.caption2.monospaced())
                     .foregroundStyle(PocketTheme.secondaryText)
                     .lineLimit(1)
