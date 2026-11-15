@@ -19,12 +19,12 @@
 | --- | --- | --- |
 | 源码与工作区 UI | 已完成 | SwiftUI 多项目 / 文件树 / 编辑器 / 搜索 / diff |
 | 核心与 Lua 测试 | 通过 | 16 个 SwiftPM 测试 |
-| iOS 编译 | **通过** | run [#43746967664](https://github.com/zqlnys/PocketDSH/actions/runs/43746967664)，Xcode 26.3（公开仓库免费 macOS runner） |
+| iOS 编译 | **通过** | run [#43750567778](https://github.com/zqlnys/PocketDSH/actions/runs/43750567778)，Xcode 26.3（公开仓库免费 macOS runner） |
 | iOS 模拟器测试 | **通过** | 8/8，含插件完整生命周期测试 |
-| 未签名 arm64 IPA | **已生成** | 1,527,872 bytes，SHA-256 `598310e1…30ff` |
+| 未签名 arm64 IPA | **已生成** | 5,287,086 bytes，SHA-256 `72668aae…e6b0` |
 | 插件系统 | **已实现并测试** | 安装 / 加载 / 配置 / 启停 / 卸载 / 工具接入 |
 | 系统动作 | **部分实现，未真机验证** | 真实提醒 + 电话/消息准备，必须用户确认 |
-| JIT / 运行时状态 | **Tier C POC 已跑通，主 App 未集成** | mmap 探测 + 自动 Tier A；iSH Alpine 在模拟器内实际运行 |
+| JIT / 运行时状态 | **Tier C 实验性已接入主 App** | iSH Alpine smoke test 通过；默认仍 Tier A |
 | 首次启动引导 | **已实现** | API Key 弹窗，可跳过并继续本地工作区 |
 | 模型 / 推理强度 | **已实现** | 当前 DeepSeek V4 模型名 + low/high/max，思考模式默认关闭 |
 | 纯 Linux iOS 构建 | **受阻** | 需要 Apple Xcode.xip + xtool Darwin SDK；本机没有该文件 |
@@ -48,6 +48,10 @@
 工作区采用桌面式左侧栏：
 
 <img src="docs/screenshots/workspace.jpg" width="220" alt="PocketDSH desktop-style workspace">
+
+主 App 内的 Tier C smoke test：
+
+<img src="docs/screenshots/tierc.jpg" width="220" alt="PocketDSH Tier C smoke test">
 
 截图由 CI 在 iPhone 17 Pro Max 模拟器中实际安装并启动 App 后抓取；不代表实体 iPhone 测试。
 
@@ -149,7 +153,7 @@ Agent 只会拿到相对路径。绝对路径、`..`、symlink 逃逸都会被 `
 - 未实现：Linux 用户态 ABI、完整系统仿真、Cordis/Node 原生插件、SSH/SFTP。
 - 未验证：真机安装、IPA 签名、TestFlight。
 - 纯 Linux 构建未完成；当前 IPA 来自 GitHub macOS Runner。
-- Tier C（内嵌 Linux/Node）尚未集成；iSH 可行性已验证，JIT 开关只做能力探测和偏好，不能授予权限。
+- Tier C 已实验性接入主 App：`run_linux` 可运行 Alpine 命令；但它仍是单命令、无项目工作区、无持久 shell，默认运行时仍是 Tier A。JIT 开关只做能力探测和偏好，不能授予权限。
 
 ## 文档
 

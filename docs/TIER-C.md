@@ -1,8 +1,8 @@
 # Tier C：iPhone 本地 Linux 可行性
 
-状态：**iOS 模拟器 POC 已跑通；尚未集成进主 App。**
+状态：**主 App 已链接 iSH，并跑通 Tier C smoke test；仍是实验性单命令后端。**
 
-主 App 目前仍使用 Tier A。`TierCProbe` 是独立的验证 target，不随 PocketDSH 主 App 分发。
+主 App 默认运行时仍是 Tier A。Tier C 通过 `run_linux` 工具显式调用，不是全局自动路由。
 
 ## 结论
 
@@ -20,6 +20,29 @@ iOS 不允许普通 App 创建进程或使用 JIT，但 **iSH** 提供了一条�
 
 - [iSH Alpine 运行输出](tierc/ish-uname.txt)
 - [iOS 静态库构建记录](tierc/ios-static-libs.txt)
+
+## 主 App 内已跑通
+
+Build 32 的 `PocketDSH` 主 App 内置 iSH 静态库和 Alpine rootfs，运行：
+
+```text
+uname -a
+```
+
+返回：
+
+```text
+Linux pocketdsh 4.20.69-ish SUPER AWESOME ... i686 Linux
+```
+
+截图：[tierc.jpg](screenshots/tierc.jpg)
+
+限制：
+
+- 一次 App 启动只支持一个 `run_linux` 命令；
+- 只能访问 Alpine rootfs，尚未挂载 iPhone 项目工作区；
+- 没有持久 shell；
+- 不是默认 Tier A 的替代品。
 
 ## 已验证
 
