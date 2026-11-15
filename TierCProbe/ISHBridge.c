@@ -13,6 +13,7 @@
 #include "kernel/fs.h"
 #include "kernel/init.h"
 #include "fs/devices.h"
+#include "fs/fake-db.h"
 
 extern const char *uname_hostname_override;
 
