@@ -24,7 +24,7 @@
 | 未签名 arm64 IPA | **已生成** | 1,513,378 bytes，SHA-256 `0ade9946…03d4` |
 | 插件系统 | **已实现并测试** | 安装 / 加载 / 配置 / 启停 / 卸载 / 工具接入 |
 | 系统动作 | **部分实现，未真机验证** | 真实提醒 + 电话/消息准备，必须用户确认 |
-| JIT / 运行时状态 | **已探测，Tier C 未集成** | mmap 探测 + 自动 Tier A；iSH 可行性已验证 |
+| JIT / 运行时状态 | **Tier C POC 已跑通，主 App 未集成** | mmap 探测 + 自动 Tier A；iSH Alpine 在模拟器内实际运行 |
 | 首次启动引导 | **已实现** | API Key 弹窗，可跳过并继续本地工作区 |
 | 模型 / 推理强度 | **已实现** | 当前 DeepSeek V4 模型名 + low/high/max，思考模式默认关闭 |
 | 纯 Linux iOS 构建 | **受阻** | 需要 Apple Xcode.xip + xtool Darwin SDK；本机没有该文件 |

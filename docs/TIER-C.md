@@ -1,6 +1,8 @@
 # Tier C：iPhone 本地 Linux 可行性
 
-状态：**可行性验证已通过；尚未集成进 App。**
+状态：**iOS 模拟器 POC 已跑通；尚未集成进主 App。**
+
+主 App 目前仍使用 Tier A。`TierCProbe` 是独立的验证 target，不随 PocketDSH 主 App 分发。
 
 ## 结论
 
@@ -55,6 +57,24 @@ GitHub Actions macOS runner 使用 Xcode 26.3 构建 iSH：
 但直接 `simctl spawn` 运行 CLI 触发 `Trace/BPT trap`。这不是库链接失败，而是裸 CLI 缺少 App/UIApplication 生命周期与沙盒上下文。Tier C 必须作为 App 内后端运行，不能用 CLI 方式验证。
 
 证据：[ios-link-smoke.txt](tierc/ios-link-smoke.txt)
+
+### 4. iOS 模拟器内实际运行 Alpine
+
+`TierCProbe` 使用 iSH 静态库和 Alpine fakefs rootfs，在 iOS 26.2 模拟器内实际执行：
+
+```text
+tier-c-probe-ok
+Linux pocketdsh 4.20.69-ish SUPER AWESOME ... i686 Linux
+```
+
+- **没有 JIT**；
+- 运行在 App 进程内；
+- 不是远程主机；
+- 证据：[ios-runtime-success.txt](tierc/ios-runtime-success.txt)
+
+![Tier C probe](tierc/tierc-probe.png)
+
+已知问题：一次性 iSH 任务结束后，probe UI 会退出前台；需要先隔离 emulated task 的生命周期/清理，才能接入主 App。
 
 ## 尚未完成
 
