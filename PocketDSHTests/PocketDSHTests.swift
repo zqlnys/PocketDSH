@@ -50,3 +50,67 @@ final class PocketDSHTests: XCTestCase {
         XCTAssertTrue(name.range(of: "^[A-Za-z0-9_-]+$", options: .regularExpression) != nil)
     }
 }
+
+final class PluginLifecycleTests: XCTestCase {
+    private var root: URL!
+    private var metadata: URL!
+    private var store: PluginStore!
+    private var runtime: PluginRuntimeManager!
+    private var workspace: WorkspaceFileSystem!
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PocketDSHPluginLifecycle-\(UUID().uuidString)", isDirectory: true)
+        root = base.appendingPathComponent("workspace", isDirectory: true)
+        metadata = base.appendingPathComponent("metadata", isDirectory: true)
+        let pluginRoot = base.appendingPathComponent("plugins", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: pluginRoot, withIntermediateDirectories: true)
+        workspace = WorkspaceFileSystem(root: root, metadataRoot: metadata)
+        store = PluginStore(root: pluginRoot)
+    }
+
+    override func tearDownWithError() throws {
+        if let root { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+        try super.tearDownWithError()
+    }
+
+    @MainActor
+    func testInstallEnableInvokeConfigureDisableUninstall() async throws {
+        let installed = try store.installExample()
+        XCTAssertTrue(installed.enabled)
+        XCTAssertNotNil(store.plugin(id: installed.manifest.id))
+
+        runtime = PluginRuntimeManager(store: store, workspace: workspace)
+        let composite = PluginRuntimeManager.compositeToolName(
+            pluginID: installed.manifest.id,
+            toolName: "write_pocket_note"
+        )
+        XCTAssertTrue(runtime.toolSpecs.contains { $0.function.name == composite })
+
+        let result = await runtime.invoke(
+            toolName: composite,
+            argumentsJSON: #"{"message":"hello from plugin lifecycle test","path":"PLUGIN_TEST.md"}"#
+        )
+        let unwrapped = try XCTUnwrap(result)
+        XCTAssertFalse(unwrapped.isError, unwrapped.content)
+
+        let written = try workspace.readText(path: "PLUGIN_TEST.md")
+        XCTAssertTrue(written.contains("hello from plugin lifecycle test"))
+        XCTAssertTrue(store.logs(for: installed.manifest.id).contains { $0.message.contains("Wrote") })
+
+        store.updateConfig(["prefix": .string("Lifecycle note")], for: installed.manifest.id)
+        runtime.reload()
+        XCTAssertEqual(store.plugin(id: installed.manifest.id)?.config["prefix"]?.stringValue, "Lifecycle note")
+
+        store.setEnabled(false, for: installed.manifest.id)
+        runtime.reload()
+        XCTAssertTrue(runtime.toolSpecs.isEmpty)
+
+        store.uninstall(installed)
+        XCTAssertNil(store.plugin(id: installed.manifest.id))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.directory(for: installed.manifest.id).path))
+    }
+}

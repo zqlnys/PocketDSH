@@ -69,7 +69,7 @@ def main() -> int:
     failure_lines = unique_lines(failures)
 
     report = [
-        "# Orbit build log summary",
+        "# PocketDSH build log summary",
         "",
         f"Generated: {dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
         "",

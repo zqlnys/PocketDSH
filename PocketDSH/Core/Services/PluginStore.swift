@@ -11,12 +11,16 @@ final class PluginStore: ObservableObject {
     private let stateURL: URL
     private let logsURL: URL
 
-    init() {
-        let support = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? fileManager.temporaryDirectory
-        root = support
-            .appendingPathComponent("PocketDSH", isDirectory: true)
-            .appendingPathComponent("Plugins", isDirectory: true)
+    init(root customRoot: URL? = nil) {
+        if let customRoot {
+            root = customRoot.standardizedFileURL
+        } else {
+            let support = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+                ?? fileManager.temporaryDirectory
+            root = support
+                .appendingPathComponent("PocketDSH", isDirectory: true)
+                .appendingPathComponent("Plugins", isDirectory: true)
+        }
         stateURL = root.appendingPathComponent("plugin-state.json")
         logsURL = root.appendingPathComponent("plugin-logs.json")
         try? fileManager.createDirectory(at: root, withIntermediateDirectories: true)
