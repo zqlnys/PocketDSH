@@ -40,7 +40,7 @@ Linux pocketdsh 4.20.69-ish SUPER AWESOME ... i686 Linux
 限制：
 
 - 一次 App 启动只支持一个 `run_linux` 命令；
-- 只能访问 Alpine rootfs，尚未挂载 iPhone 项目工作区；
+- `/workspace` 是项目只读副本；Linux 内的修改不会同步回 iPhone；
 - 没有持久 shell；
 - 不是默认 Tier A 的替代品。
 
