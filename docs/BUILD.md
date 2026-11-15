@@ -7,10 +7,10 @@
 | 日期 | 2026-11-15 |
 | 仓库 | [zqlnys/PocketDSH](https://github.com/zqlnys/PocketDSH)（private） |
 | Workflow | iOS CI |
-| Run | [#43752563876](https://github.com/zqlnys/PocketDSH/actions/runs/43752563876) |
-| Commit | `19f3cb9` |
+| Run | [#43759394529](https://github.com/zqlnys/PocketDSH/actions/runs/43759394529) |
+| Commit | `6f1812f` |
 | 结果 | **success** |
-| 耗时 | 约 5 分 52 秒 |
+| 耗时 | 约 13 分 38 秒 |
 | Runner | `macos-15` |
 | Xcode | 26.3 (17C529) |
 | 模拟器 | iPhone 17 Pro Max, iOS 26.2 (arm64) |
@@ -30,7 +30,7 @@
 | 系统动作测试 | PASS | 消息/电话准备保持 pending，必须用户确认 |
 | Tier C smoke test | PASS | 主 App 内 iSH Alpine `uname`，无 JIT |
 | Tier C 设置卡 | PASS | 明确 experimental、单命令和 GPLv3 限制 |
-| Tier C 工作区挂载 | PASS | 编译通过；只读项目副本到 `/workspace` |
+| Tier C 项目工作区 | NOT VERIFIED | fakefs 元数据未收录裸拷贝文件，已回退 |
 | Tier 路由测试 | PASS | 选择 Tier C 不会伪造 activeTier |
 | 本地通知工具 | PASS | `schedule_alert` 参数校验通过 |
 | 模拟器启动 | PASS | API 引导 / 首页浅色 / 深色 / 简体中文 / 插件页 / 工作区截图 |
@@ -93,21 +93,21 @@ iOS 测试 `PluginLifecycleTests.testInstallEnableInvokeConfigureDisableUninstal
 
 | 项目 | 值 |
 | --- | --- |
-| Artifact | `pocketdsh-ios-71/PocketDSH-unsigned.ipa` |
+| Artifact | `pocketdsh-ios-77/PocketDSH-unsigned.ipa` |
 | Bundle ID | `com.example.pocketdsh` |
 | Version | 0.1.0 (1) |
 | MinimumOSVersion | 17.0 |
 | UIDeviceFamily | `[1]`（iPhone） |
 | 架构 | `arm64` Mach-O |
 | 签名 | **未签名**；无 `_CodeSignature` / `mobileprovision` |
-| 大小 | 5,297,276 bytes |
-| SHA-256 | `b5ff2bdfa50c0b15244095c05d12fb2f37b3f3f646a1682a464ec09e1f120fbd` |
+| 大小 | 5,294,283 bytes |
+| SHA-256 | `90f19d924acf408206401eae5c5b9e14dfcbc26fdcf5fb1657e1f60e8b16abca` |
 
 下载：
 
 ```bash
-gh run download 43752563876 -n pocketdsh-ios-71 -D ./download
-gh run download 43752563876 -n pocketdsh-test-results-71 -D ./test-results
+gh run download 43759394529 -n pocketdsh-ios-77 -D ./download
+gh run download 43759394529 -n pocketdsh-test-results-77 -D ./test-results
 ```
 
 ### Warnings
