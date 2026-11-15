@@ -14,6 +14,11 @@ iOS 不允许普通 App 创建进程或使用 JIT，但 **iSH** 提供了一条�
 
 这不是“完整 Linux 虚拟机”，但足以提供 Linux shell、文件系统和大量命令行工具。
 
+## 原始证据
+
+- [iSH Alpine 运行输出](tierc/ish-uname.txt)
+- [iOS 静态库构建记录](tierc/ios-static-libs.txt)
+
 ## 已验证
 
 ### 1. 无 JIT Linux 可运行

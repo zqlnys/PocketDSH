@@ -1,0 +1,14 @@
+iSH commit: ce96e698f1820b9d8db47e87c501ecb89119d7ce
+Xcode: 26.3
+SDK: iphoneos (arm64)
+Run: https://github.com/zqlnys/PocketDSH/actions/runs/43726162035
+
+Artifacts:
+libish.a       1,991,584 bytes
+libish_emu.a   1,518,856 bytes
+libfakefs.a       66,240 bytes
+
+Build notes:
+- Homebrew LLVM/LLD required for the i386 VDSO.
+- iSH uses an x86 interpreter; no JIT entitlement is required.
+- These libraries are not yet linked into the PocketDSH app.

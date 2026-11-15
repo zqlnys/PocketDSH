@@ -1,0 +1,7 @@
+Command:
+./ish -f alpine /bin/sh -c 'echo hello-from-ish; uname -a; cat /etc/alpine-release'
+
+Output:
+hello-from-ish
+Linux racknerd-9ef0a31 4.20.69-ish SUPER AWESOME ... i686 Linux
+3.20.3
