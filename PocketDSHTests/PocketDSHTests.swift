@@ -177,7 +177,6 @@ final class SystemActionTests: XCTestCase {
             argumentsJSON: #"{"title":"test","due_iso8601":"2000-01-01T00:00:00Z"}"#
         )
         XCTAssertTrue(invalidAlert.isError)
-        XCTAssertTrue(actions.pending == nil || actions.pending?.kind != nil)
 
         let call = await executor.execute(
             name: ToolNames.prepareCall,
