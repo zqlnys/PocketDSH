@@ -42,7 +42,7 @@ final class LinuxRuntime {
 
         // iSH writes output before its shell task exits; observe a bounded window
         // instead of blocking the UI on the persistent shell task.
-        try? await Task.sleep(nanoseconds: 3_000_000_000)
+        try? await Task.sleep(nanoseconds: 5_000_000_000)
         let raw = (try? String(contentsOf: outputURL, encoding: .utf8)) ?? ""
         let output = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         return .success(

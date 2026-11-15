@@ -26,7 +26,7 @@ struct TierCSmokeView: View {
         .background(PocketTheme.background)
         .task {
             let workspace = appState.activeSession?.rootURL
-            let command = "uname -a; echo; echo '--- /workspace ---'; ls -la /workspace 2>/dev/null; echo; cat /workspace/README.md 2>/dev/null"
+            let command = "ls -la /workspace; echo; cat /workspace/README.md"
             let result = await appState.linuxRuntime.run(
                 command: command,
                 workspaceRoot: workspace
