@@ -129,3 +129,57 @@ final class PluginLifecycleTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: store.directory(for: installed.manifest.id).path))
     }
 }
+
+final class SystemActionTests: XCTestCase {
+    private var root: URL!
+    private var metadata: URL!
+    private var workspace: WorkspaceFileSystem!
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PocketDSHSystemActions-\(UUID().uuidString)", isDirectory: true)
+        root = base.appendingPathComponent("workspace", isDirectory: true)
+        metadata = base.appendingPathComponent("metadata", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: true)
+        workspace = WorkspaceFileSystem(root: root, metadataRoot: metadata)
+    }
+
+    override func tearDownWithError() throws {
+        if let root { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+        try super.tearDownWithError()
+    }
+
+    @MainActor
+    func testPrepareMessageAndCallRequireUserConfirmation() async throws {
+        let actions = SystemActionStore()
+        let executor = ToolExecutor(
+            workspace: workspace,
+            luaEngine: LuaEngine(),
+            pluginRuntime: nil,
+            systemActions: actions
+        )
+
+        let message = await executor.execute(
+            name: ToolNames.prepareMessage,
+            argumentsJSON: #"{"recipient":"+15555550123","body":"hello"}"#
+        )
+        XCTAssertFalse(message.isError, message.content)
+        guard case .message(let recipient, let body)? = actions.pending?.kind else {
+            return XCTFail("Expected a pending message action")
+        }
+        XCTAssertEqual(recipient, "+15555550123")
+        XCTAssertEqual(body, "hello")
+
+        let call = await executor.execute(
+            name: ToolNames.prepareCall,
+            argumentsJSON: #"{"number":"+15555550123"}"#
+        )
+        XCTAssertFalse(call.isError, call.content)
+        guard case .call(let number)? = actions.pending?.kind else {
+            return XCTFail("Expected a pending call action")
+        }
+        XCTAssertEqual(number, "+15555550123")
+    }
+}
