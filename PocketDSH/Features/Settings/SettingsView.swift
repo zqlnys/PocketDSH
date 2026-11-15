@@ -26,6 +26,7 @@ struct SettingsView: View {
                         pluginsCard
                         runtimeCard
                         jitCard
+                        tierCCard
                         compatibilityCard
                         aboutCard
                     }
@@ -33,6 +34,9 @@ struct SettingsView: View {
                     .padding(.top, 10)
                     .padding(.bottom, 36)
                 }
+            }
+            .sheet(isPresented: $showTierCSmoke) {
+                TierCSmokeView()
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
@@ -319,6 +323,33 @@ struct SettingsView: View {
                     tint: PocketTheme.amber
                 )
             }
+        }
+        .pocketCard()
+    }
+
+    private var tierCCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                SectionLabel(title: "Tier C · Experimental")
+                Spacer()
+                StatusPill(text: "Linked", tint: PocketTheme.amber)
+            }
+
+            Text("iSH Alpine is linked into this build. run_linux can execute one command per app launch in the Alpine rootfs. It cannot see this project's files yet, and it is not the default runtime.")
+                .font(.caption)
+                .foregroundStyle(PocketTheme.secondaryText)
+
+            Text("GPLv3: distribution requires source/license compliance.")
+                .font(.caption2)
+                .foregroundStyle(PocketTheme.amber)
+
+            Button {
+                showTierCSmoke = true
+            } label: {
+                Label("Run Tier C smoke test", systemImage: "terminal")
+            }
+            .buttonStyle(SecondaryButtonStyle())
+            .frame(maxWidth: .infinity)
         }
         .pocketCard()
     }
