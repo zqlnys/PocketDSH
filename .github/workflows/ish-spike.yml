@@ -66,6 +66,27 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             2>&1 | tee "$RUNNER_TEMP/ish-build-sim.log"
 
+      - name: Link a simulator CLI smoke test
+        run: |
+          set -euo pipefail
+          SIM_ROOT="$RUNNER_TEMP/ish-derived-sim/Release-iphonesimulator/meson"
+          SDK="$(xcrun --sdk iphonesimulator --show-sdk-path)"
+          xcrun --sdk iphonesimulator clang \
+            -target arm64-apple-ios17.0-simulator \
+            -isysroot "$SDK" \
+            -Iish \
+            ish/main.c \
+            "$SIM_ROOT/libish.a" \
+            "$SIM_ROOT/libish_emu.a" \
+            "$SIM_ROOT/libfakefs.a" \
+            -lsqlite3 -lz \
+            -framework Foundation \
+            -framework CoreLocation \
+            -framework UIKit \
+            -o "$RUNNER_TEMP/ish-smoke" \
+            2>&1 | tee "$RUNNER_TEMP/ish-link.log"
+          file "$RUNNER_TEMP/ish-smoke"
+
       - name: List static libraries
         if: always()
         run: |
@@ -80,6 +101,8 @@ jobs:
             ${{ runner.temp }}/ish-libs.txt
             ${{ runner.temp }}/ish-build.log
             ${{ runner.temp }}/ish-build-sim.log
+            ${{ runner.temp }}/ish-link.log
+            ${{ runner.temp }}/ish-smoke
             ${{ runner.temp }}/ish-derived/**/*.a
             ${{ runner.temp }}/ish-derived-sim/**/*.a
           if-no-files-found: warn
