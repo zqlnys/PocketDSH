@@ -15,9 +15,9 @@
 | XcodeGen 工程生成 | 已在 Linux 验证 | XcodeGen 2.46.0 生成 `PocketDSH.xcodeproj` |
 | 纯 Linux SwiftUI 编译 | **失败/受阻** | 无 Darwin Swift SDK / iOS SDK |
 | xtool 纯 Linux 路径 | **未完成** | 无 Xcode.xip、未登录 Apple、SDK 未安装 |
-| iOS 编译 | **已通过（macOS CI）** | run [#43730663808](https://github.com/zqlnys/PocketDSH/actions/runs/43730663808) |
-| iOS 模拟器测试 | **已通过** | 6/6，含插件生命周期 |
-| 可签名 arm64 IPA | **已生成** | 1.3 MB，SHA-256 `14ba61f0…bcaa` |
+| iOS 编译 | **已通过（macOS CI）** | run [#43732217138](https://github.com/zqlnys/PocketDSH/actions/runs/43732217138) |
+| iOS 模拟器测试 | **已通过** | 7/7，含插件生命周期 |
+| 可签名 arm64 IPA | **已生成** | 1.3 MB，SHA-256 `c22ba143…111b` |
 | 真机安装/运行 | 未执行 | 无设备连接 |
 
 > 不能把“源码写完”或“Linux 测试通过”说成“iOS 编译成功”。本次 iOS 编译由 GitHub macOS Runner 完成，不是纯 Linux 构建。
