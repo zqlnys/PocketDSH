@@ -17,6 +17,14 @@
 
 static sigjmp_buf ish_jump;
 static volatile int ish_exit_code;
+static volatile int crash_output_fd = -1;
+
+static void crash_handler(int signal_number) {
+    if (crash_output_fd >= 0) {
+        dprintf(crash_output_fd, "caught signal %d\n", signal_number);
+    }
+    _exit(128 + signal_number);
+}
 
 static void pocket_exit_hook(struct task *task, int code) {
     (void)task;
@@ -45,6 +53,11 @@ int pocket_ish_run(const char *rootfs, const char *command, const char *output_p
     dup2(output_fd, STDERR_FILENO);
     dprintf(output_fd, "bridge-entry\n");
     fsync(output_fd);
+    crash_output_fd = output_fd;
+    signal(SIGTRAP, crash_handler);
+    signal(SIGILL, crash_handler);
+    signal(SIGSEGV, crash_handler);
+    signal(SIGABRT, crash_handler);
 
     char root_arg[4096];
     char command_arg[8192];
@@ -63,15 +76,22 @@ int pocket_ish_run(const char *rootfs, const char *command, const char *output_p
     char envp[] = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\0";
 
     ish_exit_code = 0;
+    dprintf(output_fd, "before-xX_main\n");
+    fsync(output_fd);
     if (sigsetjmp(ish_jump, 1) == 0) {
         int err = xX_main_Xx(6, argv, envp);
+        dprintf(output_fd, "after-xX_main=%d\n", err);
+        fsync(output_fd);
         if (err < 0) {
             dprintf(output_fd, "iSH startup failed: %s\n", strerror(-err));
             ish_exit_code = err;
         } else {
             create_some_device_nodes();
+            dprintf(output_fd, "after-devices\n");
             do_mount(&procfs, "proc", "/proc", "", 0);
             do_mount(&devptsfs, "devpts", "/dev/pts", "", 0);
+            dprintf(output_fd, "before-task-run\n");
+            fsync(output_fd);
             exit_hook = pocket_exit_hook;
             task_run_current();
         }
