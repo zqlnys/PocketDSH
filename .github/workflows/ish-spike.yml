@@ -19,9 +19,9 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
-      - name: Install Meson, Ninja and LLVM
+      - name: Install Meson, Ninja, LLVM and libarchive
         run: |
-          brew install meson ninja llvm lld
+          brew install meson ninja llvm lld libarchive
           echo "/opt/homebrew/opt/llvm/bin" >> "$GITHUB_PATH"
           echo "/opt/homebrew/opt/lld/bin" >> "$GITHUB_PATH"
 
@@ -87,6 +87,20 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/ish-link.log"
           file "$RUNNER_TEMP/ish-smoke"
 
+      - name: Boot simulator and run iSH Linux smoke test
+        run: |
+          set -euo pipefail
+          cd ish
+          meson setup build-native -Dkernel=ish -Dengine=asbestos > "$RUNNER_TEMP/native-meson.log" 2>&1
+          ninja -C build-native tools/fakefsify > "$RUNNER_TEMP/native-ninja.log" 2>&1
+          wget -q https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/x86/alpine-minirootfs-3.20.3-x86.tar.gz -O "$RUNNER_TEMP/alpine.tar.gz"
+          ./build-native/tools/fakefsify "$RUNNER_TEMP/alpine.tar.gz" "$RUNNER_TEMP/alpine-root"
+          DEVICE_UDID=$(xcrun simctl list devices available | grep -E 'iPhone 17 Pro Max|iPhone 17' | head -1 | grep -oE '[0-9A-F-]{36}' | head -1)
+          test -n "$DEVICE_UDID"
+          xcrun simctl boot "$DEVICE_UDID" >/dev/null 2>&1 || true
+          xcrun simctl bootstatus "$DEVICE_UDID" -b
+          xcrun simctl spawn "$DEVICE_UDID" "$RUNNER_TEMP/ish-smoke" -f "$RUNNER_TEMP/alpine-root" /bin/sh -c 'echo tier-c-sim-ok; uname -a; cat /etc/alpine-release' 2>&1 | tee "$RUNNER_TEMP/ish-sim-run.log"
+
       - name: List static libraries
         if: always()
         run: |
@@ -102,6 +116,7 @@ jobs:
             ${{ runner.temp }}/ish-build.log
             ${{ runner.temp }}/ish-build-sim.log
             ${{ runner.temp }}/ish-link.log
+            ${{ runner.temp }}/ish-sim-run.log
             ${{ runner.temp }}/ish-smoke
             ${{ runner.temp }}/ish-derived/**/*.a
             ${{ runner.temp }}/ish-derived-sim/**/*.a
