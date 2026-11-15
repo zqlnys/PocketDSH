@@ -74,7 +74,7 @@ Linux pocketdsh 4.20.69-ish SUPER AWESOME ... i686 Linux
 
 ![Tier C probe](tierc/tierc-probe.png)
 
-已知问题：一次性 iSH 任务结束后，probe UI 会退出前台；需要先隔离 emulated task 的生命周期/清理，才能接入主 App。
+已知问题：一次性 iSH 任务结束后，probe UI 会退出前台；需要先隔离 emulated task 的生命周期/清理，才能接入主 App。主 App 目前仍未链接 iSH，Tier C 仍不可用。
 
 ## 尚未完成
 

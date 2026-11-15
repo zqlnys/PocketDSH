@@ -8,11 +8,6 @@ Command:
 /bin/sh -c 'echo tier-c-probe-ok; uname -a; cat /etc/alpine-release'
 
 Captured output:
-bridge-entry
-before-xX_main
-after-xX_main=0
-after-devices
-before-task-run
 tier-c-probe-ok
 Linux pocketdsh 4.20.69-ish SUPER AWESOME ... i686 Linux
 
@@ -21,5 +16,7 @@ Simulator process without JIT.
 
 Known issue:
 The probe UI leaves the foreground after the one-shot iSH run. The
-emulated task cleanup / app lifecycle needs isolation before integrating
-this into the main PocketDSH app. The main app does not link iSH yet.
+emulated task cleanup / app lifecycle and the iSH host thread need
+isolation before integrating this into the main PocketDSH app. The main
+app does not link iSH yet. This is not a claim that Tier C is available
+inside PocketDSH.
