@@ -19,8 +19,10 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
-      - name: Install Meson and Ninja
-        run: brew install meson ninja
+      - name: Install Meson, Ninja and LLVM
+        run: |
+          brew install meson ninja llvm
+          echo "/opt/homebrew/opt/llvm/bin" >> "$GITHUB_PATH"
 
       - name: Select Xcode
         run: |
