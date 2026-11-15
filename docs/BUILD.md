@@ -7,10 +7,10 @@
 | 日期 | 2026-11-15 |
 | 仓库 | [zqlnys/PocketDSH](https://github.com/zqlnys/PocketDSH)（private） |
 | Workflow | iOS CI |
-| Run | [#43723369452](https://github.com/zqlnys/PocketDSH/actions/runs/43723369452) |
-| Commit | `24485c3` |
+| Run | [#43725221625](https://github.com/zqlnys/PocketDSH/actions/runs/43725221625) |
+| Commit | `fa405d7` |
 | 结果 | **success** |
-| 耗时 | 约 4 分 9 秒 |
+| 耗时 | 约 4 分 10 秒 |
 | Runner | `macos-15` |
 | Xcode | 26.3 (17C529) |
 | 模拟器 | iPhone 17 Pro Max, iOS 26.2 (arm64) |
@@ -30,6 +30,16 @@
 | 模拟器启动 | PASS | API 引导 / 首页浅色 / 深色 / 简体中文 / 插件页截图 |
 | Release 真机架构编译 | PASS | `** BUILD SUCCEEDED **` |
 | 未签名 IPA | PASS | `PocketDSH-unsigned.ipa` |
+
+### 系统动作
+
+新增：
+
+- `schedule_reminder`：通过 EventKit 创建真实提醒（不是系统时钟闹钟）；
+- `prepare_message`：准备系统消息编辑器，用户必须点击发送；
+- `prepare_call`：准备拨号确认，用户必须确认。
+
+受 iOS 沙盒限制，不读取/自动回复 Messages，不静默拨号，不使用描述文件或漏洞。当前只完成编译和模拟器构建验证，没有真实设备权限测试。
 
 ### 模型与推理
 
@@ -67,21 +77,21 @@ iOS 测试 `PluginLifecycleTests.testInstallEnableInvokeConfigureDisableUninstal
 
 | 项目 | 值 |
 | --- | --- |
-| Artifact | `pocketdsh-ios-15/PocketDSH-unsigned.ipa` |
+| Artifact | `pocketdsh-ios-17/PocketDSH-unsigned.ipa` |
 | Bundle ID | `com.example.pocketdsh` |
 | Version | 0.1.0 (1) |
 | MinimumOSVersion | 17.0 |
 | UIDeviceFamily | `[1]`（iPhone） |
 | 架构 | `arm64` Mach-O |
 | 签名 | **未签名**；无 `_CodeSignature` / `mobileprovision` |
-| 大小 | 1,474,017 bytes |
-| SHA-256 | `3606cc8995bda79253aa8541b1b24fa0a458adfef523db937ac5b6b581943b9a` |
+| 大小 | 1,513,378 bytes |
+| SHA-256 | `0ade9946d13ab0985f7eceb22510efcb834f4a7d4196eb271e4c4cd26ee803d4` |
 
 下载：
 
 ```bash
-gh run download 43723369452 -n pocketdsh-ios-15 -D ./download
-gh run download 43723369452 -n pocketdsh-test-results-15 -D ./test-results
+gh run download 43725221625 -n pocketdsh-ios-17 -D ./download
+gh run download 43725221625 -n pocketdsh-test-results-17 -D ./test-results
 ```
 
 ### Warnings

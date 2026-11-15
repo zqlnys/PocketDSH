@@ -1,41 +1,44 @@
-# 系统能力边界：闹钟、电话、消息
+# 系统能力边界：提醒、电话、消息
 
 PocketDSH 不会使用描述文件、MDM、私有 entitlement 或漏洞去绕过 iOS 沙盒。配置描述文件通常只能做设备管理/限制，**不能给第三方 App 开放静默拨号、读取短信或自动发送消息的能力**。
 
-## 闹钟 / 提醒
+## 已实现
 
-可选合法路径：
+### 创建提醒
 
-- **Local Notifications**：App 可请求通知权限，在指定时间提醒用户；不是系统“时钟”闹钟。
-- **EventKit Reminders**：请求提醒事项权限后创建带时间的提醒。
-- **AlarmKit（iOS 26+）**：Apple 提供的闹钟 API，可创建系统闹钟体验；需要目标 SDK 和用户授权，不能假设 iOS 17 设备可用。
-- **Clock 闹钟**：第三方 App 不能静默写入系统“时钟”App 的闹钟列表。
+工具 `schedule_reminder`：
 
-当前 PocketDSH 尚未实现这些工具。实现时应由 Agent 生成动作，用户在 App 内确认后调用公开 API。
+- 使用 EventKit `requestFullAccessToReminders()` 请求权限；
+- 在用户默认提醒列表中创建真实 `EKReminder`；
+- 返回提醒创建结果。
 
-## 电话
+这是 **提醒事项**，不是系统“时钟”App 的闹钟。若需要 iOS 26+ 的 AlarmKit，需要单独适配和权限验证。
 
-- 合法方式：打开 `tel:` URL，系统弹出拨号/确认界面。
-- 不能：静默拨号、后台拨号、读取通话记录。
-- 这不是“权限没申请”，而是 iOS 的公开 API 边界。
+### 准备消息
 
-## 消息
+工具 `prepare_message`：
 
-- 合法方式：`MFMessageComposeViewController` 预填收件人和正文，用户点击发送；或打开 `sms:` URL。
-- 不能：读取 Messages 数据库、自动回复、静默发送短信/iMessage。
-- 不存在可以通过普通描述文件或漏洞合法获得的“自动回消息”能力；PocketDSH 不会尝试这种做法。
+- 不自动发送；
+- 通过 `MFMessageComposeViewController` 预填收件人和正文；
+- 用户必须点击系统编辑器里的发送按钮。
 
-## Agent 应该如何表达
+不能读取 Messages 数据库、自动回复或静默发送。
 
-对于这些动作，工具结果应明确为：
+### 准备电话
 
-```text
-prepared: "打开电话拨号，号码 +1..."
-requires_user_confirmation: true
-```
+工具 `prepare_call`：
 
-而不是伪造 `completed: true`。
+- 不自动拨号；
+- 打开 `tel:`，由系统弹出拨号确认。
+
+## 当前未实现
+
+- Clock App 的系统闹钟；
+- AlarmKit（iOS 26+）；
+- 读取/自动回复 Messages；
+- 后台发送短信/iMessage；
+- 通话记录读取。
 
 ## 结论
 
-可以后续增加“准备动作 + 用户确认 + 调用公开系统 UI”的集成，但不能把其宣传为静默自动化。当前版本没有实现闹钟、电话、消息工具；这属于未验证/未实现能力。
+这些能力不是“没申请权限”，而是 iOS 的公开 API 边界。描述文件或漏洞不是可接受的产品实现方式。当前实现只提供“准备动作 + 用户确认”，并明确标记未在真实设备上验证。

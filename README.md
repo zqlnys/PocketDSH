@@ -19,10 +19,11 @@
 | --- | --- | --- |
 | 源码与工作区 UI | 已完成 | SwiftUI 多项目 / 文件树 / 编辑器 / 搜索 / diff |
 | 核心与 Lua 测试 | 通过 | 16 个 SwiftPM 测试 |
-| iOS 编译 | **通过** | run [#43723369452](https://github.com/zqlnys/PocketDSH/actions/runs/43723369452)，Xcode 26.3 |
+| iOS 编译 | **通过** | run [#43725221625](https://github.com/zqlnys/PocketDSH/actions/runs/43725221625)，Xcode 26.3 |
 | iOS 模拟器测试 | **通过** | 6/6，含插件完整生命周期测试 |
-| 未签名 arm64 IPA | **已生成** | 1,474,017 bytes，SHA-256 `3606cc89…b9a` |
+| 未签名 arm64 IPA | **已生成** | 1,513,378 bytes，SHA-256 `0ade9946…03d4` |
 | 插件系统 | **已实现并测试** | 安装 / 加载 / 配置 / 启停 / 卸载 / 工具接入 |
+| 系统动作 | **部分实现，未真机验证** | 真实提醒 + 电话/消息准备，必须用户确认 |
 | JIT / 运行时状态 | **已探测，Tier C 未实现** | mmap 探测 + 自动 Tier A；不会伪造 JIT 权限 |
 | 首次启动引导 | **已实现** | API Key 弹窗，可跳过并继续本地工作区 |
 | 模型 / 推理强度 | **已实现** | 当前 DeepSeek V4 模型名 + low/high/max，思考模式默认关闭 |
