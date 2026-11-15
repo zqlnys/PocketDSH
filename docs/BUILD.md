@@ -31,6 +31,15 @@
 | Release 真机架构编译 | PASS | `** BUILD SUCCEEDED **` |
 | 未签名 IPA | PASS | `PocketDSH-unsigned.ipa` |
 
+### Tier C 可行性（独立 spike）
+
+iSH 的无 JIT Linux 路径已做两项验证：
+
+- Linux 主机：iSH CLI + Alpine 3.20.3，实际输出 `Linux ... i686` 和 `3.20.3`；
+- iOS：在 macOS runner 构建出 arm64 `libish.a`、`libish_emu.a`、`libfakefs.a`，run `43726162035`。
+
+这还不是 App 内的 Tier C 后端；集成状态和方案见 [TIER-C.md](TIER-C.md)。
+
 ### 系统动作
 
 新增：

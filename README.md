@@ -24,7 +24,7 @@
 | 未签名 arm64 IPA | **已生成** | 1,513,378 bytes，SHA-256 `0ade9946…03d4` |
 | 插件系统 | **已实现并测试** | 安装 / 加载 / 配置 / 启停 / 卸载 / 工具接入 |
 | 系统动作 | **部分实现，未真机验证** | 真实提醒 + 电话/消息准备，必须用户确认 |
-| JIT / 运行时状态 | **已探测，Tier C 未实现** | mmap 探测 + 自动 Tier A；不会伪造 JIT 权限 |
+| JIT / 运行时状态 | **已探测，Tier C 未集成** | mmap 探测 + 自动 Tier A；iSH 可行性已验证 |
 | 首次启动引导 | **已实现** | API Key 弹窗，可跳过并继续本地工作区 |
 | 模型 / 推理强度 | **已实现** | 当前 DeepSeek V4 模型名 + low/high/max，思考模式默认关闭 |
 | 纯 Linux iOS 构建 | **受阻** | 需要 Apple Xcode.xip + xtool Darwin SDK；本机没有该文件 |
@@ -145,7 +145,7 @@ Agent 只会拿到相对路径。绝对路径、`..`、symlink 逃逸都会被 `
 - 未实现：Linux 用户态 ABI、完整系统仿真、Cordis/Node 原生插件、SSH/SFTP。
 - 未验证：真机安装、IPA 签名、TestFlight。
 - 纯 Linux 构建未完成；当前 IPA 来自 GitHub macOS Runner。
-- Tier C（内嵌 Linux/Node）未实现；JIT 开关只做能力探测和偏好，不能授予权限。
+- Tier C（内嵌 Linux/Node）尚未集成；iSH 可行性已验证，JIT 开关只做能力探测和偏好，不能授予权限。
 
 ## 文档
 
@@ -155,6 +155,7 @@ Agent 只会拿到相对路径。绝对路径、`..`、symlink 逃逸都会被 `
 - [DSH / dsh-Go 兼容范围](docs/DSH-COMPATIBILITY.md)
 - [PocketDSH 插件 SDK](docs/PLUGIN-SDK.md)
 - [闹钟 / 电话 / 消息的系统能力边界](docs/SYSTEM-ACTIONS.md)
+- [Tier C 本地 Linux 可行性](docs/TIER-C.md)
 - [构建与安装](docs/BUILD-INSTALL.md)
 
 ## 许可
