@@ -19,9 +19,9 @@
 | --- | --- | --- |
 | 源码与工作区 UI | 已完成 | SwiftUI 多项目 / 文件树 / 编辑器 / 搜索 / diff |
 | 核心与 Lua 测试 | 通过 | 16 个 SwiftPM 测试 |
-| iOS 编译 | **通过** | run [#43750567778](https://github.com/zqlnys/PocketDSH/actions/runs/43750567778)，Xcode 26.3（公开仓库免费 macOS runner） |
+| iOS 编译 | **通过** | run [#43751873839](https://github.com/zqlnys/PocketDSH/actions/runs/43751873839)，Xcode 26.3（公开仓库免费 macOS runner） |
 | iOS 模拟器测试 | **通过** | 8/8，含插件完整生命周期测试 |
-| 未签名 arm64 IPA | **已生成** | 5,287,086 bytes，SHA-256 `72668aae…e6b0` |
+| 未签名 arm64 IPA | **已生成** | 5,294,337 bytes，SHA-256 `f8dd301a…8d69` |
 | 插件系统 | **已实现并测试** | 安装 / 加载 / 配置 / 启停 / 卸载 / 工具接入 |
 | 系统动作 | **部分实现，未真机验证** | 真实提醒 + 电话/消息准备，必须用户确认 |
 | JIT / 运行时状态 | **Tier C 实验性已接入主 App** | iSH Alpine smoke test 通过；默认仍 Tier A |
@@ -153,7 +153,7 @@ Agent 只会拿到相对路径。绝对路径、`..`、symlink 逃逸都会被 `
 - 未实现：Linux 用户态 ABI、完整系统仿真、Cordis/Node 原生插件、SSH/SFTP。
 - 未验证：真机安装、IPA 签名、TestFlight。
 - 纯 Linux 构建未完成；当前 IPA 来自 GitHub macOS Runner。
-- Tier C 已实验性接入主 App：`run_linux` 可运行 Alpine 命令；但它仍是单命令、无项目工作区、无持久 shell，默认运行时仍是 Tier A。JIT 开关只做能力探测和偏好，不能授予权限。
+- Tier C 已实验性接入主 App：`run_linux` 可运行 Alpine 命令；Settings 中有 Tier C 状态卡和 smoke test。它仍是单命令、无项目工作区、无持久 shell，默认运行时仍是 Tier A。
 
 ## 文档
 
