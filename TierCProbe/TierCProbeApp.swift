@@ -76,7 +76,7 @@ enum TierCProbeRunner {
         }
         mark("bridge-start")
         let code = root.path.withCString { rootPtr in
-            "echo tier-c-probe-ok; uname -a; cat /etc/alpine-release".withCString { commandPtr in
+            "/bin/echo tier-c-probe-ok".withCString { commandPtr in
                 output.path.withCString { outputPtr in
                     pocket_ish_run(rootPtr, commandPtr, outputPtr)
                 }
