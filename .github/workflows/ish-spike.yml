@@ -21,8 +21,9 @@ jobs:
 
       - name: Install Meson, Ninja and LLVM
         run: |
-          brew install meson ninja llvm
+          brew install meson ninja llvm lld
           echo "/opt/homebrew/opt/llvm/bin" >> "$GITHUB_PATH"
+          echo "/opt/homebrew/opt/lld/bin" >> "$GITHUB_PATH"
 
       - name: Select Xcode
         run: |
