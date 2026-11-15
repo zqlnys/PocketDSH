@@ -336,7 +336,7 @@ struct SettingsView: View {
                 StatusPill(text: "Linked", tint: PocketTheme.amber)
             }
 
-            Text("iSH Alpine is linked into this build. run_linux can execute one command per app launch with a read-only copy of this project at /workspace. Changes made there do not sync back, and Tier C is not the default runtime.")
+            Text("iSH Alpine is linked into this build. run_linux can execute one command per app launch in the Alpine rootfs. It cannot see this project's files yet, and it is not the default runtime.")
                 .font(.caption)
                 .foregroundStyle(PocketTheme.secondaryText)
 
