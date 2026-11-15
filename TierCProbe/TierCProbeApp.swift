@@ -75,16 +75,23 @@ enum TierCProbeRunner {
             try? text.write(to: stage, atomically: true, encoding: .utf8)
         }
         mark("bridge-start")
-        let code = root.path.withCString { rootPtr in
-            "echo tier-c-probe-ok; uname -a; cat /etc/alpine-release".withCString { commandPtr in
-                output.path.withCString { outputPtr in
-                    pocket_ish_run(rootPtr, commandPtr, outputPtr)
+        let runTask = Task.detached(priority: .userInitiated) {
+            _ = root.path.withCString { rootPtr in
+                "echo tier-c-probe-ok; uname -a; cat /etc/alpine-release".withCString { commandPtr in
+                    output.path.withCString { outputPtr in
+                        pocket_ish_run(rootPtr, commandPtr, outputPtr)
+                    }
                 }
             }
         }
+        _ = runTask
 
-        mark("bridge-returned")
+        // iSH keeps the emulated shell task alive. Capture its output without
+        // blocking the SwiftUI main actor; a persistent-shell integration will
+        // replace this fixed observation window.
+        Thread.sleep(forTimeInterval: 3)
+        mark("bridge-observed")
         let text = (try? String(contentsOf: output, encoding: .utf8)) ?? "<no output>"
-        return "exit=\(code)\n\n\(text)"
+        return "emulated shell is still running\n\n\(text)"
     }
 }
