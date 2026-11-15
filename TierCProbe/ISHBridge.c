@@ -6,6 +6,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <dirent.h>
+#include <sqlite3.h>
+#include <sys/stat.h>
 
 #include "kernel/calls.h"
 #include "kernel/task.h"
