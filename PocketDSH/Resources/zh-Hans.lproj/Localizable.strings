@@ -174,3 +174,11 @@
 "Extend" = "扩展";
 "System" = "系统";
 "RUNTIME" = "运行时";
+
+"Reasoning effort" = "推理强度";
+"Low" = "低";
+"High" = "高";
+"Max" = "最高";
+"Thinking mode" = "思考模式";
+"Off by default for predictable tool use. DeepSeek thinking mode may add latency." = "默认关闭以保证工具调用稳定；DeepSeek 思考模式可能增加延迟。";
+"Thinking" = "思考";

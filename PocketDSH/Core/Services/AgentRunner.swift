@@ -146,7 +146,9 @@ final class AgentRunner: ObservableObject {
                     apiKey: apiKey,
                     model: settings.model,
                     messages: requestMessages,
-                    tools: ToolCatalog.specs + pluginRuntime.toolSpecs
+                    tools: ToolCatalog.specs + pluginRuntime.toolSpecs,
+                    thinkingEnabled: settings.thinkingEnabled,
+                    reasoningEffort: settings.reasoningEffort
                 )
                 try Task.checkCancellation()
 

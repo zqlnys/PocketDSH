@@ -135,6 +135,35 @@ struct SettingsView: View {
             Divider()
                 .overlay(PocketTheme.stroke.opacity(0.6))
 
+            HStack {
+                Text("Reasoning effort")
+                    .font(.subheadline)
+                    .foregroundStyle(PocketTheme.primaryText)
+                Spacer()
+                Picker("Reasoning effort", selection: $settings.reasoningEffort) {
+                    ForEach(ReasoningEffort.allCases) { effort in
+                        Text(effort.title).tag(effort)
+                    }
+                }
+                .pickerStyle(.menu)
+                .tint(PocketTheme.accent)
+            }
+
+            Toggle(isOn: $settings.thinkingEnabled) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Thinking mode")
+                        .font(.subheadline)
+                        .foregroundStyle(PocketTheme.primaryText)
+                    Text("Off by default for predictable tool use. DeepSeek thinking mode may add latency.")
+                        .font(.caption)
+                        .foregroundStyle(PocketTheme.secondaryText)
+                }
+            }
+            .tint(PocketTheme.accent)
+
+            Divider()
+                .overlay(PocketTheme.stroke.opacity(0.6))
+
             Stepper(value: $settings.maxSteps, in: 3...20) {
                 HStack {
                     Text("Maximum steps")

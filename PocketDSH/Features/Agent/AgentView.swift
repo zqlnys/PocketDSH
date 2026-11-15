@@ -128,6 +128,31 @@ struct AgentView: View {
             }
             .buttonStyle(.plain)
 
+            Menu {
+                ForEach(ReasoningEffort.allCases) { effort in
+                    Button {
+                        settings.reasoningEffort = effort
+                    } label: {
+                        if settings.reasoningEffort == effort {
+                            Label(effort.title, systemImage: "checkmark")
+                        } else {
+                            Text(effort.title)
+                        }
+                    }
+                }
+            } label: {
+                Text(settings.reasoningEffort.title)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(PocketTheme.secondaryText)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(PocketTheme.elevatedSurface)
+                    }
+            }
+            .buttonStyle(.plain)
+
             if agent.isRunning {
                 Button {
                     agent.cancel()
@@ -221,12 +246,28 @@ struct AgentView: View {
                 .accessibilityLabel("Send task")
             }
 
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
+                Button {
+                    settings.thinkingEnabled.toggle()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: settings.thinkingEnabled ? "brain.head.profile" : "brain")
+                        Text("Thinking")
+                    }
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(settings.thinkingEnabled ? PocketTheme.accent : PocketTheme.secondaryText)
+                }
+                .buttonStyle(.plain)
+
+                Text("·")
+                    .font(.caption2)
+                    .foregroundStyle(PocketTheme.secondaryText)
+
                 Image(systemName: "lock.shield")
                 Text("Keychain key · workspace-scoped tools · no shell")
+                    .font(.caption2)
+                    .foregroundStyle(PocketTheme.secondaryText)
             }
-            .font(.caption2)
-            .foregroundStyle(PocketTheme.secondaryText)
         }
         .padding(.horizontal, 16)
         .padding(.top, 9)

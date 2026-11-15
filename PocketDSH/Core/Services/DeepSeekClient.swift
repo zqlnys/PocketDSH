@@ -10,7 +10,8 @@ struct DeepSeekClient {
         let tools: [LLMToolSpec]?
         let toolChoice: String?
         let stream: Bool
-        let temperature: Double
+        let thinking: Thinking?
+        let reasoningEffort: String?
         let maxTokens: Int
 
         enum CodingKeys: String, CodingKey {
@@ -19,9 +20,14 @@ struct DeepSeekClient {
             case tools
             case toolChoice = "tool_choice"
             case stream
-            case temperature
+            case thinking
+            case reasoningEffort = "reasoning_effort"
             case maxTokens = "max_tokens"
         }
+    }
+
+    private struct Thinking: Encodable {
+        let type: String
     }
 
     private struct ChatResponse: Decodable {
@@ -77,6 +83,8 @@ struct DeepSeekClient {
         model: String,
         messages: [LLMMessage],
         tools: [LLMToolSpec],
+        thinkingEnabled: Bool,
+        reasoningEffort: ReasoningEffort,
         maxTokens: Int = 4096
     ) async throws -> LLMMessage {
         guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -96,7 +104,8 @@ struct DeepSeekClient {
             tools: tools.isEmpty ? nil : tools,
             toolChoice: tools.isEmpty ? nil : "auto",
             stream: false,
-            temperature: 0.2,
+            thinking: Thinking(type: thinkingEnabled ? "enabled" : "disabled"),
+            reasoningEffort: thinkingEnabled ? reasoningEffort.rawValue : nil,
             maxTokens: maxTokens
         )
         request.httpBody = try JSONEncoder().encode(payload)
