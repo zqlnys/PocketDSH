@@ -1,5 +1,6 @@
 import EventKit
 import Foundation
+import UserNotifications
 import LuaRuntime
 import PocketDSHCore
 
@@ -60,6 +61,8 @@ final class ToolExecutor {
                 return try await runLua(arguments)
             case ToolNames.scheduleReminder:
                 return try await scheduleReminder(arguments)
+            case ToolNames.scheduleAlert:
+                return try await scheduleAlert(arguments)
             case ToolNames.prepareMessage:
                 return try prepareMessage(arguments)
             case ToolNames.prepareCall:
@@ -199,6 +202,50 @@ final class ToolExecutor {
     }
 
 
+
+    private func scheduleAlert(_ arguments: [String: JSONValue]) async throws -> ToolExecutionResult {
+        guard let title = arguments["title"]?.stringValue else {
+            return .failure("schedule_alert requires title.")
+        }
+        guard let due = arguments["due_iso8601"]?.stringValue,
+              let date = ISO8601DateFormatter().date(from: due),
+              date > Date() else {
+            return .failure("schedule_alert requires a future due_iso8601 timestamp.")
+        }
+
+        let center = UNUserNotificationCenter.current()
+        let granted: Bool
+        do {
+            granted = try await center.requestAuthorization(options: [.alert, .sound])
+        } catch {
+            return .failure("Notification permission failed: \(error.localizedDescription)")
+        }
+        guard granted else {
+            return .failure("Notification permission was not granted.")
+        }
+
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = arguments["body"]?.stringValue ?? ""
+        content.sound = .default
+        let components = Calendar.current.dateComponents(
+            [.year, .month, .day, .hour, .minute],
+            from: date
+        )
+        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: UUID().uuidString,
+            content: content,
+            trigger: trigger
+        )
+
+        do {
+            try await center.add(request)
+        } catch {
+            return .failure("Could not schedule notification: \(error.localizedDescription)")
+        }
+        return .success("Scheduled a local notification for \(date.formatted()). This is an app notification, not a Clock app alarm.")
+    }
     private func scheduleReminder(_ arguments: [String: JSONValue]) async throws -> ToolExecutionResult {
         guard let title = arguments["title"]?.stringValue else {
             return .failure("schedule_reminder requires title.")

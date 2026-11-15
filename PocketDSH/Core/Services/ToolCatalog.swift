@@ -53,6 +53,16 @@ enum ToolCatalog {
             required: ["patch"]
         ),
         tool(
+            name: ToolNames.scheduleAlert,
+            description: "Schedule a local notification alert on this iPhone. This is an app notification, not a Clock app alarm. The system asks for notification permission.",
+            properties: [
+                "title": property("string", "Alert title"),
+                "due_iso8601": property("string", "Fire time as an ISO-8601 timestamp"),
+                "body": property("string", "Optional alert body")
+            ],
+            required: ["title", "due_iso8601"]
+        ),
+        tool(
             name: ToolNames.scheduleReminder,
             description: "Create a reminder in the user's Reminders app. This is a reminder, not a Clock app alarm. The system may ask for Reminders permission.",
             properties: [

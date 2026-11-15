@@ -181,6 +181,7 @@ public enum ToolNames {
     public static let applyPatch = "apply_patch"
     public static let runLua = "run_lua"
     public static let scheduleReminder = "schedule_reminder"
+    public static let scheduleAlert = "schedule_alert"
     public static let prepareMessage = "prepare_message"
     public static let prepareCall = "prepare_call"
 }

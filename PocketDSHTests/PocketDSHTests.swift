@@ -172,6 +172,13 @@ final class SystemActionTests: XCTestCase {
         XCTAssertEqual(recipient, "+15555550123")
         XCTAssertEqual(body, "hello")
 
+        let invalidAlert = await executor.execute(
+            name: ToolNames.scheduleAlert,
+            argumentsJSON: #"{"title":"test","due_iso8601":"2000-01-01T00:00:00Z"}"#
+        )
+        XCTAssertTrue(invalidAlert.isError)
+        XCTAssertTrue(actions.pending == nil || actions.pending?.kind != nil)
+
         let call = await executor.execute(
             name: ToolNames.prepareCall,
             argumentsJSON: #"{"number":"+15555550123"}"#
