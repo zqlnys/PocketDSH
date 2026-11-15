@@ -11,6 +11,7 @@ struct SettingsView: View {
     @State private var revealKey = false
     @State private var keyMessage: String?
     @State private var keyError: String?
+    @State private var showTierCSmoke = false
 
     var body: some View {
         NavigationStack {
@@ -318,8 +319,8 @@ struct SettingsView: View {
             if runtime.wantsTierC {
                 Banner(
                     icon: "exclamationmark.triangle",
-                    title: "Tier C is not integrated",
-                    message: "Tier C was requested, but the Linux/Node backend is not available in this build. Tier A remains active.",
+                    title: "Tier C is experimental",
+                    message: "The iSH Alpine backend is linked, but run_linux is a single-command experimental path. Tier A remains the default runtime.",
                     tint: PocketTheme.amber
                 )
             }
