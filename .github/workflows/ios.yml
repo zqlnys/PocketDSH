@@ -180,7 +180,7 @@ jobs:
           file "$ARTIFACTS_DIR/pocketdsh-workspace.png"
 
           xcrun simctl terminate "$SIMULATOR_UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
-          xcrun simctl launch "$SIMULATOR_UDID" "$BUNDLE_ID" -PocketDSHTierCSmoke 2>&1 | tee -a "$LOG_DIR/simulator-launch.log"
+          xcrun simctl launch "$SIMULATOR_UDID" "$BUNDLE_ID" -PocketDSHTierCSmoke -PocketDSHWorkspaceDemo 2>&1 | tee -a "$LOG_DIR/simulator-launch.log"
           sleep 6
           xcrun simctl io "$SIMULATOR_UDID" screenshot "$ARTIFACTS_DIR/pocketdsh-tierc.png" 2>&1 | tee "$LOG_DIR/screenshot-tierc.log"
           file "$ARTIFACTS_DIR/pocketdsh-tierc.png"
