@@ -1,0 +1,58 @@
+name: Tier C probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+
+      - name: Generate project
+        run: xcodegen generate --spec project.yml
+
+      - name: Build TierCProbe for simulator
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project PocketDSH.xcodeproj \
+            -target TierCProbe \
+            -sdk iphonesimulator \
+            -arch arm64 \
+            -configuration Debug \
+            -derivedDataPath "$RUNNER_TEMP/tierc-derived" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            2>&1 | tee "$RUNNER_TEMP/tierc-build.log"
+
+      - name: Boot simulator and launch probe
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/tierc-derived/Build/Products/Debug-iphonesimulator/TierCProbe.app"
+          test -d "$APP"
+          UDID=$(xcrun simctl list devices available | grep -E 'iPhone 17 Pro Max|iPhone 17' | head -1 | grep -oE '[0-9A-F-]{36}' | head -1)
+          test -n "$UDID"
+          xcrun simctl boot "$UDID" >/dev/null 2>&1 || true
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" "$APP"
+          xcrun simctl launch "$UDID" com.example.tiercprobe | tee "$RUNNER_TEMP/tierc-launch.log"
+          sleep 8
+          xcrun simctl io "$UDID" screenshot "$RUNNER_TEMP/tierc-probe.png"
+
+      - name: Upload probe artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier-c-probe
+          path: |
+            ${{ runner.temp }}/tierc-build.log
+            ${{ runner.temp }}/tierc-launch.log
+            ${{ runner.temp }}/tierc-probe.png
+          if-no-files-found: warn

@@ -75,6 +75,41 @@ targets:
       - package: PocketDSHKit
         product: LuaRuntime
 
+  TierCProbe:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: TierCProbe
+      - path: Vendor/iSH/rootfs
+        buildPhase: resources
+        type: folder
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.tiercprobe
+        PRODUCT_NAME: TierCProbe
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        SWIFT_OBJC_BRIDGING_HEADER: TierCProbe/TierCProbe-Bridging-Header.h
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/Vendor/iSH/include"
+        LIBRARY_SEARCH_PATHS:
+          - "$(SRCROOT)/Vendor/iSH/lib/$(PLATFORM_NAME)"
+        OTHER_LDFLAGS:
+          - "$(inherited)"
+          - -lish
+          - -lish_emu
+          - -lfakefs
+          - -lsqlite3
+          - -lz
+          - -framework
+          - Foundation
+          - -framework
+          - UIKit
+          - -framework
+          - CoreLocation
+
   PocketDSHTests:
     type: bundle.unit-test
     platform: iOS
