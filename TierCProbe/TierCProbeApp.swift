@@ -94,6 +94,5 @@ enum TierCProbeRunner {
         pocket_ish_close()
         let clean = outputText.replacingOccurrences(of: marker, with: "")
         return clean.trimmingCharacters(in: .whitespacesAndNewlines)
-        return "emulated shell is still running\n\n\(text)"
     }
 }
