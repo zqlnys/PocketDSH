@@ -27,7 +27,7 @@ jobs:
             -sdk iphonesimulator \
             -arch arm64 \
             -configuration Debug \
-            -derivedDataPath "$RUNNER_TEMP/tierc-derived" \
+            SYMROOT="$RUNNER_TEMP/tierc-derived" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             2>&1 | tee "$RUNNER_TEMP/tierc-build.log"
@@ -35,7 +35,7 @@ jobs:
       - name: Boot simulator and launch probe
         run: |
           set -euo pipefail
-          APP="$RUNNER_TEMP/tierc-derived/Build/Products/Debug-iphonesimulator/TierCProbe.app"
+          APP="$RUNNER_TEMP/tierc-derived/Debug-iphonesimulator/TierCProbe.app"
           test -d "$APP"
           UDID=$(xcrun simctl list devices available | grep -E 'iPhone 17 Pro Max|iPhone 17' | head -1 | grep -oE '[0-9A-F-]{36}' | head -1)
           test -n "$UDID"
