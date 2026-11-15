@@ -2,6 +2,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <execinfo.h>
 #include <setjmp.h>
 #include <stdio.h>
 #include <string.h>
@@ -22,6 +23,9 @@ static volatile int crash_output_fd = -1;
 static void crash_handler(int signal_number) {
     if (crash_output_fd >= 0) {
         dprintf(crash_output_fd, "caught signal %d\n", signal_number);
+        void *frames[64];
+        int count = backtrace(frames, 64);
+        backtrace_symbols_fd(frames, count, crash_output_fd);
     }
     _exit(128 + signal_number);
 }
