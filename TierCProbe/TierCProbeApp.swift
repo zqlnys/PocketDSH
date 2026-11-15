@@ -74,24 +74,26 @@ enum TierCProbeRunner {
         func mark(_ text: String) {
             try? text.write(to: stage, atomically: true, encoding: .utf8)
         }
-        mark("bridge-start")
-        let runTask = Task.detached(priority: .userInitiated) {
-            _ = root.path.withCString { rootPtr in
-                "echo tier-c-probe-ok; uname -a; cat /etc/alpine-release".withCString { commandPtr in
-                    output.path.withCString { outputPtr in
-                        pocket_ish_run(rootPtr, commandPtr, outputPtr)
-                    }
-                }
+        if pocket_ish_start(root.path) != 0 {
+            return "iSH failed to start"
+        }
+
+        let marker = "__POCKET_DSH_DONE__"
+        let command = "echo tier-c-probe-ok; uname -a; cat /etc/alpine-release; echo \(marker)\n"
+        _ = pocket_ish_send(command)
+
+        var outputText = ""
+        var buffer = [CChar](repeating: 0, count: 4096)
+        let deadline = Date().addingTimeInterval(8)
+        while Date() < deadline && !outputText.contains(marker) {
+            let count = pocket_ish_read(&buffer, buffer.count, 200)
+            if count > 0 {
+                outputText += String(cString: buffer)
             }
         }
-        _ = runTask
-
-        // iSH keeps the emulated shell task alive. Capture its output without
-        // blocking the SwiftUI main actor; a persistent-shell integration will
-        // replace this fixed observation window.
-        Thread.sleep(forTimeInterval: 3)
-        mark("bridge-observed")
-        let text = (try? String(contentsOf: output, encoding: .utf8)) ?? "<no output>"
+        pocket_ish_close()
+        let clean = outputText.replacingOccurrences(of: marker, with: "")
+        return clean.trimmingCharacters(in: .whitespacesAndNewlines)
         return "emulated shell is still running\n\n\(text)"
     }
 }
