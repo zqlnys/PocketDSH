@@ -38,7 +38,7 @@ static void *shell_thread(void *unused) {
     char envp[] = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\0";
 
     uname_hostname_override = "pocketdsh";
-    int err = xX_main_Xx(5, argv, envp);
+    int err = xX_main_Xx(4, argv, envp);
     if (err < 0) {
         shell_started = -err;
         return NULL;
