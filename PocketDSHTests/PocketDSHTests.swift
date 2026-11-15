@@ -183,3 +183,24 @@ final class SystemActionTests: XCTestCase {
         XCTAssertEqual(number, "+15555550123")
     }
 }
+
+final class RuntimeRoutingTests: XCTestCase {
+    @MainActor
+    func testTierCSelectionNeverPretendsToBeActive() {
+        let suite = "PocketDSHRuntimeTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let runtime = RuntimeCapabilityStore(defaults: defaults)
+        // The simulator cannot provide the device JIT entitlement.
+        XCTAssertFalse(runtime.jit.isAvailable)
+        XCTAssertEqual(runtime.automaticTier, .tierA)
+        XCTAssertEqual(runtime.activeTier, .tierA)
+        XCTAssertFalse(runtime.wantsTierC)
+
+        runtime.preferredTier = .tierC
+        XCTAssertTrue(runtime.wantsTierC)
+        // The preference is allowed, but the backend is still not active.
+        XCTAssertEqual(runtime.activeTier, .tierA)
+    }
+}
