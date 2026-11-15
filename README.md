@@ -10,6 +10,7 @@
 - 覆盖前备份、恢复历史、任务日志、取消、对话持久化
 - 可安装的本地 Lua 插件：安装、加载、配置、启停、卸载，工具自动接入 Agent
 - 极简浅色 / 深色界面，支持跟随系统 / 简体中文 / English
+- Agent 可选 `deepseek-flash` / `deepseek-v4-pro`，可调推理强度（low/high/max）和思考模式
 - Linux VPS 只开发/检查/编译，不执行用户任务
 
 ## 当前状态（2026-11-15）
@@ -18,12 +19,13 @@
 | --- | --- | --- |
 | 源码与工作区 UI | 已完成 | SwiftUI 多项目 / 文件树 / 编辑器 / 搜索 / diff |
 | 核心与 Lua 测试 | 通过 | 16 个 SwiftPM 测试 |
-| iOS 编译 | **通过** | run [#43722241157](https://github.com/zqlnys/PocketDSH/actions/runs/43722241157)，Xcode 26.3 |
+| iOS 编译 | **通过** | run [#43722906858](https://github.com/zqlnys/PocketDSH/actions/runs/43722906858)，Xcode 26.3 |
 | iOS 模拟器测试 | **通过** | 6/6，含插件完整生命周期测试 |
-| 未签名 arm64 IPA | **已生成** | 1,442,866 bytes，SHA-256 `0a5cc9fb…f567` |
+| 未签名 arm64 IPA | **已生成** | 1,465,881 bytes，SHA-256 `0adcb5c8…35c9` |
 | 插件系统 | **已实现并测试** | 安装 / 加载 / 配置 / 启停 / 卸载 / 工具接入 |
 | JIT / 运行时状态 | **已探测，Tier C 未实现** | mmap 探测 + 自动 Tier A；不会伪造 JIT 权限 |
 | 首次启动引导 | **已实现** | API Key 弹窗，可跳过并继续本地工作区 |
+| 模型 / 推理强度 | **已实现** | 当前 DeepSeek V4 模型名 + low/high/max，思考模式默认关闭 |
 | 纯 Linux iOS 构建 | **受阻** | 需要 Apple Xcode.xip + xtool Darwin SDK；本机没有该文件 |
 | IPA 已签名 | 未执行 | 由用户的签名证书完成 |
 | 真机安装 | 未执行 | 需要实体 iPhone 和签名 |

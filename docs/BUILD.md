@@ -7,10 +7,10 @@
 | 日期 | 2026-11-15 |
 | 仓库 | [zqlnys/PocketDSH](https://github.com/zqlnys/PocketDSH)（private） |
 | Workflow | iOS CI |
-| Run | [#43722241157](https://github.com/zqlnys/PocketDSH/actions/runs/43722241157) |
-| Commit | `a84bc72` |
+| Run | [#43722906858](https://github.com/zqlnys/PocketDSH/actions/runs/43722906858) |
+| Commit | `dafa69d` |
 | 结果 | **success** |
-| 耗时 | 约 4 分 15 秒 |
+| 耗时 | 约 3 分 40 秒 |
 | Runner | `macos-15` |
 | Xcode | 26.3 (17C529) |
 | 模拟器 | iPhone 17 Pro Max, iOS 26.2 (arm64) |
@@ -30,6 +30,14 @@
 | 模拟器启动 | PASS | API 引导 / 首页浅色 / 深色 / 简体中文 / 插件页截图 |
 | Release 真机架构编译 | PASS | `** BUILD SUCCEEDED **` |
 | 未签名 IPA | PASS | `PocketDSH-unsigned.ipa` |
+
+### 模型与推理
+
+- 模型名更新为当前 API 文档中的 `deepseek-flash` / `deepseek-v4-pro`；
+- Agent 顶部和 Settings 都可选择模型；
+- 推理强度支持 `low` / `high` / `max`；
+- 思考模式默认关闭，避免工具调用链路的额外延迟；
+- 请求会发送 `thinking` 和 `reasoning_effort` 字段。
 
 ### JIT 与运行时
 
@@ -59,21 +67,21 @@ iOS 测试 `PluginLifecycleTests.testInstallEnableInvokeConfigureDisableUninstal
 
 | 项目 | 值 |
 | --- | --- |
-| Artifact | `pocketdsh-ios-13/PocketDSH-unsigned.ipa` |
+| Artifact | `pocketdsh-ios-14/PocketDSH-unsigned.ipa` |
 | Bundle ID | `com.example.pocketdsh` |
 | Version | 0.1.0 (1) |
 | MinimumOSVersion | 17.0 |
 | UIDeviceFamily | `[1]`（iPhone） |
 | 架构 | `arm64` Mach-O |
 | 签名 | **未签名**；无 `_CodeSignature` / `mobileprovision` |
-| 大小 | 1,442,866 bytes |
-| SHA-256 | `0a5cc9fbade4bdefd8b707ce63e89b5e76b12ddccf0ecee070e561bfe18df567` |
+| 大小 | 1,465,881 bytes |
+| SHA-256 | `0adcb5c8ae871eac100a91d6ec59d60639c2c57232bd96449565a7103bca35c9` |
 
 下载：
 
 ```bash
-gh run download 43722241157 -n pocketdsh-ios-13 -D ./download
-gh run download 43722241157 -n pocketdsh-test-results-13 -D ./test-results
+gh run download 43722906858 -n pocketdsh-ios-14 -D ./download
+gh run download 43722906858 -n pocketdsh-test-results-14 -D ./test-results
 ```
 
 ### Warnings
