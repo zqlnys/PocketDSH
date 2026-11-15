@@ -60,8 +60,9 @@ jobs:
           sleep 10
           xcrun simctl io "$UDID" screenshot "$RUNNER_TEMP/tierc-probe.png"
           kill "$CONSOLE_PID" >/dev/null 2>&1 || true
-          xcrun simctl spawn "$UDID" log show --last 3m --style compact --predicate 'process == "TierCProbe"' > "$RUNNER_TEMP/tierc-logshow.log" 2>&1 || true
-          find "$HOME/Library/Logs/DiagnosticReports" -name 'TierCProbe*' -mmin -5 -print -exec cp {} "$RUNNER_TEMP/" \; 2>/dev/null || true
+          xcrun simctl spawn "$UDID" log show --last 3m --style compact --predicate 'eventMessage CONTAINS[c] "TierCProbe" OR process == "TierCProbe"' > "$RUNNER_TEMP/tierc-logshow.log" 2>&1 || true
+          xcrun simctl spawn "$UDID" log show --last 3m --style compact --predicate 'eventMessage CONTAINS[c] "tiercprobe"' >> "$RUNNER_TEMP/tierc-logshow.log" 2>&1 || true
+          find "$HOME/Library/Logs/DiagnosticReports" "$HOME/Library/Logs/CoreSimulator" -iname '*TierCProbe*' -mmin -10 -print -exec cp {} "$RUNNER_TEMP/" \; 2>/dev/null || true
 
       - name: Upload probe artifacts
         if: always()
