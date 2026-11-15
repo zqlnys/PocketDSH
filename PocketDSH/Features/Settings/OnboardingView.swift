@@ -31,9 +31,6 @@ struct OnboardingView: View {
                         .foregroundStyle(PocketTheme.secondaryText)
                 }
             }
-            .task {
-                focused = true
-            }
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
