@@ -18,6 +18,9 @@ struct RootView: View {
             }
         }
         .environment(\.locale, settings.language.locale)
+        .sheet(isPresented: $appState.showOnboarding) {
+            OnboardingView()
+        }
         .alert(
             "PocketDSH",
             isPresented: Binding(

@@ -79,10 +79,12 @@ final class AppState: ObservableObject {
     let pluginStore: PluginStore
     let keychain: KeychainStore
     let settings: SettingsStore
+    let runtime: RuntimeCapabilityStore
     let luaEngine: LuaEngine
 
     @Published var activeSession: WorkspaceSession?
     @Published var errorMessage: String?
+    @Published var showOnboarding = false
     @Published private(set) var isPluginDemo = false
 
     init() {
@@ -90,11 +92,17 @@ final class AppState: ObservableObject {
         pluginStore = PluginStore()
         keychain = KeychainStore()
         settings = SettingsStore()
+        runtime = RuntimeCapabilityStore()
         luaEngine = LuaEngine()
+        let arguments = ProcessInfo.processInfo.arguments
+        showOnboarding = !keychain.hasKey
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("-PocketDSHPluginDemo") {
+        if arguments.contains("-PocketDSHPluginDemo") {
             _ = try? pluginStore.installExample()
             isPluginDemo = true
+            showOnboarding = false
+        } else if arguments.contains("-PocketDSHSkipOnboarding") {
+            showOnboarding = false
         }
         #endif
     }

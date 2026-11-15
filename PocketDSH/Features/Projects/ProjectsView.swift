@@ -39,6 +39,7 @@ struct ProjectsView: View {
             .sheet(isPresented: $showSettings) {
                 SettingsView()
                     .environmentObject(appState.settings)
+                    .environmentObject(appState.runtime)
                     .environmentObject(appState.keychain)
                     .environmentObject(appState.pluginStore)
             }

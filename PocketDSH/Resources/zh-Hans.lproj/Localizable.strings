@@ -143,3 +143,34 @@
 "Plugin" = "插件";
 
 "System" = "跟随系统";
+
+"Later" = "稍后";
+"Connect the model" = "连接模型";
+"PocketDSH keeps your projects on this iPhone. The model reasons over them through the DeepSeek API." = "PocketDSH 把项目保存在这台 iPhone 上，模型通过 DeepSeek API 对它们进行推理。";
+"API Key only" = "仅使用 API Key";
+"PocketDSH does not collect your DeepSeek password and does not provide a fake account login. Use a DeepSeek API key; it is stored in the iOS Keychain." = "PocketDSH 不收集 DeepSeek 密码，也不提供假的账号登录。请使用 DeepSeek API Key，它保存在 iOS Keychain 中。";
+"DeepSeek API Key" = "DeepSeek API Key";
+"Get a key" = "获取 Key";
+"Save and start" = "保存并开始";
+"Use local workspace without a key" = "不配置 Key，直接使用本地工作区";
+"Files, editing and local plugins keep working without a key. Only model calls need the API." = "不配置 Key 时，文件、编辑和本地插件仍然可用；只有模型调用需要 API。";
+"JIT & Runtime" = "JIT 与运行时";
+"JIT detected" = "检测到 JIT";
+"No JIT" = "无 JIT";
+"Prefer JIT acceleration" = "优先使用 JIT 加速";
+"Only effective when the signed app actually has a JIT entitlement." = "只有签名后的 App 确实拥有 JIT entitlement 时才生效。";
+"Detected entitlement" = "检测到的 entitlement";
+"Active backend" = "当前后端";
+"Automatic preference" = "自动选择";
+"Tier C is not integrated" = "Tier C 尚未集成";
+"JIT is visible, but the Linux/Node backend is not available in this build. Tier A remains active." = "检测到 JIT，但这个构建还没有 Linux/Node 后端；仍然使用 Tier A。";
+"JIT detected · Tier C unavailable · Tier A active" = "检测到 JIT · Tier C 不可用 · Tier A 运行中";
+"No JIT · Tier A active" = "无 JIT · Tier A 运行中";
+"This build can see a JIT entitlement, but the embedded Linux/Node Tier C backend is not integrated yet. Work continues in the verified native Tier A runtime." = "这个构建能看到 JIT entitlement，但内嵌的 Linux/Node Tier C 后端还没有集成。当前继续使用已验证的原生 Tier A 运行时。";
+"No JIT entitlement was detected. The app automatically uses Tier A: native files, agent tools, and the embedded Lua runtime. Tier C requires a separate Linux backend and remains unavailable." = "没有检测到 JIT entitlement。App 自动使用 Tier A：原生文件、Agent 工具和内嵌 Lua 运行时。Tier C 需要单独的 Linux 后端，当前仍不可用。";
+"Automatic" = "自动";
+"Tier A · Native Lua" = "Tier A · 原生 Lua";
+"Tier C · Linux" = "Tier C · Linux";
+"Extend" = "扩展";
+"System" = "系统";
+"RUNTIME" = "运行时";

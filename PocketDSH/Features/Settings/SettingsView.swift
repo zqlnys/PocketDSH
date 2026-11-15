@@ -5,6 +5,7 @@ struct SettingsView: View {
     @EnvironmentObject private var settings: SettingsStore
     @EnvironmentObject private var keychain: KeychainStore
     @EnvironmentObject private var pluginStore: PluginStore
+    @EnvironmentObject private var runtime: RuntimeCapabilityStore
 
     @State private var apiKeyDraft = ""
     @State private var revealKey = false
@@ -24,6 +25,7 @@ struct SettingsView: View {
                         languageCard
                         pluginsCard
                         runtimeCard
+                        jitCard
                         compatibilityCard
                         aboutCard
                     }
@@ -234,6 +236,52 @@ struct SettingsView: View {
             Text("iOS apps cannot launch arbitrary system binaries. Unsupported operations fail explicitly; nothing is silently forwarded to a server.")
                 .font(.caption2)
                 .foregroundStyle(PocketTheme.secondaryText)
+        }
+        .pocketCard()
+    }
+
+    private var jitCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                SectionLabel(title: "JIT & Runtime")
+                Spacer()
+                StatusPill(
+                    text: runtime.jit.isAvailable ? "JIT detected" : "No JIT",
+                    tint: runtime.jit.isAvailable ? PocketTheme.accent : PocketTheme.amber
+                )
+            }
+
+            Text(runtime.detail)
+                .font(.caption)
+                .foregroundStyle(PocketTheme.secondaryText)
+
+            Toggle(isOn: $runtime.preferJIT) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Prefer JIT acceleration")
+                        .font(.subheadline)
+                        .foregroundStyle(PocketTheme.primaryText)
+                    Text("Only effective when the signed app actually has a JIT entitlement.")
+                        .font(.caption)
+                        .foregroundStyle(PocketTheme.secondaryText)
+                }
+            }
+            .tint(PocketTheme.accent)
+
+            LabeledContent("Detected entitlement", value: runtime.jit.entitlementSummary)
+                .font(.caption)
+            LabeledContent("Active backend", value: runtime.activeTier.title)
+                .font(.caption)
+            LabeledContent("Automatic preference", value: runtime.automaticTier.title)
+                .font(.caption)
+
+            if runtime.automaticTier == .tierC {
+                Banner(
+                    icon: "exclamationmark.triangle",
+                    title: "Tier C is not integrated",
+                    message: "JIT is visible, but the Linux/Node backend is not available in this build. Tier A remains active.",
+                    tint: PocketTheme.amber
+                )
+            }
         }
         .pocketCard()
     }

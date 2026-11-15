@@ -144,12 +144,18 @@ jobs:
           xcrun simctl install "$SIMULATOR_UDID" "$APP_PATH" 2>&1 | tee "$LOG_DIR/simulator-install.log"
           xcrun simctl launch "$SIMULATOR_UDID" "$BUNDLE_ID" 2>&1 | tee "$LOG_DIR/simulator-launch.log"
           sleep 4
+          xcrun simctl io "$SIMULATOR_UDID" screenshot "$ARTIFACTS_DIR/pocketdsh-onboarding.png" 2>&1 | tee "$LOG_DIR/screenshot-onboarding.log"
+          file "$ARTIFACTS_DIR/pocketdsh-onboarding.png"
+
+          xcrun simctl terminate "$SIMULATOR_UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
+          xcrun simctl launch "$SIMULATOR_UDID" "$BUNDLE_ID" -PocketDSHSkipOnboarding 2>&1 | tee -a "$LOG_DIR/simulator-launch.log"
+          sleep 3
           xcrun simctl io "$SIMULATOR_UDID" screenshot "$ARTIFACTS_DIR/pocketdsh-home.png" 2>&1 | tee "$LOG_DIR/screenshot.log"
           file "$ARTIFACTS_DIR/pocketdsh-home.png"
 
           xcrun simctl ui "$SIMULATOR_UDID" appearance dark 2>&1 | tee "$LOG_DIR/simulator-dark.log" || true
           xcrun simctl terminate "$SIMULATOR_UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
-          xcrun simctl launch "$SIMULATOR_UDID" "$BUNDLE_ID" 2>&1 | tee -a "$LOG_DIR/simulator-launch.log"
+          xcrun simctl launch "$SIMULATOR_UDID" "$BUNDLE_ID" -PocketDSHSkipOnboarding 2>&1 | tee -a "$LOG_DIR/simulator-launch.log"
           sleep 3
           xcrun simctl io "$SIMULATOR_UDID" screenshot "$ARTIFACTS_DIR/pocketdsh-home-dark.png" 2>&1 | tee "$LOG_DIR/screenshot-dark.log"
           file "$ARTIFACTS_DIR/pocketdsh-home-dark.png"
@@ -162,7 +168,7 @@ jobs:
           file "$ARTIFACTS_DIR/pocketdsh-plugins.png"
 
           xcrun simctl terminate "$SIMULATOR_UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
-          xcrun simctl launch "$SIMULATOR_UDID" "$BUNDLE_ID" -AppleLanguages '(zh-Hans)' -AppleLocale zh_CN 2>&1 | tee -a "$LOG_DIR/simulator-launch.log"
+          xcrun simctl launch "$SIMULATOR_UDID" "$BUNDLE_ID" -PocketDSHSkipOnboarding -AppleLanguages '(zh-Hans)' -AppleLocale zh_CN 2>&1 | tee -a "$LOG_DIR/simulator-launch.log"
           sleep 3
           xcrun simctl io "$SIMULATOR_UDID" screenshot "$ARTIFACTS_DIR/pocketdsh-zh.png" 2>&1 | tee "$LOG_DIR/screenshot-zh.log"
           file "$ARTIFACTS_DIR/pocketdsh-zh.png"
