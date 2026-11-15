@@ -99,7 +99,7 @@ int pocket_ish_start(const char *rootfs) {
     // xX_main_Xx wraps these host descriptors before returning; restoring
     // the app's original descriptors keeps logging and UIKit unaffected.
     for (int i = 0; i < 100 && shell_started == 0; i++) {
-        usleep(10_000);
+        usleep(10000);
     }
     dup2(saved_stdin, STDIN_FILENO);
     dup2(saved_stdout, STDOUT_FILENO);
