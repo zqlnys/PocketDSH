@@ -188,3 +188,9 @@
 "Tier A active" = "Tier A 运行中";
 
 "Runtime preference" = "运行时偏好";
+
+"System action" = "系统操作";
+"Open phone dialer" = "打开拨号";
+"Prepare a message" = "准备消息";
+"Open dialer" = "打开拨号";
+"The system will ask before placing a call to" = "系统会在拨号前请求确认：";

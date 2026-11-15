@@ -5,6 +5,7 @@ struct AgentView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var keychain: KeychainStore
     @EnvironmentObject private var settings: SettingsStore
+    @EnvironmentObject private var systemActions: SystemActionStore
     @ObservedObject var session: WorkspaceSession
     @ObservedObject var agent: AgentRunner
     let onOpenSettings: () -> Void
@@ -48,6 +49,9 @@ struct AgentView: View {
             .background(PocketTheme.background)
             .navigationTitle("Agent")
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(item: $systemActions.pending) { action in
+                SystemActionSheet(action: action)
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {

@@ -94,7 +94,8 @@ final class PluginLifecycleTests: XCTestCase {
         let toolExecutor = ToolExecutor(
             workspace: workspace,
             luaEngine: LuaEngine(),
-            pluginRuntime: runtime
+            pluginRuntime: runtime,
+            systemActions: SystemActionStore()
         )
         let result = await toolExecutor.execute(
             name: composite,

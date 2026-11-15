@@ -23,6 +23,7 @@ final class WorkspaceSession: ObservableObject {
         keychain: KeychainStore,
         settings: SettingsStore,
         pluginStore: PluginStore,
+        systemActions: SystemActionStore,
         luaEngine: LuaEngine
     ) throws {
         self.project = project
@@ -44,7 +45,8 @@ final class WorkspaceSession: ObservableObject {
         let toolExecutor = ToolExecutor(
             workspace: fileSystem,
             luaEngine: luaEngine,
-            pluginRuntime: pluginRuntime
+            pluginRuntime: pluginRuntime,
+            systemActions: systemActions
         )
         self.agent = AgentRunner(
             workspace: fileSystem,
@@ -80,6 +82,7 @@ final class AppState: ObservableObject {
     let keychain: KeychainStore
     let settings: SettingsStore
     let runtime: RuntimeCapabilityStore
+    let systemActions: SystemActionStore
     let luaEngine: LuaEngine
 
     @Published var activeSession: WorkspaceSession?
@@ -93,6 +96,7 @@ final class AppState: ObservableObject {
         keychain = KeychainStore()
         settings = SettingsStore()
         runtime = RuntimeCapabilityStore()
+        systemActions = SystemActionStore()
         luaEngine = LuaEngine()
         let arguments = ProcessInfo.processInfo.arguments
         showOnboarding = !keychain.hasKey
@@ -118,6 +122,7 @@ final class AppState: ObservableObject {
                 keychain: keychain,
                 settings: settings,
                 pluginStore: pluginStore,
+                systemActions: systemActions,
                 luaEngine: luaEngine
             )
             projectStore.touch(project)

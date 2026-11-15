@@ -63,6 +63,8 @@ targets:
           UIColorName: LaunchBackground
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        NSRemindersFullAccessUsageDescription: "PocketDSH can create reminders when you ask the agent to remember a task."
+        NSRemindersUsageDescription: "PocketDSH can create reminders when you ask the agent to remember a task."
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         UIRequiredDeviceCapabilities:

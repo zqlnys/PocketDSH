@@ -1,3 +1,4 @@
+import EventKit
 import Foundation
 import LuaRuntime
 import PocketDSHCore
@@ -7,15 +8,19 @@ final class ToolExecutor {
     private let workspace: WorkspaceFileSystem
     private let luaEngine: LuaEngine
     private let pluginRuntime: PluginRuntimeManager?
+    private let systemActions: SystemActionStore
+    private let eventStore = EKEventStore()
 
     init(
         workspace: WorkspaceFileSystem,
         luaEngine: LuaEngine,
-        pluginRuntime: PluginRuntimeManager? = nil
+        pluginRuntime: PluginRuntimeManager? = nil,
+        systemActions: SystemActionStore
     ) {
         self.workspace = workspace
         self.luaEngine = luaEngine
         self.pluginRuntime = pluginRuntime
+        self.systemActions = systemActions
     }
 
     func execute(
@@ -53,6 +58,12 @@ final class ToolExecutor {
                 return try applyPatch(arguments)
             case ToolNames.runLua:
                 return try await runLua(arguments)
+            case ToolNames.scheduleReminder:
+                return try await scheduleReminder(arguments)
+            case ToolNames.prepareMessage:
+                return try prepareMessage(arguments)
+            case ToolNames.prepareCall:
+                return try prepareCall(arguments)
             default:
                 return .failure("Unknown tool: \(name)")
             }
@@ -187,6 +198,62 @@ final class ToolExecutor {
         return result.succeeded ? .success(output) : .failure(output)
     }
 
+
+    private func scheduleReminder(_ arguments: [String: JSONValue]) async throws -> ToolExecutionResult {
+        guard let title = arguments["title"]?.stringValue else {
+            return .failure("schedule_reminder requires title.")
+        }
+        guard let due = arguments["due_iso8601"]?.stringValue,
+              let date = ISO8601DateFormatter().date(from: due) else {
+            return .failure("schedule_reminder requires a valid due_iso8601 timestamp.")
+        }
+
+        let granted: Bool
+        do {
+            granted = try await eventStore.requestFullAccessToReminders()
+        } catch {
+            return .failure("Reminder permission failed: \(error.localizedDescription)")
+        }
+        guard granted else {
+            return .failure("Reminder permission was not granted. The user must allow Reminders access.")
+        }
+        guard let calendar = eventStore.defaultCalendarForNewReminders() else {
+            return .failure("No default Reminders calendar is available.")
+        }
+
+        let reminder = EKReminder(eventStore: eventStore)
+        reminder.title = title
+        reminder.notes = arguments["notes"]?.stringValue
+        reminder.calendar = calendar
+        reminder.dueDateComponents = Calendar.current.dateComponents(
+            [.year, .month, .day, .hour, .minute],
+            from: date
+        )
+
+        do {
+            try eventStore.save(reminder, commit: true)
+        } catch {
+            return .failure("Could not save reminder: \(error.localizedDescription)")
+        }
+        return .success("Created a real reminder in the user's Reminders app for \(date.formatted()). This is a reminder, not a Clock app alarm.")
+    }
+
+    private func prepareMessage(_ arguments: [String: JSONValue]) throws -> ToolExecutionResult {
+        guard let recipient = arguments["recipient"]?.stringValue,
+              let body = arguments["body"]?.stringValue else {
+            return .failure("prepare_message requires recipient and body.")
+        }
+        systemActions.prepareMessage(recipient: recipient, body: body)
+        return .success("Prepared a message UI for the user. Nothing was sent. The user must tap Send in the system composer.")
+    }
+
+    private func prepareCall(_ arguments: [String: JSONValue]) throws -> ToolExecutionResult {
+        guard let number = arguments["number"]?.stringValue else {
+            return .failure("prepare_call requires number.")
+        }
+        systemActions.prepareCall(number: number)
+        return .success("Prepared a phone call for the user. Nothing was dialed. The system will ask for confirmation.")
+    }
     private func parseArguments(_ json: String) -> [String: JSONValue]? {
         guard let data = json.data(using: .utf8),
               let value = try? JSONDecoder().decode(JSONValue.self, from: data) else {

@@ -53,6 +53,33 @@ enum ToolCatalog {
             required: ["patch"]
         ),
         tool(
+            name: ToolNames.scheduleReminder,
+            description: "Create a reminder in the user's Reminders app. This is a reminder, not a Clock app alarm. The system may ask for Reminders permission.",
+            properties: [
+                "title": property("string", "Reminder title"),
+                "due_iso8601": property("string", "Due time as an ISO-8601 timestamp"),
+                "notes": property("string", "Optional notes")
+            ],
+            required: ["title", "due_iso8601"]
+        ),
+        tool(
+            name: ToolNames.prepareMessage,
+            description: "Prepare a prefilled SMS/iMessage composer for the user. Nothing is sent automatically; the user must tap Send.",
+            properties: [
+                "recipient": property("string", "Phone number or contact"),
+                "body": property("string", "Message body")
+            ],
+            required: ["recipient", "body"]
+        ),
+        tool(
+            name: ToolNames.prepareCall,
+            description: "Prepare a phone call confirmation for the user. Nothing is dialed automatically; the system asks before calling.",
+            properties: [
+                "number": property("string", "Phone number")
+            ],
+            required: ["number"]
+        ),
+        tool(
             name: ToolNames.runLua,
             description: "Execute Lua 5.4 code locally on the iPhone in a sandbox. Returns real stdout, stderr and exit code. No shell, process launching, network, io, os, package or debug libraries are available.",
             properties: [
