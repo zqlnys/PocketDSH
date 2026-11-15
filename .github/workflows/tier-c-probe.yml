@@ -55,9 +55,13 @@ jobs:
           xcrun simctl boot "$UDID" >/dev/null 2>&1 || true
           xcrun simctl bootstatus "$UDID" -b
           xcrun simctl install "$UDID" "$APP"
-          xcrun simctl launch "$UDID" com.example.tiercprobe | tee "$RUNNER_TEMP/tierc-launch.log"
-          sleep 8
+          xcrun simctl launch --console "$UDID" com.example.tiercprobe > "$RUNNER_TEMP/tierc-console.log" 2>&1 &
+          CONSOLE_PID=$!
+          sleep 10
           xcrun simctl io "$UDID" screenshot "$RUNNER_TEMP/tierc-probe.png"
+          kill "$CONSOLE_PID" >/dev/null 2>&1 || true
+          xcrun simctl spawn "$UDID" log show --last 3m --style compact --predicate 'process == "TierCProbe"' > "$RUNNER_TEMP/tierc-logshow.log" 2>&1 || true
+          find "$HOME/Library/Logs/DiagnosticReports" -name 'TierCProbe*' -mmin -5 -print -exec cp {} "$RUNNER_TEMP/" \; 2>/dev/null || true
 
       - name: Upload probe artifacts
         if: always()
@@ -66,6 +70,8 @@ jobs:
           name: tier-c-probe
           path: |
             ${{ runner.temp }}/tierc-build.log
-            ${{ runner.temp }}/tierc-launch.log
+            ${{ runner.temp }}/tierc-console.log
+            ${{ runner.temp }}/tierc-logshow.log
+            ${{ runner.temp }}/TierCProbe*.ips
             ${{ runner.temp }}/tierc-probe.png
           if-no-files-found: warn
