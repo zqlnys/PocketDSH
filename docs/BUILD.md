@@ -7,10 +7,10 @@
 | 日期 | 2026-11-15 |
 | 仓库 | [zqlnys/PocketDSH](https://github.com/zqlnys/PocketDSH)（private） |
 | Workflow | iOS CI |
-| Run | [#43737463280](https://github.com/zqlnys/PocketDSH/actions/runs/43737463280) |
-| Commit | `965c673` |
+| Run | [#43740339713](https://github.com/zqlnys/PocketDSH/actions/runs/43740339713) |
+| Commit | `d16cccf` |
 | 结果 | **success** |
-| 耗时 | 约 11 分 2 秒 |
+| 耗时 | 约 15 分 13 秒 |
 | Runner | `macos-15` |
 | Xcode | 26.3 (17C529) |
 | 模拟器 | iPhone 17 Pro Max, iOS 26.2 (arm64) |
@@ -25,9 +25,10 @@
 | PocketDSHCore 测试 | PASS | 8/8 |
 | Lua runtime 测试 | PASS | 8/8（5 runtime + 3 plugin runtime） |
 | Xcode 真机架构 Debug 编译 | PASS | `** BUILD SUCCEEDED **` |
-| iOS 模拟器测试 | PASS | 7/7，`** TEST SUCCEEDED **` |
+| iOS 模拟器测试 | PASS | 8/8，`** TEST SUCCEEDED **` |
 | 插件生命周期测试 | PASS | install → enable → invoke → configure → disable → uninstall |
 | 系统动作测试 | PASS | 消息/电话准备保持 pending，必须用户确认 |
+| Tier 路由测试 | PASS | 选择 Tier C 不会伪造 activeTier |
 | 模拟器启动 | PASS | API 引导 / 首页浅色 / 深色 / 简体中文 / 插件页截图 |
 | Release 真机架构编译 | PASS | `** BUILD SUCCEEDED **` |
 | 未签名 IPA | PASS | `PocketDSH-unsigned.ipa` |
@@ -88,7 +89,7 @@ iOS 测试 `PluginLifecycleTests.testInstallEnableInvokeConfigureDisableUninstal
 
 | 项目 | 值 |
 | --- | --- |
-| Artifact | `pocketdsh-ios-50/PocketDSH-unsigned.ipa` |
+| Artifact | `pocketdsh-ios-54/PocketDSH-unsigned.ipa` |
 | Bundle ID | `com.example.pocketdsh` |
 | Version | 0.1.0 (1) |
 | MinimumOSVersion | 17.0 |
@@ -96,13 +97,13 @@ iOS 测试 `PluginLifecycleTests.testInstallEnableInvokeConfigureDisableUninstal
 | 架构 | `arm64` Mach-O |
 | 签名 | **未签名**；无 `_CodeSignature` / `mobileprovision` |
 | 大小 | 1,513,375 bytes |
-| SHA-256 | `25de6a70b8edb4119d61c0a80a28399a015e158cf2dc97d09e3074275a7591f8` |
+| SHA-256 | `c78e5c3cc174edc03cf0fde8d04dec631a2a9471594629c6682b9fcf72961278` |
 
 下载：
 
 ```bash
-gh run download 43737463280 -n pocketdsh-ios-50 -D ./download
-gh run download 43737463280 -n pocketdsh-test-results-50 -D ./test-results
+gh run download 43740339713 -n pocketdsh-ios-54 -D ./download
+gh run download 43740339713 -n pocketdsh-test-results-54 -D ./test-results
 ```
 
 ### Warnings
