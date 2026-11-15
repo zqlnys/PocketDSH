@@ -17,9 +17,9 @@
 | --- | --- | --- |
 | 源码与工作区 UI | 已完成 | SwiftUI 多项目 / 文件树 / 编辑器 / 搜索 / diff |
 | 核心与 Lua 测试 | 通过 | 16 个 SwiftPM 测试 |
-| iOS 编译 | **通过** | run [#43718395658](https://github.com/zqlnys/PocketDSH/actions/runs/43718395658)，Xcode 26.3 |
+| iOS 编译 | **通过** | run [#43718874927](https://github.com/zqlnys/PocketDSH/actions/runs/43718874927)，Xcode 26.3 |
 | iOS 模拟器测试 | **通过** | 6/6，含插件完整生命周期测试 |
-| 未签名 arm64 IPA | **已生成** | 1,351,150 bytes，SHA-256 `17b43487…df295` |
+| 未签名 arm64 IPA | **已生成** | 1,351,150 bytes，SHA-256 `b4f674ea…8265f` |
 | 插件系统 | **已实现并测试** | 安装 / 加载 / 配置 / 启停 / 卸载 / 工具接入 |
 | 纯 Linux iOS 构建 | **受阻** | 需要 Apple Xcode.xip + xtool Darwin SDK；本机没有该文件 |
 | IPA 已签名 | 未执行 | 由用户的签名证书完成 |

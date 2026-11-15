@@ -7,10 +7,10 @@
 | 日期 | 2026-11-15 |
 | 仓库 | [zqlnys/PocketDSH](https://github.com/zqlnys/PocketDSH)（private） |
 | Workflow | iOS CI |
-| Run | [#43718395658](https://github.com/zqlnys/PocketDSH/actions/runs/43718395658) |
-| Commit | `a18411d` |
+| Run | [#43718874927](https://github.com/zqlnys/PocketDSH/actions/runs/43718874927) |
+| Commit | `5e2862d` |
 | 结果 | **success** |
-| 耗时 | 约 3 分 27 秒 |
+| 耗时 | 约 3 分 41 秒 |
 | Runner | `macos-15` |
 | Xcode | 26.3 (17C529) |
 | 模拟器 | iPhone 17 Pro Max, iOS 26.2 (arm64) |
@@ -38,11 +38,12 @@ iOS 测试 `PluginLifecycleTests.testInstallEnableInvokeConfigureDisableUninstal
 1. 把内置示例插件写入 App 的插件目录；
 2. 创建持久 Lua 运行时并加载 `main.lua`；
 3. 把插件工具 `write_pocket_note` 以 `plugin__...` 名称接入工具表；
-4. 调用工具，通过受控 host API 写入真实工作区文件 `PLUGIN_TEST.md`；
-5. 校验文件内容与插件日志；
-6. 修改配置并重载；
-7. 禁用插件，确认工具表为空；
-8. 卸载，确认插件目录删除，工作区文件保留。
+4. 通过 Agent 使用的 `ToolExecutor` 调用插件工具；
+5. 经受控 host API 写入真实工作区文件 `PLUGIN_TEST.md`；
+6. 校验文件内容与插件日志；
+7. 修改配置并重载，再次通过 `ToolExecutor` 写入，验证 prefix 已生效；
+8. 禁用插件，确认工具表为空；
+9. 卸载，确认插件目录删除，工作区文件保留。
 
 测试 workspace 是 iOS 模拟器中的临时真实目录，不是 mock 文件系统。
 
@@ -50,7 +51,7 @@ iOS 测试 `PluginLifecycleTests.testInstallEnableInvokeConfigureDisableUninstal
 
 | 项目 | 值 |
 | --- | --- |
-| Artifact | `pocketdsh-ios-7/PocketDSH-unsigned.ipa` |
+| Artifact | `pocketdsh-ios-8/PocketDSH-unsigned.ipa` |
 | Bundle ID | `com.example.pocketdsh` |
 | Version | 0.1.0 (1) |
 | MinimumOSVersion | 17.0 |
@@ -58,20 +59,20 @@ iOS 测试 `PluginLifecycleTests.testInstallEnableInvokeConfigureDisableUninstal
 | 架构 | `arm64` Mach-O |
 | 签名 | **未签名**；无 `_CodeSignature` / `mobileprovision` |
 | 大小 | 1,351,150 bytes |
-| SHA-256 | `17b434870de817557a7997ac7ca89a2f7a29c93fe55f35c23536a570f6ddf295` |
+| SHA-256 | `b4f674ea6878eb9d4fca6c567270f1987b4afa9a9a1c9a612ac82f3997d8265f` |
 
 下载：
 
 ```bash
-gh run download 43718395658 -n pocketdsh-ios-7 -D ./download
-gh run download 43718395658 -n pocketdsh-test-results-7 -D ./test-results
+gh run download 43718874927 -n pocketdsh-ios-8 -D ./download
+gh run download 43718874927 -n pocketdsh-test-results-8 -D ./test-results
 ```
 
 ### Warnings
 
-5 条 warning 均为工具层提示，不是 Swift 编译 warning：
+6 条 warning 均为工具层提示，不是 Swift 编译 warning：
 
-- `appintentsmetadataprocessor`: 没有 AppIntents 依赖，跳过元数据提取（4 次构建各一条）。
+- `appintentsmetadataprocessor`: 没有 AppIntents 依赖，跳过元数据提取（5 次构建各一条）。
 - `xcodebuild`: 同一模拟器有 arm64/x86_64 两个 destination，使用第一个匹配项。
 
 没有编译错误、测试失败或伪造结果。
