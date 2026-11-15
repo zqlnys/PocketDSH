@@ -12,7 +12,7 @@ final class LinuxRuntime {
     private var rootfsURL: URL?
     private var prepared = false
 
-    func run(command: String) async -> ToolExecutionResult {
+    func run(command: String, workspaceRoot: URL? = nil) async -> ToolExecutionResult {
         guard !busy else {
             return .failure("Tier C shell is busy. One Linux command is supported per app launch in this experimental build.")
         }
@@ -21,6 +21,10 @@ final class LinuxRuntime {
         }
 
         busy = true
+        if let workspaceRoot {
+            copyWorkspace(workspaceRoot, into: root)
+        }
+        let commandToRun = "cd /workspace 2>/dev/null || cd /; \(command)"
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("pocketdsh-linux-\(UUID().uuidString).txt")
         let rootPath = root.path
@@ -28,7 +32,7 @@ final class LinuxRuntime {
 
         Task.detached(priority: .userInitiated) {
             rootPath.withCString { rootPointer in
-                command.withCString { commandPointer in
+                commandToRun.withCString { commandPointer in
                     outputPath.withCString { outputPointer in
                         _ = pocket_ish_run(rootPointer, commandPointer, outputPointer)
                     }
@@ -46,6 +50,30 @@ final class LinuxRuntime {
                 ? "Linux command started; no output was captured in the observation window. Tier C shell remains experimental."
                 : "Linux output (Tier C, experimental):\n\(output)"
         )
+    }
+
+    private func copyWorkspace(_ source: URL, into rootfs: URL) {
+        let destination = rootfs.appendingPathComponent("data", isDirectory: true)
+            .appendingPathComponent("workspace", isDirectory: true)
+        let fm = FileManager.default
+        try? fm.removeItem(at: destination)
+        try? fm.createDirectory(at: destination, withIntermediateDirectories: true)
+        guard let enumerator = fm.enumerator(
+            at: source,
+            includingPropertiesForKeys: [.isDirectoryKey, .isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+        for case let item as URL in enumerator {
+            let relative = item.path.replacingOccurrences(of: source.path + "/", with: "")
+            let target = destination.appendingPathComponent(relative)
+            let values = try? item.resourceValues(forKeys: [.isDirectoryKey])
+            if values?.isDirectory == true {
+                try? fm.createDirectory(at: target, withIntermediateDirectories: true)
+            } else {
+                try? fm.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try? fm.copyItem(at: item, to: target)
+            }
+        }
     }
 
     private func prepareRootfs() -> URL? {

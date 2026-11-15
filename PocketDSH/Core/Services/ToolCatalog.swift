@@ -91,7 +91,7 @@ enum ToolCatalog {
         ),
         tool(
             name: ToolNames.runLinux,
-            description: "Experimental Tier C: run one command in the bundled Alpine Linux rootfs through the embedded iSH interpreter. No JIT. This does not yet see the iPhone project workspace; use file tools for project files. One command per app launch.",
+            description: "Experimental Tier C: run one command in the bundled Alpine Linux rootfs through the embedded iSH interpreter. No JIT. A read-only copy of the project is mounted at /workspace; files changed there do not sync back. One command per app launch.",
             properties: [
                 "command": property("string", "Shell command to run in Alpine Linux")
             ],
