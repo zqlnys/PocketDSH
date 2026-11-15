@@ -93,7 +93,7 @@ final class AppState: ObservableObject {
         luaEngine = LuaEngine()
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-PocketDSHPluginDemo") {
-            try? pluginStore.installExample()
+            _ = try? pluginStore.installExample()
             isPluginDemo = true
         }
         #endif
