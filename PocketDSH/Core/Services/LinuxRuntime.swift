@@ -1,4 +1,5 @@
 import Foundation
+import PocketDSHCore
 
 /// Experimental Tier C command runner.
 ///
