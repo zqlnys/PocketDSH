@@ -21,6 +21,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 18) {
                         apiKeyCard
                         modelCard
+                        languageCard
                         pluginsCard
                         runtimeCard
                         compatibilityCard
@@ -156,6 +157,19 @@ struct SettingsView: View {
                 }
             }
             .tint(PocketTheme.accent)
+        }
+        .pocketCard()
+    }
+
+    private var languageCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionLabel(title: "Language")
+            Picker("Language", selection: $settings.language) {
+                ForEach(AppLanguage.allCases) { language in
+                    Text(language.title).tag(language)
+                }
+            }
+            .pickerStyle(.segmented)
         }
         .pocketCard()
     }

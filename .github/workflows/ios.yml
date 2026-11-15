@@ -161,6 +161,12 @@ jobs:
           xcrun simctl io "$SIMULATOR_UDID" screenshot "$ARTIFACTS_DIR/pocketdsh-plugins.png" 2>&1 | tee "$LOG_DIR/screenshot-plugins.log"
           file "$ARTIFACTS_DIR/pocketdsh-plugins.png"
 
+          xcrun simctl terminate "$SIMULATOR_UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
+          xcrun simctl launch "$SIMULATOR_UDID" "$BUNDLE_ID" -AppleLanguages '(zh-Hans)' -AppleLocale zh_CN 2>&1 | tee -a "$LOG_DIR/simulator-launch.log"
+          sleep 3
+          xcrun simctl io "$SIMULATOR_UDID" screenshot "$ARTIFACTS_DIR/pocketdsh-zh.png" 2>&1 | tee "$LOG_DIR/screenshot-zh.log"
+          file "$ARTIFACTS_DIR/pocketdsh-zh.png"
+
       - name: Build Release and package unsigned IPA
         id: ipa
         if: >-

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var settings: SettingsStore
 
     var body: some View {
         Group {
@@ -16,6 +17,7 @@ struct RootView: View {
                 ProjectsView()
             }
         }
+        .environment(\.locale, settings.language.locale)
         .alert(
             "PocketDSH",
             isPresented: Binding(

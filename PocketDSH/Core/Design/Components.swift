@@ -7,14 +7,14 @@ struct PocketCardModifier: ViewModifier {
         content
             .padding(padding)
             .background {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(PocketTheme.surface)
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .stroke(PocketTheme.stroke.opacity(0.7), lineWidth: 1)
             }
-            .shadow(color: PocketTheme.cardShadow, radius: 18, x: 0, y: 8)
+            .shadow(color: PocketTheme.cardShadow, radius: 0, x: 0, y: 0)
     }
 }
 
@@ -37,10 +37,10 @@ struct PrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(Color(hex: "#062018"))
-            .padding(.horizontal, 16)
-            .padding(.vertical, 11)
-            .background(Capsule().fill(PocketTheme.accent))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(PocketTheme.accent))
             .opacity(configuration.isPressed ? 0.82 : 1)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
     }
@@ -51,10 +51,10 @@ struct SecondaryButtonStyle: ButtonStyle {
         configuration.label
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(PocketTheme.primaryText)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 11)
-            .background(Capsule().fill(PocketTheme.elevatedSurface))
-            .overlay(Capsule().stroke(PocketTheme.stroke.opacity(0.8), lineWidth: 1))
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(PocketTheme.elevatedSurface))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(PocketTheme.stroke, lineWidth: 1))
             .opacity(configuration.isPressed ? 0.82 : 1)
     }
 }
@@ -63,7 +63,7 @@ struct SectionLabel: View {
     let title: String
 
     var body: some View {
-        Text(title)
+        Text(NSLocalizedString(title, comment: ""))
             .font(.caption.weight(.bold))
             .tracking(1.1)
             .textCase(.uppercase)
@@ -76,14 +76,14 @@ struct StatusPill: View {
     var tint: Color = PocketTheme.accent
 
     var body: some View {
-        Text(text)
+        Text(NSLocalizedString(text, comment: ""))
             .font(.caption2.weight(.bold))
             .textCase(.uppercase)
             .tracking(0.6)
             .foregroundStyle(tint)
             .padding(.horizontal, 9)
             .padding(.vertical, 5)
-            .background(Capsule().fill(tint.opacity(0.14)))
+            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(tint.opacity(0.12)))
     }
 }
 
@@ -98,8 +98,8 @@ struct IconTile: View {
             .foregroundStyle(tint)
             .frame(width: size, height: size)
             .background {
-                RoundedRectangle(cornerRadius: size * 0.32, style: .continuous)
-                    .fill(tint.opacity(0.13))
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(tint.opacity(0.10))
             }
     }
 }
@@ -114,10 +114,10 @@ struct EmptyState: View {
     var body: some View {
         VStack(spacing: 14) {
             IconTile(systemName: icon, tint: PocketTheme.accent, size: 58)
-            Text(title)
+            Text(NSLocalizedString(title, comment: ""))
                 .font(.headline)
                 .foregroundStyle(PocketTheme.primaryText)
-            Text(message)
+            Text(NSLocalizedString(message, comment: ""))
                 .font(.subheadline)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(PocketTheme.secondaryText)
@@ -128,8 +128,7 @@ struct EmptyState: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 26)
-        .pocketCard()
+        .padding(.vertical, 30)
     }
 }
 
@@ -146,10 +145,10 @@ struct Banner: View {
                 .foregroundStyle(tint)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 3) {
-                Text(title)
+                Text(NSLocalizedString(title, comment: ""))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(PocketTheme.primaryText)
-                Text(message)
+                Text(NSLocalizedString(message, comment: ""))
                     .font(.caption)
                     .foregroundStyle(PocketTheme.secondaryText)
             }
@@ -157,12 +156,12 @@ struct Banner: View {
         }
         .padding(14)
         .background {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(tint.opacity(0.09))
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(tint.opacity(0.07))
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(tint.opacity(0.22), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(tint.opacity(0.18), lineWidth: 1)
         }
     }
 }

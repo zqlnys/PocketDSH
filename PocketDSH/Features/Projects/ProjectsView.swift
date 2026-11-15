@@ -20,16 +20,19 @@ struct ProjectsView: View {
                     .ignoresSafeArea()
 
                 ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 22) {
-                        header
-                        hero
+                    VStack(alignment: .leading, spacing: 0) {
+                        topBar
+                        intro
                         actionRow
+                        Divider()
+                            .overlay(PocketTheme.stroke)
+                            .padding(.vertical, 24)
                         projectList
                         footer
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 10)
-                    .padding(.bottom, 36)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 12)
+                    .padding(.bottom, 32)
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
@@ -79,145 +82,143 @@ struct ProjectsView: View {
         }
     }
 
-    private var header: some View {
-        HStack(alignment: .top, spacing: 14) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text("POCKET / WORKSPACE")
-                    .font(.caption.weight(.bold))
-                    .tracking(1.4)
-                    .foregroundStyle(PocketTheme.accent)
-
-                Text("PocketDSH")
-                    .font(.system(size: 36, weight: .bold, design: .rounded))
-                    .foregroundStyle(PocketTheme.primaryText)
-
-                Text("A coding agent that lives on your iPhone.")
-                    .font(.subheadline)
-                    .foregroundStyle(PocketTheme.secondaryText)
+    private var topBar: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(PocketTheme.accent)
+                    .frame(width: 28, height: 28)
+                Image(systemName: "chevron.left.forwardslash.chevron.right")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white)
             }
 
-            Spacer(minLength: 0)
+            Text("POCKETDSH / LOCAL")
+                .font(.caption2.weight(.semibold).monospaced())
+                .tracking(1.1)
+                .foregroundStyle(PocketTheme.secondaryText)
+
+            Spacer()
 
             Button {
                 showSettings = true
             } label: {
-                Image(systemName: "gearshape.fill")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(PocketTheme.primaryText)
-                    .frame(width: 44, height: 44)
-                    .background(Circle().fill(PocketTheme.surface))
-                    .overlay(Circle().stroke(PocketTheme.stroke, lineWidth: 1))
+                Image(systemName: "gearshape")
+                    .font(.system(size: 17, weight: .regular))
+                    .foregroundStyle(PocketTheme.secondaryText)
+                    .frame(width: 36, height: 36)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(PressableButtonStyle())
+            .buttonStyle(.plain)
             .accessibilityLabel("Settings")
         }
     }
 
-    private var hero: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                StatusPill(text: "Local first", tint: PocketTheme.accent)
-                Spacer()
-                Text("iOS 17+")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.55))
-            }
+    private var intro: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Local workspace")
+                .font(.system(size: 42, weight: .medium, design: .serif))
+                .foregroundStyle(PocketTheme.primaryText)
+                .padding(.top, 34)
 
-            Text("The project is not a chat attachment.")
-                .font(.system(size: 23, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
-
-            Text("Files are read and written on this device. The agent uses real tools, records diffs, and keeps recovery backups.")
+            Text("A coding agent that lives on your iPhone. Projects stay here; the model only reasons over them.")
                 .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.72))
+                .foregroundStyle(PocketTheme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 16) {
-                Label("\(projectStore.projects.count) projects", systemImage: "folder.fill")
-                Label("Lua 5.4", systemImage: "terminal.fill")
+            HStack(spacing: 8) {
+                StatusPill(text: "On-device files", tint: PocketTheme.accent)
+                StatusPill(text: "Lua 5.4", tint: PocketTheme.secondaryText)
             }
-            .font(.caption.weight(.medium))
-            .foregroundStyle(.white.opacity(0.68))
-            .padding(.top, 2)
-        }
-        .padding(20)
-        .background(PocketTheme.headerGradient)
-        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .overlay(alignment: .topTrailing) {
-            Image(systemName: "chevron.left.forwardslash.chevron.right")
-                .font(.system(size: 82, weight: .bold))
-                .foregroundStyle(.white.opacity(0.055))
-                .offset(x: 18, y: -10)
+            .padding(.top, 4)
         }
     }
 
     private var actionRow: some View {
-        VStack(spacing: 10) {
+        HStack(spacing: 8) {
             Button {
                 newProjectName = ""
                 showNewProject = true
             } label: {
                 Label("New project", systemImage: "plus")
-                    .frame(maxWidth: .infinity)
             }
             .buttonStyle(PrimaryButtonStyle())
 
-            HStack(spacing: 10) {
+            Menu {
                 Button {
                     beginImport(.copy)
                 } label: {
                     Label("Import folder", systemImage: "square.and.arrow.down")
-                        .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(SecondaryButtonStyle())
-
                 Button {
                     beginImport(.external)
                 } label: {
-                    Label("Open folder", systemImage: "folder.badge.plus")
-                        .frame(maxWidth: .infinity)
+                    Label("Open authorized folder", systemImage: "folder.badge.plus")
                 }
-                .buttonStyle(SecondaryButtonStyle())
+            } label: {
+                Label("More", systemImage: "ellipsis")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(PocketTheme.primaryText)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(PocketTheme.stroke, lineWidth: 1)
+                    }
             }
+            .buttonStyle(.plain)
         }
+        .padding(.top, 20)
     }
 
     private var projectList: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                SectionLabel(title: "Your workspaces")
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Projects")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(PocketTheme.primaryText)
                 Spacer()
-                if !projectStore.projects.isEmpty {
-                    Text("\(projectStore.projects.count)")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(PocketTheme.secondaryText)
-                }
+                Text("\(projectStore.projects.count)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(PocketTheme.secondaryText)
             }
+            .padding(.bottom, 8)
 
             if projectStore.projects.isEmpty {
-                EmptyState(
-                    icon: "folder.badge.plus",
-                    title: "No workspace yet",
-                    message: "Create a project or import a folder. Everything stays on this iPhone unless you export it.",
-                    actionTitle: "Create first project"
-                ) {
-                    newProjectName = ""
-                    showNewProject = true
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("No workspace yet.")
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(PocketTheme.primaryText)
+                    Text("Create a project or import a folder. Nothing leaves this iPhone unless you export it.")
+                        .font(.subheadline)
+                        .foregroundStyle(PocketTheme.secondaryText)
+                    Button("Create first project") {
+                        newProjectName = ""
+                        showNewProject = true
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .padding(.top, 4)
                 }
+                .padding(.vertical, 22)
             } else {
                 ForEach(projectStore.projects) { project in
                     Button {
                         appState.open(project)
                     } label: {
-                        ProjectCard(project: project)
+                        ProjectRow(project: project)
                     }
-                    .buttonStyle(PressableButtonStyle())
+                    .buttonStyle(.plain)
                     .contextMenu {
                         Button(role: .destructive) {
                             projectToDelete = project
                         } label: {
                             Label("Remove project", systemImage: "trash")
                         }
+                    }
+
+                    if project.id != projectStore.projects.last?.id {
+                        Divider()
+                            .overlay(PocketTheme.stroke.opacity(0.7))
                     }
                 }
             }
@@ -227,11 +228,11 @@ struct ProjectsView: View {
     private var footer: some View {
         HStack(spacing: 6) {
             Image(systemName: "iphone")
-            Text("No remote execution in this build. Model inference uses DeepSeek over HTTPS.")
+            Text("No remote execution. Model inference uses DeepSeek over HTTPS.")
         }
         .font(.caption2)
         .foregroundStyle(PocketTheme.secondaryText)
-        .padding(.top, 2)
+        .padding(.top, 30)
     }
 
     private func createProject() {
@@ -275,49 +276,38 @@ struct ProjectsView: View {
     }
 }
 
-private struct ProjectCard: View {
+private struct ProjectRow: View {
     let project: ProjectRecord
 
     var body: some View {
         HStack(spacing: 14) {
-            IconTile(
-                systemName: project.kind == .managed ? "folder.fill" : "externaldrive.fill",
-                tint: project.kind == .managed ? PocketTheme.accent : PocketTheme.blue,
-                size: 48
-            )
+            Image(systemName: project.kind == .managed ? "folder" : "externaldrive")
+                .font(.system(size: 17, weight: .regular))
+                .foregroundStyle(PocketTheme.secondaryText)
+                .frame(width: 28, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(project.name)
-                    .font(.body.weight(.semibold))
+                    .font(.body.weight(.medium))
                     .foregroundStyle(PocketTheme.primaryText)
                     .lineLimit(1)
 
-                HStack(spacing: 7) {
-                    Text(project.kind == .managed ? "Local copy" : "Authorized folder")
-                        .font(.caption)
-                        .foregroundStyle(PocketTheme.secondaryText)
+                HStack(spacing: 6) {
+                    Text(project.kind == .managed ? LocalizedStringKey("Local copy") : LocalizedStringKey("Authorized folder"))
                     Text("·")
-                        .foregroundStyle(PocketTheme.secondaryText)
                     Text(project.lastOpenedAt.formatted(.relative(presentation: .named)))
-                        .font(.caption)
-                        .foregroundStyle(PocketTheme.secondaryText)
                 }
+                .font(.caption)
+                .foregroundStyle(PocketTheme.secondaryText)
             }
 
             Spacer(minLength: 8)
 
             Image(systemName: "chevron.right")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(PocketTheme.secondaryText.opacity(0.7))
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(PocketTheme.secondaryText.opacity(0.6))
         }
-        .padding(16)
-        .background {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(PocketTheme.surface)
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(PocketTheme.stroke.opacity(0.65), lineWidth: 1)
-        }
+        .padding(.vertical, 15)
+        .contentShape(Rectangle())
     }
 }
