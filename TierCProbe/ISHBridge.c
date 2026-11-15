@@ -7,6 +7,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "kernel/calls.h"
+#include "kernel/task.h"
 #include "xX_main_Xx.h"
 #include "kernel/fs.h"
 #include "kernel/init.h"
