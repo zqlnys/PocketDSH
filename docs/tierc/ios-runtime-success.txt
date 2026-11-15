@@ -1,5 +1,5 @@
 Tier C iSH runtime in iOS Simulator
-Run: https://github.com/zqlnys/PocketDSH/actions/runs/43730347674
+Run: https://github.com/zqlnys/PocketDSH/actions/runs/43731444339
 App: com.example.tiercprobe
 Device: iPhone 17 Pro Max, iOS 26.2 simulator
 JIT: no
@@ -11,12 +11,13 @@ Captured output:
 tier-c-probe-ok
 Linux pocketdsh 4.20.69-ish SUPER AWESOME ... i686 Linux
 
-Result: the iSH interpreter and Alpine rootfs execute inside the iOS
-Simulator process without JIT.
+Result:
+- iSH interpreter and Alpine rootfs execute inside the iOS Simulator process.
+- No JIT.
+- The probe UI stays in the foreground and displays the real Linux output.
 
 Known issue:
-The probe UI leaves the foreground after the one-shot iSH run. The
-emulated task cleanup / app lifecycle and the iSH host thread need
-isolation before integrating this into the main PocketDSH app. The main
-app does not link iSH yet. This is not a claim that Tier C is available
-inside PocketDSH.
+The emulated shell task is still running after the command output; this
+probe uses a 3-second observation window. A persistent-shell command
+protocol is required before integrating this into the main PocketDSH app.
+The main app does not link iSH yet.
