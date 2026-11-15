@@ -194,3 +194,5 @@
 "Prepare a message" = "准备消息";
 "Open dialer" = "打开拨号";
 "The system will ask before placing a call to" = "系统会在拨号前请求确认：";
+
+"Tier A default · Tier C experimental" = "Tier A 默认 · Tier C 实验性";

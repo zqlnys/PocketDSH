@@ -120,9 +120,13 @@ final class RuntimeCapabilityStore: ObservableObject {
         preferredTier == .tierC || (preferredTier == .automatic && jit.isAvailable)
     }
 
+    var tierCExperimentalLinked: Bool {
+        Bundle.main.url(forResource: "rootfs", withExtension: nil) != nil
+    }
+
     var statusLine: String {
         if wantsTierC {
-            return NSLocalizedString("Tier C requested · backend unavailable · Tier A active", comment: "")
+            return NSLocalizedString("Tier A default · Tier C experimental", comment: "")
         }
         return NSLocalizedString("Tier A active", comment: "")
     }
