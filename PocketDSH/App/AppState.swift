@@ -91,6 +91,7 @@ final class AppState: ObservableObject {
     @Published var activeSession: WorkspaceSession?
     @Published var errorMessage: String?
     @Published var showOnboarding = false
+    @Published var isTierCSmoke = false
     @Published private(set) var isPluginDemo = false
 
     init() {
@@ -110,6 +111,11 @@ final class AppState: ObservableObject {
             isPluginDemo = true
             showOnboarding = false
         } else if arguments.contains("-PocketDSHSkipOnboarding") {
+            showOnboarding = false
+        }
+
+        if arguments.contains("-PocketDSHTierCSmoke") {
+            isTierCSmoke = true
             showOnboarding = false
         }
 
