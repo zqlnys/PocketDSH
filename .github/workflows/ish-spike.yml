@@ -1,0 +1,65 @@
+name: iSH Tier C build spike
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-ish:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout PocketDSH
+        uses: actions/checkout@v4
+
+      - name: Checkout iSH
+        uses: actions/checkout@v4
+        with:
+          repository: ish-app/ish
+          path: ish
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Install Meson and Ninja
+        run: brew install meson ninja
+
+      - name: Select Xcode
+        run: |
+          set -euo pipefail
+          ls /Applications | grep -E '^Xcode' || true
+          for candidate in /Applications/Xcode_26.3.app /Applications/Xcode_26.2.app /Applications/Xcode.app; do
+            if [ -d "$candidate" ]; then
+              sudo xcode-select -s "$candidate/Contents/Developer"
+              break
+            fi
+          done
+          xcodebuild -version
+
+      - name: Build libish for iOS
+        run: |
+          set -euo pipefail
+          cd ish
+          xcodebuild \
+            -project iSH.xcodeproj \
+            -target libish \
+            -sdk iphoneos \
+            -configuration Release \
+            -derivedDataPath "$RUNNER_TEMP/ish-derived" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            2>&1 | tee "$RUNNER_TEMP/ish-build.log"
+
+      - name: List static libraries
+        if: always()
+        run: |
+          find "$RUNNER_TEMP/ish-derived" -name '*.a' -print -exec ls -lh {} \; | tee "$RUNNER_TEMP/ish-libs.txt"
+
+      - name: Upload libraries and build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ish-tier-c-spike
+          path: |
+            ${{ runner.temp }}/ish-libs.txt
+            ${{ runner.temp }}/ish-build.log
+            ${{ runner.temp }}/ish-derived/**/*.a
+          if-no-files-found: warn
