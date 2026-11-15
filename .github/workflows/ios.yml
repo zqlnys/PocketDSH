@@ -173,6 +173,12 @@ jobs:
           xcrun simctl io "$SIMULATOR_UDID" screenshot "$ARTIFACTS_DIR/pocketdsh-zh.png" 2>&1 | tee "$LOG_DIR/screenshot-zh.log"
           file "$ARTIFACTS_DIR/pocketdsh-zh.png"
 
+          xcrun simctl terminate "$SIMULATOR_UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
+          xcrun simctl launch "$SIMULATOR_UDID" "$BUNDLE_ID" -PocketDSHWorkspaceDemo 2>&1 | tee -a "$LOG_DIR/simulator-launch.log"
+          sleep 3
+          xcrun simctl io "$SIMULATOR_UDID" screenshot "$ARTIFACTS_DIR/pocketdsh-workspace.png" 2>&1 | tee "$LOG_DIR/screenshot-workspace.log"
+          file "$ARTIFACTS_DIR/pocketdsh-workspace.png"
+
       - name: Build Release and package unsigned IPA
         id: ipa
         if: >-

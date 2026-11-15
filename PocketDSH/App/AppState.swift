@@ -108,6 +108,25 @@ final class AppState: ObservableObject {
         } else if arguments.contains("-PocketDSHSkipOnboarding") {
             showOnboarding = false
         }
+
+        if arguments.contains("-PocketDSHWorkspaceDemo") {
+            showOnboarding = false
+            let project = projectStore.projects.first(where: { $0.name == "Design preview" })
+                ?? (try? projectStore.createProject(named: "Design preview"))
+            if let project {
+                _ = try? fileSystem.write(
+                    path: "README.md",
+                    content: """
+                    # Design preview
+
+                    This is a local PocketDSH workspace used to preview the desktop-style shell.
+                    The files stay on this iPhone.
+                    """,
+                    overwrite: true
+                )
+                open(project)
+            }
+        }
         #endif
     }
 
