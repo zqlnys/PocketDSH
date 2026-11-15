@@ -19,9 +19,9 @@
 | --- | --- | --- |
 | 源码与工作区 UI | 已完成 | SwiftUI 多项目 / 文件树 / 编辑器 / 搜索 / diff |
 | 核心与 Lua 测试 | 通过 | 16 个 SwiftPM 测试 |
-| iOS 编译 | **通过** | run [#43741987009](https://github.com/zqlnys/PocketDSH/actions/runs/43741987009)，Xcode 26.3（公开仓库免费 macOS runner） |
+| iOS 编译 | **通过** | run [#43746967664](https://github.com/zqlnys/PocketDSH/actions/runs/43746967664)，Xcode 26.3（公开仓库免费 macOS runner） |
 | iOS 模拟器测试 | **通过** | 8/8，含插件完整生命周期测试 |
-| 未签名 arm64 IPA | **已生成** | 1,518,767 bytes，SHA-256 `2d39ae04…2d22` |
+| 未签名 arm64 IPA | **已生成** | 1,527,872 bytes，SHA-256 `598310e1…30ff` |
 | 插件系统 | **已实现并测试** | 安装 / 加载 / 配置 / 启停 / 卸载 / 工具接入 |
 | 系统动作 | **部分实现，未真机验证** | 真实提醒 + 电话/消息准备，必须用户确认 |
 | JIT / 运行时状态 | **Tier C POC 已跑通，主 App 未集成** | mmap 探测 + 自动 Tier A；iSH Alpine 在模拟器内实际运行 |
@@ -44,6 +44,10 @@
 <img src="docs/screenshots/plugins.jpg" width="220" alt="PocketDSH plugins">
 
 语言可在 Settings → Language 中切换。JIT 状态在 Settings → JIT & Runtime 中查看。
+
+工作区采用桌面式左侧栏：
+
+<img src="docs/screenshots/workspace.jpg" width="220" alt="PocketDSH desktop-style workspace">
 
 截图由 CI 在 iPhone 17 Pro Max 模拟器中实际安装并启动 App 后抓取；不代表实体 iPhone 测试。
 
