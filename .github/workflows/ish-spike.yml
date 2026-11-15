@@ -43,7 +43,7 @@ jobs:
             -target libish \
             -sdk iphoneos \
             -configuration Release \
-            -derivedDataPath "$RUNNER_TEMP/ish-derived" \
+            SYMROOT="$RUNNER_TEMP/ish-derived" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             2>&1 | tee "$RUNNER_TEMP/ish-build.log"
