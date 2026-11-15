@@ -216,7 +216,7 @@ final class ToolExecutor {
         guard let linuxRuntime else {
             return .failure("Tier C is not linked in this build.")
         }
-        return await linuxRuntime.run(command: command)
+        return await linuxRuntime.run(command: command, workspaceRoot: workspace.root)
     }
     private func scheduleAlert(_ arguments: [String: JSONValue]) async throws -> ToolExecutionResult {
         guard let title = arguments["title"]?.stringValue else {
