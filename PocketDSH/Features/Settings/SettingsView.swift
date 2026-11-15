@@ -260,14 +260,14 @@ struct SettingsView: View {
                     Text("Prefer JIT acceleration")
                         .font(.subheadline)
                         .foregroundStyle(PocketTheme.primaryText)
-                    Text("Only effective when the signed app actually has a JIT entitlement.")
+                    Text("A toggle cannot grant JIT. Your signature must provide the entitlement; this only controls the preference.")
                         .font(.caption)
                         .foregroundStyle(PocketTheme.secondaryText)
                 }
             }
             .tint(PocketTheme.accent)
 
-            LabeledContent("Detected entitlement", value: runtime.jit.entitlementSummary)
+            LabeledContent("JIT probe", value: runtime.jit.entitlementSummary)
                 .font(.caption)
             LabeledContent("Active backend", value: runtime.activeTier.title)
                 .font(.caption)

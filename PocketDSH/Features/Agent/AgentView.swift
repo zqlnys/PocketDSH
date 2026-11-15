@@ -103,6 +103,31 @@ struct AgentView: View {
 
             Spacer(minLength: 8)
 
+            Menu {
+                ForEach(settings.availableModels, id: \.self) { model in
+                    Button {
+                        settings.model = model
+                    } label: {
+                        if settings.model == model {
+                            Label(model, systemImage: "checkmark")
+                        } else {
+                            Text(model)
+                        }
+                    }
+                }
+            } label: {
+                Text(settings.model)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(PocketTheme.secondaryText)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(PocketTheme.elevatedSurface)
+                    }
+            }
+            .buttonStyle(.plain)
+
             if agent.isRunning {
                 Button {
                     agent.cancel()
@@ -265,7 +290,7 @@ private struct AgentEventRow: View {
                     Text(event.detail)
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(PocketTheme.primaryText.opacity(0.92))
-                        .lineLimit(10)
+                        .lineLimit(event.kind == .assistant || event.kind == .user ? nil : 12)
                         .textSelection(.enabled)
                         .padding(10)
                         .frame(maxWidth: .infinity, alignment: .leading)

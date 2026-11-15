@@ -1,51 +1,70 @@
 import Foundation
-import Security
+
+#if canImport(Darwin)
+import Darwin
+#endif
 
 struct JITCapability: Sendable {
-    let allowJIT: Bool
-    let dynamicCodesigning: Bool
-    let unsignedExecutableMemory: Bool
+    /// A probe result, not a statement that the app is allowed to run a JIT.
+    /// A normal app cannot grant itself JIT; the signature/provisioning profile
+    /// must provide the entitlement. This only checks whether this process can
+    /// map a small executable page.
+    let executableMappingAvailable: Bool
+    let probeDetail: String
 
-    var isAvailable: Bool {
-        allowJIT || dynamicCodesigning || unsignedExecutableMemory
-    }
+    var isAvailable: Bool { executableMappingAvailable }
 
     var entitlementSummary: String {
-        if isAvailable {
-            var parts: [String] = []
-            if allowJIT { parts.append("allow-jit") }
-            if dynamicCodesigning { parts.append("dynamic-codesigning") }
-            if unsignedExecutableMemory { parts.append("unsigned-executable-memory") }
-            return parts.joined(separator: ", ")
-        }
-        return "No JIT entitlement"
+        executableMappingAvailable ? "Executable mapping available" : probeDetail
     }
 
     static func detect() -> JITCapability {
-        guard let task = SecTaskCreateFromSelf(kCFAllocatorDefault) else {
+        #if targetEnvironment(simulator)
+        return JITCapability(
+            executableMappingAvailable: false,
+            probeDetail: "Simulator does not represent device JIT entitlement"
+        )
+        #elseif canImport(Darwin)
+        let pageSize = sysconf(_SC_PAGESIZE)
+        guard pageSize > 0 else {
             return JITCapability(
-                allowJIT: false,
-                dynamicCodesigning: false,
-                unsignedExecutableMemory: false
+                executableMappingAvailable: false,
+                probeDetail: "Could not read page size"
             )
         }
 
-        func flag(_ key: String) -> Bool {
-            guard let value = SecTaskCopyValueForEntitlement(
-                task,
-                key as CFString,
-                nil
-            ) else {
-                return false
-            }
-            return (value as? Bool) ?? false
+        let flags = MAP_PRIVATE | MAP_ANON | MAP_JIT
+        let pointer = mmap(
+            nil,
+            pageSize,
+            PROT_READ | PROT_WRITE | PROT_EXEC,
+            flags,
+            -1,
+            0
+        )
+
+        if pointer == MAP_FAILED {
+            let errorNumber = errno
+            let message = String(cString: strerror(errorNumber))
+            return JITCapability(
+                executableMappingAvailable: false,
+                probeDetail: "Executable mapping denied: \(message)"
+            )
         }
 
+        if let pointer {
+            munmap(pointer, pageSize)
+        }
         return JITCapability(
-            allowJIT: flag("com.apple.security.cs.allow-jit"),
-            dynamicCodesigning: flag("com.apple.security.cs.dynamic-codesigning"),
-            unsignedExecutableMemory: flag("com.apple.security.cs.allow-unsigned-executable-memory")
+            executableMappingAvailable: true,
+            probeDetail: "Executable mapping available"
         )
+        #else
+        return JITCapability(
+            executableMappingAvailable: false,
+            probeDetail: "Unsupported platform"
+        )
+        #endif
     }
 }
 
@@ -86,23 +105,23 @@ final class RuntimeCapabilityStore: ObservableObject {
     }
 
     /// Tier C is not implemented in this build. Do not silently pretend that a
-    /// JIT entitlement turns the native workspace into a Linux runtime.
+    /// JIT probe turns the native workspace into a Linux runtime.
     var activeTier: RuntimeTier {
         .tierA
     }
 
     var statusLine: String {
         if jit.isAvailable {
-            return NSLocalizedString("JIT detected · Tier C unavailable · Tier A active", comment: "")
+            return NSLocalizedString("JIT probe passed · Tier C unavailable · Tier A active", comment: "")
         }
         return NSLocalizedString("No JIT · Tier A active", comment: "")
     }
 
     var detail: String {
         if jit.isAvailable {
-            return NSLocalizedString("This build can see a JIT entitlement, but the embedded Linux/Node Tier C backend is not integrated yet. Work continues in the verified native Tier A runtime.", comment: "")
+            return NSLocalizedString("This process can map executable memory, but the embedded Linux/Node Tier C backend is not integrated yet. Work continues in the verified native Tier A runtime.", comment: "")
         }
-        return NSLocalizedString("No JIT entitlement was detected. The app automatically uses Tier A: native files, agent tools, and the embedded Lua runtime. Tier C requires a separate Linux backend and remains unavailable.", comment: "")
+        return NSLocalizedString("No JIT executable mapping was detected. The app automatically uses Tier A: native files, agent tools, and the embedded Lua runtime. Tier C requires a separate Linux backend and remains unavailable.", comment: "")
     }
 
     private enum Keys {

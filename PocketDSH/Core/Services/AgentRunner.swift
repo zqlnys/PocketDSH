@@ -229,11 +229,12 @@ final class AgentRunner: ObservableObject {
     }
 
     private func appendEvent(_ kind: AgentEvent.Kind, title: String, detail: String) {
+        let limit = (kind == .assistant || kind == .user) ? 30_000 : 8_000
         events.append(
             AgentEvent(
                 kind: kind,
                 title: title,
-                detail: String(detail.prefix(8_000))
+                detail: String(detail.prefix(limit))
             )
         )
         if events.count > 500 {
