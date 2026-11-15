@@ -51,10 +51,25 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             2>&1 | tee "$RUNNER_TEMP/ish-build.log"
 
+      - name: Build libish for iOS Simulator
+        run: |
+          set -euo pipefail
+          cd ish
+          xcodebuild \
+            -project iSH.xcodeproj \
+            -target libish \
+            -sdk iphonesimulator \
+            -arch arm64 \
+            -configuration Release \
+            SYMROOT="$RUNNER_TEMP/ish-derived-sim" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            2>&1 | tee "$RUNNER_TEMP/ish-build-sim.log"
+
       - name: List static libraries
         if: always()
         run: |
-          find "$RUNNER_TEMP/ish-derived" -name '*.a' -print -exec ls -lh {} \; | tee "$RUNNER_TEMP/ish-libs.txt"
+          find "$RUNNER_TEMP/ish-derived" "$RUNNER_TEMP/ish-derived-sim" -name '*.a' -print -exec ls -lh {} \; | tee "$RUNNER_TEMP/ish-libs.txt"
 
       - name: Upload libraries and build log
         if: always()
@@ -64,5 +79,7 @@ jobs:
           path: |
             ${{ runner.temp }}/ish-libs.txt
             ${{ runner.temp }}/ish-build.log
+            ${{ runner.temp }}/ish-build-sim.log
             ${{ runner.temp }}/ish-derived/**/*.a
+            ${{ runner.temp }}/ish-derived-sim/**/*.a
           if-no-files-found: warn
