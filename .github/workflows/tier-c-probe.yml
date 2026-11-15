@@ -15,6 +15,18 @@ jobs:
           set -euo pipefail
           brew install xcodegen
 
+      - name: Select available Xcode
+        run: |
+          set -euo pipefail
+          ls /Applications | grep -E '^Xcode' || true
+          for candidate in /Applications/Xcode_26.3.app /Applications/Xcode_26.2.app /Applications/Xcode_26.1.app /Applications/Xcode_26.0.app /Applications/Xcode.app; do
+            if [ -d "$candidate" ]; then
+              sudo xcode-select -s "$candidate/Contents/Developer"
+              break
+            fi
+          done
+          xcodebuild -version
+
       - name: Generate project
         run: xcodegen generate --spec project.yml
 
@@ -37,12 +49,13 @@ jobs:
           set -euo pipefail
           APP="$RUNNER_TEMP/tierc-derived/Debug-iphonesimulator/TierCProbe.app"
           test -d "$APP"
-          UDID=$(xcrun simctl list devices available | grep -E 'iPhone 17 Pro Max|iPhone 17' | head -1 | grep -oE '[0-9A-F-]{36}' | head -1)
+          UDID=$(python3 scripts/select_simulator.py)
           test -n "$UDID"
+          echo "Simulator UDID: $UDID"
           xcrun simctl boot "$UDID" >/dev/null 2>&1 || true
-          xcrun simctl bootstatus "$UDID" -b
-          xcrun simctl install "$UDID" "$APP"
-          xcrun simctl launch "$UDID" com.example.tiercprobe | tee "$RUNNER_TEMP/tierc-launch.log"
+          timeout 180 xcrun simctl bootstatus "$UDID" -b
+          timeout 60 xcrun simctl install "$UDID" "$APP"
+          timeout 30 xcrun simctl launch "$UDID" com.example.tiercprobe | tee "$RUNNER_TEMP/tierc-launch.log"
           sleep 8
           xcrun simctl io "$UDID" screenshot "$RUNNER_TEMP/tierc-probe.png"
 
