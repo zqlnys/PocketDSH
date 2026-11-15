@@ -70,6 +70,11 @@ enum TierCProbeRunner {
             return "rootfs preparation failed: \(error.localizedDescription)"
         }
 
+        let stage = support.appendingPathComponent("stage.txt")
+        func mark(_ text: String) {
+            try? text.write(to: stage, atomically: true, encoding: .utf8)
+        }
+        mark("bridge-start")
         let code = root.path.withCString { rootPtr in
             "echo tier-c-probe-ok; uname -a; cat /etc/alpine-release".withCString { commandPtr in
                 output.path.withCString { outputPtr in
@@ -78,6 +83,7 @@ enum TierCProbeRunner {
             }
         }
 
+        mark("bridge-returned")
         let text = (try? String(contentsOf: output, encoding: .utf8)) ?? "<no output>"
         return "exit=\(code)\n\n\(text)"
     }

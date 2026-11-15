@@ -43,6 +43,8 @@ int pocket_ish_run(const char *rootfs, const char *command, const char *output_p
 
     dup2(output_fd, STDOUT_FILENO);
     dup2(output_fd, STDERR_FILENO);
+    dprintf(output_fd, "bridge-entry\n");
+    fsync(output_fd);
 
     char root_arg[4096];
     char command_arg[8192];
