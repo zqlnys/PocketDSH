@@ -9,6 +9,7 @@
 - DeepSeek API 推理，API Key 存 iOS Keychain
 - 覆盖前备份、恢复历史、任务日志、取消、对话持久化
 - 可安装的本地 Lua 插件：安装、加载、配置、启停、卸载，工具自动接入 Agent
+- 极简浅色 / 深色界面，支持跟随系统 / 简体中文 / English
 - Linux VPS 只开发/检查/编译，不执行用户任务
 
 ## 当前状态（2026-11-15）
@@ -17,9 +18,9 @@
 | --- | --- | --- |
 | 源码与工作区 UI | 已完成 | SwiftUI 多项目 / 文件树 / 编辑器 / 搜索 / diff |
 | 核心与 Lua 测试 | 通过 | 16 个 SwiftPM 测试 |
-| iOS 编译 | **通过** | run [#43718874927](https://github.com/zqlnys/PocketDSH/actions/runs/43718874927)，Xcode 26.3 |
+| iOS 编译 | **通过** | run [#43719958908](https://github.com/zqlnys/PocketDSH/actions/runs/43719958908)，Xcode 26.3 |
 | iOS 模拟器测试 | **通过** | 6/6，含插件完整生命周期测试 |
-| 未签名 arm64 IPA | **已生成** | 1,351,150 bytes，SHA-256 `b4f674ea…8265f` |
+| 未签名 arm64 IPA | **已生成** | 1,369,504 bytes，SHA-256 `874e421b…48bb` |
 | 插件系统 | **已实现并测试** | 安装 / 加载 / 配置 / 启停 / 卸载 / 工具接入 |
 | 纯 Linux iOS 构建 | **受阻** | 需要 Apple Xcode.xip + xtool Darwin SDK；本机没有该文件 |
 | IPA 已签名 | 未执行 | 由用户的签名证书完成 |
@@ -29,9 +30,13 @@
 
 ## 界面预览（CI 模拟器实拍）
 
-| 首页 Light | 首页 Dark | 插件管理 |
+| 首页 Light | 首页 Dark | 简体中文 |
 | --- | --- | --- |
-| <img src="docs/screenshots/home-light.jpg" width="220" alt="PocketDSH home light"> | <img src="docs/screenshots/home-dark.jpg" width="220" alt="PocketDSH home dark"> | <img src="docs/screenshots/plugins.jpg" width="220" alt="PocketDSH plugins"> |
+| <img src="docs/screenshots/home-light.jpg" width="220" alt="PocketDSH home light"> | <img src="docs/screenshots/home-dark.jpg" width="220" alt="PocketDSH home dark"> | <img src="docs/screenshots/home-zh.jpg" width="220" alt="PocketDSH 中文界面"> |
+
+| 插件管理 |  |
+| --- | --- |
+| <img src="docs/screenshots/plugins.jpg" width="220" alt="PocketDSH plugins"> | 语言可在 Settings → Language 中切换。 |
 
 截图由 CI 在 iPhone 17 Pro Max 模拟器中实际安装并启动 App 后抓取；不代表实体 iPhone 测试。
 
