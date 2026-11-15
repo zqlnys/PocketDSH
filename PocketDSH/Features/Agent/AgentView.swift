@@ -9,6 +9,7 @@ struct AgentView: View {
     @ObservedObject var session: WorkspaceSession
     @ObservedObject var agent: AgentRunner
     let onOpenSettings: () -> Void
+    var embedded = false
 
     @State private var input = ""
 
@@ -49,6 +50,7 @@ struct AgentView: View {
             .background(PocketTheme.background)
             .navigationTitle("Agent")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar(embedded ? .hidden : .visible, for: .navigationBar)
             .sheet(item: $systemActions.pending) { action in
                 SystemActionSheet(action: action)
             }
