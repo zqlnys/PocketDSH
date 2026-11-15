@@ -26,13 +26,19 @@ required_files=(
   "PocketDSH/Core/Services/AgentRunner.swift"
   "PocketDSH/Core/Services/ToolExecutor.swift"
   "PocketDSH/Core/Services/ProjectStore.swift"
+  "PocketDSH/Core/Services/PluginStore.swift"
+  "PocketDSH/Core/Services/PluginRuntimeManager.swift"
   "PocketDSH/Features/Workspace/FilesView.swift"
+  "PocketDSH/Features/Plugins/PluginsView.swift"
   "PocketDSH/Features/Agent/AgentView.swift"
   "PocketDSHTests/PocketDSHTests.swift"
   "Packages/PocketDSHKit/Package.swift"
   "Packages/PocketDSHKit/Sources/CLua/pocket_lua.c"
+  "Packages/PocketDSHKit/Sources/CLua/pocket_plugin.c"
   "Packages/PocketDSHKit/Sources/LuaRuntime/LuaEngine.swift"
   "PocketDSH/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
+  "examples/workspace-inspector.dshplugin/plugin.json"
+  "examples/workspace-inspector.dshplugin/main.lua"
 )
 for file in "${required_files[@]}"; do
   if [[ -s "$file" ]]; then pass "$file"; else fail "missing or empty: $file"; fi

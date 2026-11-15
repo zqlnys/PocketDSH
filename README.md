@@ -11,7 +11,29 @@
 - 可安装的本地 Lua 插件：安装、加载、配置、启停、卸载，工具自动接入 Agent
 - Linux VPS 只开发/检查/编译，不执行用户任务
 
-> 当前状态：源码、领域逻辑、Lua 运行时和 Linux 测试已完成；iOS 编译和可签名 IPA 尚需构建验证。纯 Linux iOS 构建需要 Apple 的 Xcode.xip 为 xtool 提供 SDK，本机没有该文件。详见 [阶段验证](docs/PHASE1-VALIDATION.md)。
+## 当前状态（2026-11-15）
+
+| 阶段 | 状态 | 证据 |
+| --- | --- | --- |
+| 源码与工作区 UI | 已完成 | SwiftUI 多项目 / 文件树 / 编辑器 / 搜索 / diff |
+| 核心与 Lua 测试 | 通过 | 16 个 SwiftPM 测试 |
+| iOS 编译 | **通过** | run [#43718395658](https://github.com/zqlnys/PocketDSH/actions/runs/43718395658)，Xcode 26.3 |
+| iOS 模拟器测试 | **通过** | 6/6，含插件完整生命周期测试 |
+| 未签名 arm64 IPA | **已生成** | 1,351,150 bytes，SHA-256 `17b43487…df295` |
+| 插件系统 | **已实现并测试** | 安装 / 加载 / 配置 / 启停 / 卸载 / 工具接入 |
+| 纯 Linux iOS 构建 | **受阻** | 需要 Apple Xcode.xip + xtool Darwin SDK；本机没有该文件 |
+| IPA 已签名 | 未执行 | 由用户的签名证书完成 |
+| 真机安装 | 未执行 | 需要实体 iPhone 和签名 |
+
+> 当前 IPA 来自 GitHub Actions macOS Runner，不是纯 Linux 构建。没有把“Linux 源码检查”冒充成“iOS 编译”。详见 [阶段验证](docs/PHASE1-VALIDATION.md) 和 [构建记录](docs/BUILD.md)。
+
+## 界面预览（CI 模拟器实拍）
+
+| 首页 Light | 首页 Dark | 插件管理 |
+| --- | --- | --- |
+| <img src="docs/screenshots/home-light.jpg" width="220" alt="PocketDSH home light"> | <img src="docs/screenshots/home-dark.jpg" width="220" alt="PocketDSH home dark"> | <img src="docs/screenshots/plugins.jpg" width="220" alt="PocketDSH plugins"> |
+
+截图由 CI 在 iPhone 17 Pro Max 模拟器中实际安装并启动 App 后抓取；不代表实体 iPhone 测试。
 
 ## 快速开始（Linux）
 
@@ -23,7 +45,7 @@ make check
 已验证的本地能力：
 
 - `PocketDSHCore` 8 个测试
-- `LuaRuntime` 5 个测试
+- `LuaRuntime` 8 个测试（含 3 个持久插件运行时测试）
 - `swiftc -parse` 全部 Swift 源文件
 - XcodeGen spec 解析和工程生成（Linux 上使用 XcodeGen 二进制）
 - 无 Token / 私钥 / WebView / Flutter 依赖
@@ -44,8 +66,9 @@ PocketDSH/
 │   ├── App/                     # AppState, root, navigation
 │   ├── Core/Services/           # Keychain, DeepSeek, project store, agent loop
 │   ├── Core/Design/             # theme / cards
-│   └── Features/                # Projects, Files, Editor, Agent, Changes, Settings
+│   └── Features/                # Projects, Files, Editor, Agent, Changes, Plugins, Settings
 ├── PocketDSHTests/
+├── examples/workspace-inspector.dshplugin/
 ├── scripts/
 ├── docs/
 └── .github/workflows/ios.yml
@@ -108,12 +131,14 @@ Agent 只会拿到相对路径。绝对路径、`..`、symlink 逃逸都会被 `
 - 运行时：Lua 5.4，无 `io`/`os`/`package`/`debug`/`dofile`/`loadfile`，无 JIT、无 shell、无 `fork/exec`。
 - 插件：**PocketDSH 自定义 Lua 插件格式**，不是上游 DSH Cordis 插件，也不是 dsh-Go 原生插槽协议。
 - 未实现：Linux 用户态 ABI、完整系统仿真、Cordis/Node 原生插件、SSH/SFTP。
-- 未验证：iOS 编译（等待 CI）、真机安装、签名、TestFlight。
+- 未验证：真机安装、IPA 签名、TestFlight。
+- 纯 Linux 构建未完成；当前 IPA 来自 GitHub macOS Runner。
 
 ## 文档
 
 - [架构与兼容性判断](docs/ARCHITECTURE.md)
 - [阶段 1 验证记录](docs/PHASE1-VALIDATION.md)
+- [最新构建与 IPA 证据](docs/BUILD.md)
 - [DSH / dsh-Go 兼容范围](docs/DSH-COMPATIBILITY.md)
 - [PocketDSH 插件 SDK](docs/PLUGIN-SDK.md)
 - [构建与安装](docs/BUILD-INSTALL.md)

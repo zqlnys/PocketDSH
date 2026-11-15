@@ -15,11 +15,12 @@
 | XcodeGen 工程生成 | 已在 Linux 验证 | XcodeGen 2.46.0 生成 `PocketDSH.xcodeproj` |
 | 纯 Linux SwiftUI 编译 | **失败/受阻** | 无 Darwin Swift SDK / iOS SDK |
 | xtool 纯 Linux 路径 | **未完成** | 无 Xcode.xip、未登录 Apple、SDK 未安装 |
-| iOS 编译 | **未验证** | 需要 macOS CI 或 xtool SDK |
-| 可签名 arm64 IPA | **尚未生成** | 构建未通过 |
+| iOS 编译 | **已通过（macOS CI）** | run [#43718395658](https://github.com/zqlnys/PocketDSH/actions/runs/43718395658) |
+| iOS 模拟器测试 | **已通过** | 6/6，含插件生命周期 |
+| 可签名 arm64 IPA | **已生成** | 1.3 MB，SHA-256 `17b43487…df295` |
 | 真机安装/运行 | 未执行 | 无设备连接 |
 
-> 不能把“源码写完”或“Linux 测试通过”说成“iOS 编译成功”。
+> 不能把“源码写完”或“Linux 测试通过”说成“iOS 编译成功”。本次 iOS 编译由 GitHub macOS Runner 完成，不是纯 Linux 构建。
 
 ## 2. Linux 工具链实测
 
@@ -131,18 +132,11 @@ swiftc -parse: 35 Swift files OK
 
 未实现。详细边界见 [ARCHITECTURE.md](ARCHITECTURE.md)。
 
-## 6. 构建决策待确认
+## 6. 构建路径现状
 
-纯 Linux 路径需要用户提供：
+- 已使用 GitHub Actions macOS Runner 完成 Debug/Release 编译、6 个 iOS 测试、截图和未签名 IPA；
+- 纯 Linux 路径仍受 Xcode.xip / Darwin Swift SDK 阻塞；
+- 用户可用自己的签名证书对 IPA 签名并在实体 iPhone 上安装；
+- 真机安装和签名仍未验证。
 
-- 合法下载的 `Xcode.xip`（Apple 账号）；
-- xtool 登录（API Key 或 Apple ID）以生成 SDK；
-- 如果要在 Linux 上直接安装到 iPhone，还需要 USB 连接和 `usbmuxd`。
-
-替代路径：
-
-- GitHub Actions macOS 编译未签名 IPA（当前仓库已配置 workflow）；
-- 用户在 Windows 用 Sideloadly 签名安装；
-- 或后续提供签名证书/描述文件做正式签名。
-
-在得到 Xcode.xip 或允许使用 GitHub macOS Runner 之前，不能产出可签名 IPA。
+如果需要纯 Linux 构建，必须提供合法 Apple `Xcode.xip` 并完成 `xtool setup`。当前不会从第三方镜像下载 SDK。
