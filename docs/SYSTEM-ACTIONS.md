@@ -4,6 +4,14 @@ PocketDSH 不会使用描述文件、MDM、私有 entitlement 或漏洞去绕过
 
 ## 已实现
 
+### 本地通知闹钟
+
+工具 `schedule_alert`：
+
+- 使用 UserNotifications 请求通知权限；
+- 在指定时间创建本地通知，带声音；
+- 不是系统 Clock App 闹钟。
+
 ### 创建提醒
 
 工具 `schedule_reminder`：
