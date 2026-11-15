@@ -16,6 +16,8 @@
 #include "kernel/task.h"
 #include "fs/devices.h"
 
+extern const char *uname_hostname_override;
+
 static sigjmp_buf ish_jump;
 static volatile int ish_exit_code;
 static volatile int crash_output_fd = -1;
@@ -79,6 +81,7 @@ int pocket_ish_run(const char *rootfs, const char *command, const char *output_p
     };
     char envp[] = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\0";
 
+    uname_hostname_override = "pocketdsh";
     ish_exit_code = 0;
     dprintf(output_fd, "before-xX_main\n");
     fsync(output_fd);
