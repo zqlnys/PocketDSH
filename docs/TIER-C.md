@@ -48,6 +48,14 @@ GitHub Actions macOS runner 使用 Xcode 26.3 构建 iSH：
 
 这证明 **Tier C 的核心静态库可以在 iOS 工具链下生成**。
 
+### 3. iOS Simulator CLI 链接通过
+
+使用 device/simulator 两套静态库链接了一个 arm64 iOS Simulator CLI，链接成功。
+
+但直接 `simctl spawn` 运行 CLI 触发 `Trace/BPT trap`。这不是库链接失败，而是裸 CLI 缺少 App/UIApplication 生命周期与沙盒上下文。Tier C 必须作为 App 内后端运行，不能用 CLI 方式验证。
+
+证据：[ios-link-smoke.txt](tierc/ios-link-smoke.txt)
+
 ## 尚未完成
 
 - 把 iSH 静态库链接进 PocketDSH App；

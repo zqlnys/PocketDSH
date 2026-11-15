@@ -1,0 +1,16 @@
+iOS Simulator CLI link test
+Run: https://github.com/zqlnys/PocketDSH/actions/runs/43726640331
+
+Result: PASS (linked)
+- target: arm64-apple-ios17.0-simulator
+- libish.a + libish_emu.a + libfakefs.a + sqlite3 + z
+- binary: ish-smoke (~987 KB)
+
+Attempt to execute the CLI with simctl spawn:
+Run: https://github.com/zqlnys/PocketDSH/actions/runs/43726777770
+Result: Trace/BPT trap (signal 5)
+
+Interpretation:
+- The static libraries and CLI link correctly.
+- A bare CLI is not a valid iOS app execution context.
+- The next step is a real app target with a UIApplication lifecycle and rootfs.
