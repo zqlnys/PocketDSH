@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct TierCSmokeView: View {
-    @EnvironmentObject private var linuxRuntime: LinuxRuntime
+    @EnvironmentObject private var appState: AppState
     @State private var output = "Starting embedded Alpine Linux..."
 
     var body: some View {
@@ -25,7 +25,7 @@ struct TierCSmokeView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(PocketTheme.background)
         .task {
-            let result = await linuxRuntime.run(command: "uname -a; cat /etc/alpine-release")
+            let result = await appState.linuxRuntime.run(command: "uname -a; cat /etc/alpine-release")
             output = result.content
         }
     }
