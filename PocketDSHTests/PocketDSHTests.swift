@@ -40,6 +40,7 @@ final class PocketDSHTests: XCTestCase {
         XCTAssertTrue(EmbeddedExamplePlugin.luaSource.contains("plugin.workspace_write"))
     }
 
+    @MainActor
     func testCompositePluginToolNameIsModelSafe() {
         let name = PluginRuntimeManager.compositeToolName(
             pluginID: "com.example.workspace-inspector",
