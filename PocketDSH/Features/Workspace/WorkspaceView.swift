@@ -6,6 +6,26 @@ enum WorkspaceTab: Hashable {
     case changes
     case plugins
     case settings
+
+    var title: String {
+        switch self {
+        case .files: "Files"
+        case .agent: "Agent"
+        case .changes: "Changes"
+        case .plugins: "Plugins"
+        case .settings: "Settings"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .files: "folder"
+        case .agent: "sparkles"
+        case .changes: "clock.arrow.circlepath"
+        case .plugins: "puzzlepiece.extension"
+        case .settings: "gearshape"
+        }
+    }
 }
 
 struct WorkspaceView: View {
@@ -15,54 +35,87 @@ struct WorkspaceView: View {
     @State private var selection: WorkspaceTab = .agent
 
     var body: some View {
-        NavigationSplitView {
-            List(selection: $selection) {
-                Section("Workspace") {
-                    sidebarRow(.agent, title: "Agent", icon: "sparkles")
-                    sidebarRow(.files, title: "Files", icon: "folder")
-                    sidebarRow(.changes, title: "Changes", icon: "clock.arrow.circlepath")
-                }
-
-                Section("Extend") {
-                    sidebarRow(.plugins, title: "Plugins", icon: "puzzlepiece.extension")
-                }
-
-                Section("System") {
-                    sidebarRow(.settings, title: "Settings", icon: "gearshape")
-                }
-            }
-            .listStyle(.sidebar)
-            .navigationTitle(session.project.name)
-            .safeAreaInset(edge: .bottom) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("RUNTIME")
-                        .font(.caption2.weight(.bold).monospaced())
-                        .tracking(1.0)
-                        .foregroundStyle(PocketTheme.secondaryText)
-                    Text(runtime.statusLine)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(runtime.jit.isAvailable ? PocketTheme.accent : PocketTheme.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(16)
-                .background(.thinMaterial)
-            }
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        appState.closeWorkspace()
-                    } label: {
-                        Image(systemName: "xmark")
-                    }
-                    .accessibilityLabel("Close project")
-                }
-            }
-        } detail: {
+        VStack(spacing: 0) {
+            topBar
+            sectionBar
+            Divider()
+                .overlay(PocketTheme.stroke)
             detail
         }
-        .navigationSplitViewStyle(.balanced)
+        .background(PocketTheme.background)
         .tint(PocketTheme.accent)
+    }
+
+    private var topBar: some View {
+        HStack(spacing: 12) {
+            Button {
+                appState.closeWorkspace()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(PocketTheme.primaryText)
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Close project")
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(session.project.name)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(PocketTheme.primaryText)
+                    .lineLimit(1)
+                Text(NSLocalizedString(runtime.statusLine, comment: ""))
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(runtime.jit.isAvailable ? PocketTheme.accent : PocketTheme.secondaryText)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            Button {
+                selection = .settings
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundStyle(PocketTheme.secondaryText)
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Settings")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(PocketTheme.surface)
+    }
+
+    private var sectionBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 4) {
+                ForEach([WorkspaceTab.agent, .files, .changes, .plugins, .settings], id: \.self) { tab in
+                    Button {
+                        selection = tab
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: tab.icon)
+                                .font(.system(size: 12, weight: .medium))
+                            Text(NSLocalizedString(tab.title, comment: ""))
+                                .font(.caption.weight(.semibold))
+                        }
+                        .foregroundStyle(selection == tab ? PocketTheme.primaryText : PocketTheme.secondaryText)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 8)
+                        .background {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(selection == tab ? PocketTheme.elevatedSurface : Color.clear)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+        }
+        .background(PocketTheme.surface)
     }
 
     @ViewBuilder
@@ -85,19 +138,5 @@ struct WorkspaceView: View {
         case .settings:
             SettingsView()
         }
-    }
-
-    private func sidebarRow(
-        _ tab: WorkspaceTab,
-        title: String,
-        icon: String
-    ) -> some View {
-        Label {
-            Text(NSLocalizedString(title, comment: ""))
-        } icon: {
-            Image(systemName: icon)
-                .foregroundStyle(selection == tab ? PocketTheme.accent : PocketTheme.secondaryText)
-        }
-        .tag(tab)
     }
 }
