@@ -10,18 +10,21 @@ final class ToolExecutor {
     private let luaEngine: LuaEngine
     private let pluginRuntime: PluginRuntimeManager?
     private let systemActions: SystemActionStore
+    private let linuxRuntime: LinuxRuntime?
     private let eventStore = EKEventStore()
 
     init(
         workspace: WorkspaceFileSystem,
         luaEngine: LuaEngine,
         pluginRuntime: PluginRuntimeManager? = nil,
-        systemActions: SystemActionStore
+        systemActions: SystemActionStore,
+        linuxRuntime: LinuxRuntime? = nil
     ) {
         self.workspace = workspace
         self.luaEngine = luaEngine
         self.pluginRuntime = pluginRuntime
         self.systemActions = systemActions
+        self.linuxRuntime = linuxRuntime
     }
 
     func execute(
@@ -59,6 +62,8 @@ final class ToolExecutor {
                 return try applyPatch(arguments)
             case ToolNames.runLua:
                 return try await runLua(arguments)
+            case ToolNames.runLinux:
+                return try await runLinux(arguments)
             case ToolNames.scheduleReminder:
                 return try await scheduleReminder(arguments)
             case ToolNames.scheduleAlert:
@@ -203,6 +208,16 @@ final class ToolExecutor {
 
 
 
+
+    private func runLinux(_ arguments: [String: JSONValue]) async throws -> ToolExecutionResult {
+        guard let command = arguments["command"]?.stringValue, !command.isEmpty else {
+            return .failure("run_linux requires command.")
+        }
+        guard let linuxRuntime else {
+            return .failure("Tier C is not linked in this build.")
+        }
+        return await linuxRuntime.run(command: command)
+    }
     private func scheduleAlert(_ arguments: [String: JSONValue]) async throws -> ToolExecutionResult {
         guard let title = arguments["title"]?.stringValue else {
             return .failure("schedule_alert requires title.")

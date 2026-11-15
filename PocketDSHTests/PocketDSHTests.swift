@@ -12,6 +12,7 @@ final class PocketDSHTests: XCTestCase {
         XCTAssertTrue(names.contains(ToolNames.searchFiles))
         XCTAssertTrue(names.contains(ToolNames.applyPatch))
         XCTAssertTrue(names.contains(ToolNames.runLua))
+        XCTAssertTrue(names.contains(ToolNames.runLinux))
     }
 
     func testToolSchemasAreObjectsWithRequiredFields() {

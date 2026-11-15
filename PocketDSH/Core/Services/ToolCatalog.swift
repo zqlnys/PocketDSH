@@ -90,6 +90,14 @@ enum ToolCatalog {
             required: ["number"]
         ),
         tool(
+            name: ToolNames.runLinux,
+            description: "Experimental Tier C: run one command in the bundled Alpine Linux rootfs through the embedded iSH interpreter. No JIT. This does not yet see the iPhone project workspace; use file tools for project files. One command per app launch.",
+            properties: [
+                "command": property("string", "Shell command to run in Alpine Linux")
+            ],
+            required: ["command"]
+        ),
+        tool(
             name: ToolNames.runLua,
             description: "Execute Lua 5.4 code locally on the iPhone in a sandbox. Returns real stdout, stderr and exit code. No shell, process launching, network, io, os, package or debug libraries are available.",
             properties: [
