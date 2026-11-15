@@ -114,7 +114,8 @@ final class AppState: ObservableObject {
             let project = projectStore.projects.first(where: { $0.name == "Design preview" })
                 ?? (try? projectStore.createProject(named: "Design preview"))
             if let project {
-                _ = try? fileSystem.write(
+                open(project)
+                _ = try? activeSession?.fileSystem.write(
                     path: "README.md",
                     content: """
                     # Design preview
@@ -124,7 +125,6 @@ final class AppState: ObservableObject {
                     """,
                     overwrite: true
                 )
-                open(project)
             }
         }
         #endif
