@@ -83,6 +83,8 @@ targets:
       - target: PocketDSH
       - package: PocketDSHKit
         product: PocketDSHCore
+      - package: PocketDSHKit
+        product: LuaRuntime
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.pocketdsh.tests

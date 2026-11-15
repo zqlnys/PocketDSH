@@ -1,6 +1,7 @@
 import XCTest
 @testable import PocketDSH
 import PocketDSHCore
+import LuaRuntime
 
 final class PocketDSHTests: XCTestCase {
     func testToolCatalogContainsRequiredLocalTools() {
@@ -90,12 +91,16 @@ final class PluginLifecycleTests: XCTestCase {
         )
         XCTAssertTrue(runtime.toolSpecs.contains { $0.function.name == composite })
 
-        let result = await runtime.invoke(
-            toolName: composite,
+        let toolExecutor = ToolExecutor(
+            workspace: workspace,
+            luaEngine: LuaEngine(),
+            pluginRuntime: runtime
+        )
+        let result = await toolExecutor.execute(
+            name: composite,
             argumentsJSON: #"{"message":"hello from plugin lifecycle test","path":"PLUGIN_TEST.md"}"#
         )
-        let unwrapped = try XCTUnwrap(result)
-        XCTAssertFalse(unwrapped.isError, unwrapped.content)
+        XCTAssertFalse(result.isError, result.content)
 
         let written = try workspace.readText(path: "PLUGIN_TEST.md")
         XCTAssertTrue(written.contains("hello from plugin lifecycle test"))
@@ -104,6 +109,15 @@ final class PluginLifecycleTests: XCTestCase {
         store.updateConfig(["prefix": .string("Lifecycle note")], for: installed.manifest.id)
         runtime.reload()
         XCTAssertEqual(store.plugin(id: installed.manifest.id)?.config["prefix"]?.stringValue, "Lifecycle note")
+
+        let configuredResult = await toolExecutor.execute(
+            name: composite,
+            argumentsJSON: #"{"message":"configured body","path":"CONFIG_TEST.md"}"#
+        )
+        XCTAssertFalse(configuredResult.isError, configuredResult.content)
+        let configuredFile = try workspace.readText(path: "CONFIG_TEST.md")
+        XCTAssertTrue(configuredFile.contains("# Lifecycle note"))
+        XCTAssertTrue(configuredFile.contains("configured body"))
 
         store.setEnabled(false, for: installed.manifest.id)
         runtime.reload()
