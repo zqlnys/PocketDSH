@@ -1,0 +1,45 @@
+name: E2 backend CI
+
+# The interpreter core is platform-independent C, so it is built and tested on
+# a plain Linux runner: no simulator round trip, matching how it is developed.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "e2/**"
+      - ".github/workflows/e2.yml"
+  pull_request:
+    paths:
+      - "e2/**"
+      - ".github/workflows/e2.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: e2-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  host-tests:
+    name: Interpreter host tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The host suite loads small aarch64 guest programs that are cross-built
+      # with clang and linked statically by lld.
+      - name: Install cross toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld
+
+      - name: Build and run the host suite
+        working-directory: e2
+        run: make test CC=cc CLANG=clang LLD=ld.lld
+
+      - name: Show the guest binaries that were exercised
+        working-directory: e2
+        run: ls -l tests/guest/*.elf
