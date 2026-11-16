@@ -12,7 +12,15 @@
 /// thread.
 #define E2_PAGE_SIZE 4096
 #define E2_PAGE_MASK (~((uint64_t)E2_PAGE_SIZE - 1))
-#define E2_MAX_REGIONS 64
+/**
+ * Mappings a guest may hold at once.
+ *
+ * 64 was far too few: Python fills it during startup, after which `mmap`
+ * returns ENOMEM and the allocator hands out addresses it never mapped. The
+ * symptom appears much later as a wild pointer, which is why this looked like a
+ * decoder problem for so long.
+ */
+#define E2_MAX_REGIONS 1024
 
 /// Where position-independent images are placed. Fixed so a failing layout
 /// reproduces exactly instead of moving with each run.

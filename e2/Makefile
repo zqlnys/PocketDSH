@@ -5,6 +5,7 @@
 # rootfs, which keeps simulator round trips out of the instruction-debug loop.
 
 CC ?= cc
+LDLIBS ?= -lm
 CFLAGS ?= -std=c11 -Wall -Wextra -Werror -O2 -g -Iinclude
 BUILD := build
 SRC := src/memory.c src/exec.c src/syscall.c src/loader.c
@@ -25,7 +26,7 @@ $(BUILD):
 	@mkdir -p $(BUILD)
 
 $(TEST_BIN): $(SRC) $(TEST_SRC) | $(BUILD)
-	$(CC) $(CFLAGS) $(SRC) $(TEST_SRC) -o $@
+	$(CC) $(CFLAGS) $(SRC) $(TEST_SRC) -o $@ $(LDLIBS)
 
 tests/guest/hello.elf: tests/guest/hello.s | $(BUILD)
 	$(CLANG) --target=aarch64-linux-gnu -c $< -o $(BUILD)/hello-guest.o
@@ -78,4 +79,4 @@ tests/guest/shll.elf: tests/guest/shll.c | $(BUILD)
 # Host harness, built on demand. It needs a root filesystem to point at, which
 # is why it is not part of `make test`.
 tools/rune: tools/rune.c $(SRC)
-	$(CC) $(CFLAGS) $(SRC) tools/rune.c -o $@
+	$(CC) $(CFLAGS) $(SRC) tools/rune.c -o $@ $(LDLIBS)

@@ -830,6 +830,22 @@ static int run_proc(int idx) {
             prev_pc = p->m.cpu.pc;
             e2_memory_read(&p->m.mem, p->m.cpu.pc, &prev_insn, 4);
         }
+        if (getenv("E2_TRACE_OBJ") && p->m.cpu.pc == 0x102fbbb0) {
+            static int no = 0;
+            if (++no <= 3) {
+                const uint64_t o = p->m.cpu.x[0];
+                fprintf(stderr, "[obj] #%d object=0x%llx\n", no, (unsigned long long)o);
+                for (uint64_t off = 0; off < 0x30; off += 8) {
+                    uint64_t v = 0;
+                    if (e2_memory_read(&p->m.mem, o + off, &v, 8) != 0) {
+                        fprintf(stderr, "   +0x%02llx <unmapped>\n", (unsigned long long)off);
+                        break;
+                    }
+                    fprintf(stderr, "   +0x%02llx = 0x%llx\n",
+                            (unsigned long long)off, (unsigned long long)v);
+                }
+            }
+        }
         if (getenv("E2_TRACE_AT") && p->m.cpu.pc == strtoull(getenv("E2_TRACE_AT"), NULL, 0)) {
             static int once = 0;
             if (!once) {
@@ -1009,12 +1025,18 @@ static int run_proc(int idx) {
                      (unsigned long long)p->m.cpu.sp);
             g_fault = 1;
             if (getenv("E2_TRACE_STACK")) dump_shadow("fault");
+            if (getenv("E2_TRACE_REGIONS"))
+                fprintf(stderr, "[regions] %u in use (max %d)\n",
+                        p->m.mem.count, E2_MAX_REGIONS);
             if (getenv("E2_TRACE_CODE")) {
                 // The binary on disk and the image in memory are not always at
                 // the same offsets, so disassembling the file can mislead. Dump
                 // what is actually executing.
                 const uint64_t at = p->m.cpu.pc;
-                const uint64_t from = (at > 48) ? at - 48 : 0;
+                const char *range_env = getenv("E2_CODE_BACK");
+                const uint64_t back = range_env ? strtoull(range_env, NULL, 0)
+                                                : (at > 48 ? 48 : 0);
+                const uint64_t from = (at > back) ? at - back : 0;
                 fprintf(stderr, "[code] around pc=0x%llx:\n", (unsigned long long)at);
                 for (uint64_t a = from; a < at + 48; a += 16) {
                     uint32_t w[4] = {0, 0, 0, 0};

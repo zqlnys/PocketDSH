@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 // This interpreter is written from the ARM Architecture Reference Manual and the
 // AArch64 encoding rules. It shares no code with iSH or any other emulator, which
@@ -854,6 +855,84 @@ e2_status e2_step(e2_machine *machine) {
     // Python's number formatting does its arithmetic through these. Host float
     // and double arithmetic follows the same IEEE rules including NaN and
     // signed zero, so the operands are converted and the result stored back.
+    // --- FRINT*: round a floating-point value to an integral one ---
+    // Python reaches these while formatting floats. The seven operations share
+    // one encoding, so they are matched against a table of complete keys rather
+    // than by masking out the opcode field and hoping.
+    {
+        const uint32_t key = insn & 0xFF3FFC00u;
+        static const struct { uint32_t key; int op; } fops[] = {
+            {0x1E244000u, 0},  // frintn: to nearest, ties to even
+            {0x1E24C000u, 1},  // frintp: toward +inf
+            {0x1E254000u, 2},  // frintm: toward -inf
+            {0x1E25C000u, 3},  // frintz: toward zero
+            {0x1E264000u, 4},  // frinta: to nearest, ties away from zero
+            {0x1E274000u, 5},  // frintx: like frintn, reports inexact
+            {0x1E27C000u, 6},  // frinti: like frintz, reports inexact
+        };
+        for (unsigned fi = 0; fi < sizeof(fops) / sizeof(fops[0]); fi++) {
+            if (fops[fi].key != key) {
+                continue;
+            }
+            const unsigned type = BITS(insn, 23, 22);
+            const unsigned rn2 = BITS(insn, 9, 5);
+            const unsigned rd2 = BITS(insn, 4, 0);
+            const bool single = (type == 0);
+            double d;
+            if (single) {
+                const uint32_t raw = (uint32_t)cpu->v[rn2][0];
+                float f;
+                memcpy(&f, &raw, 4);
+                d = (double)f;
+            } else {
+                memcpy(&d, &cpu->v[rn2][0], 8);
+            }
+            switch (fops[fi].op) {
+                case 0: d = rint(d); break;
+                case 1: d = ceil(d); break;
+                case 2: d = floor(d); break;
+                case 3: d = trunc(d); break;
+                case 4: d = round(d); break;
+                case 5: d = rint(d); break;
+                default: d = trunc(d); break;
+            }
+            if (single) {
+                const float f = (float)d;
+                uint32_t raw;
+                memcpy(&raw, &f, 4);
+                cpu->v[rd2][0] = (cpu->v[rd2][0] & ~0xFFFFFFFFULL) | raw;
+            } else {
+                memcpy(&cpu->v[rd2][0], &d, 8);
+            }
+            cpu->pc = next_pc;
+            machine->instructions++;
+            return E2_OK;
+        }
+    }
+
+    // --- FCSEL: floating-point conditional select ---
+    // Picks one of two FP registers by condition code. `fcsel d0, d0, d1, mi`
+    // shows up in numeric code that branches on a comparison it just made.
+    if ((insn & 0xFF200C00u) == 0x1E200C00u) {
+        const unsigned type = BITS(insn, 23, 22);
+        const unsigned rm = BITS(insn, 20, 16);
+        const unsigned cond = BITS(insn, 15, 12);
+        const unsigned rn2 = BITS(insn, 9, 5);
+        const unsigned rd2 = BITS(insn, 4, 0);
+        const bool single = (type == 0);
+        const uint64_t a = single ? (cpu->v[rn2][0] & 0xFFFFFFFFu) : cpu->v[rn2][0];
+        const uint64_t b = single ? (cpu->v[rm][0] & 0xFFFFFFFFu) : cpu->v[rm][0];
+        const uint64_t pick = condition_holds(cpu, cond) ? a : b;
+        if (single) {
+            cpu->v[rd2][0] = (cpu->v[rd2][0] & ~0xFFFFFFFFULL) | pick;
+        } else {
+            cpu->v[rd2][0] = pick;
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     if ((insn & 0xFF200C00u) == 0x1E200800u) {
         const unsigned ftype = BITS(insn, 23, 22);
         const unsigned opcode = BITS(insn, 15, 12);
