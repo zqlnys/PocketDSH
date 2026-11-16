@@ -1,6 +1,6 @@
 # E2 后端：许可自由的 Linux 运行时
 
-状态：**M1 完成；M2 进行中**（编译器生成的 C 程序端到端跑通；musl 链接器卡在第 459 条指令）
+状态：**M1 完成；M2 进行中**（musl 动态链接器完整运行；文件 syscall 层已接入，正在解决地址空间分配）
 最后更新：2026-11-16
 
 ---
@@ -72,7 +72,29 @@ e2/
 | 重定位 | ✅ RELATIVE + GLOB_DAT 全部应用 |
 | 执行 | 459 条指令后失败，卡在自己对栈上 auxv 的处理 |
 
-### musl 推进过程（本轮）
+### M2 里程碑：musl 动态链接器完整运行
+
+```
+[guest fd2] musl libc (aarch64)
+[guest fd2] Version 1.2.5
+[guest fd2] Usage:  [options] [--] pathname [args]
+[guest exit 1]
+```
+
+自举、libc 初始化、`main()`、参数处理、stdio、正常退出全部走通。这是 E2 第一次运行真实的 aarch64 动态链接器并让它做完自己的事。
+
+接入真实 rootfs 后，它继续往下走：
+
+```
+set_tid_address
+openat("/bin/busybox")  -> fd 3
+read(fd, 960)           -> -EISDIR
+writev(stderr, ...)     "Not a valid dynamic program"
+```
+
+read 失败是因为 musl 传的**路径指针 0x80dde0 不在任何已映射区域内**，读回空串，open 落到了根目录。这是地址空间分配问题，不是 syscall 问题——而且 `mmap` 从未被调用，说明 musl 认为那块内存本来就存在。
+
+### musl 推进过程（前半程）
 
 | 修复 | 指令数 |
 | --- | --- |
