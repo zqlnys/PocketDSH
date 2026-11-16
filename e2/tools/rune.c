@@ -526,6 +526,8 @@ static int run_proc(int idx) {
     proc_t *p = &procs[idx];
     e2_syscall_env env = {.exit = p_exit, .files = &FS, .ctx = p,
                           .fork = p_fork, .execve = p_execve, .wait4 = p_wait4};
+    snprintf(env.cwd, sizeof(env.cwd), "%s",
+             getenv("E2_CWD") ? getenv("E2_CWD") : "/");
     if (getenv("E2_TRACE_WAIT"))
         fprintf(stderr, "[run] pid=%d pc=0x%llx alive=%d\n", p->pid,
                 (unsigned long long)p->m.cpu.pc, p->alive);
@@ -989,6 +991,23 @@ static int run_proc(int idx) {
                             const unsigned nchars = (unsigned)(hdr & 0xFFFFFFFF);
                             char text[256] = {0};
                             e2_memory_read(&p->m.mem, item0 + 0x28, text, sizeof(text) - 1);
+                            // The traceback carries the line number, which maps
+                            // straight onto CPython's frozen getpath.py.
+                            uint64_t tb = 0;
+                            e2_memory_read(&p->m.mem, excobj + 0x28, &tb, 8);
+                            fprintf(stderr, "[tstate] traceback=0x%llx\n",
+                                    (unsigned long long)tb);
+                            for (int depth = 0; depth < 6 && tb != 0; depth++) {
+                                uint64_t nxt = 0, frame = 0, ln = 0;
+                                e2_memory_read(&p->m.mem, tb + 0x10, &nxt, 8);
+                                e2_memory_read(&p->m.mem, tb + 0x18, &frame, 8);
+                                e2_memory_read(&p->m.mem, tb + 0x20, &ln, 8);
+                                fprintf(stderr,
+                                        "[tstate]   tb[%d] lineno=%u frame=0x%llx\n",
+                                        depth, (unsigned)((ln >> 32) & 0xFFFFFFFF),
+                                        (unsigned long long)frame);
+                                tb = nxt;
+                            }
                             fprintf(stderr, "[tstate] message (%u chars): \"", nchars);
                             for (unsigned q = 0; q < nchars && q < 200; q++)
                                 fputc((text[q] >= 0x20 && text[q] < 0x7f) ? text[q] : '?', stderr);
@@ -1256,7 +1275,9 @@ int main(int argc, char **argv) {
     // python prints it in usage text, so a hardcoded name lies to both.
     {
         const char *base = strrchr(path, '/');
-        snprintf(args[nargs++], sizeof(args[0]), "%s", base ? base + 1 : path);
+        const char *override = getenv("E2_ARGV0");
+        snprintf(args[nargs++], sizeof(args[0]), "%s",
+                 override ? override : (base ? base + 1 : path));
     }
     for (int i = 2; i < argc && nargs < 16; i++)
         snprintf(args[nargs++], sizeof(args[0]), "%s", argv[i]);
