@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 
 #if canImport(Darwin)
@@ -106,18 +107,25 @@ final class RuntimeCapabilityStore: ObservableObject {
             .flatMap(RuntimeTier.init(rawValue:)) ?? .automatic
     }
 
-    var automaticTier: RuntimeTier {
-        jit.isAvailable ? .tierC : .tierA
-    }
+    /// True while a Tier C session is actually alive. Set by `AppState` from
+    /// `LinuxRuntime.state`; it is never inferred from the JIT probe, because
+    /// Tier C is a userland Linux emulator and needs no JIT at all.
+    @Published var linuxAvailable = false
 
-    /// Tier C is not implemented in this build. Do not silently pretend that a
-    /// JIT probe turns the native workspace into a Linux runtime.
+    /// What is really running right now. A preference alone never counts: the
+    /// report flips to Tier C only after a session has started.
     var activeTier: RuntimeTier {
-        .tierA
+        preferredTier == .tierC && linuxAvailable ? .tierC : .tierA
     }
 
     var wantsTierC: Bool {
-        preferredTier == .tierC || (preferredTier == .automatic && jit.isAvailable)
+        preferredTier == .tierC
+    }
+
+    /// The user asked for Tier C but no session is running, so Tier A is serving
+    /// the request. Surfaced in the UI instead of silently falling back.
+    var tierCRequestedButUnavailable: Bool {
+        preferredTier == .tierC && !linuxAvailable
     }
 
     var tierCExperimentalLinked: Bool {
@@ -125,17 +133,23 @@ final class RuntimeCapabilityStore: ObservableObject {
     }
 
     var statusLine: String {
-        if wantsTierC {
-            return NSLocalizedString("Tier A default · Tier C experimental", comment: "")
+        if activeTier == .tierC {
+            return NSLocalizedString("Tier C active · iSH Alpine", comment: "")
+        }
+        if tierCRequestedButUnavailable {
+            return NSLocalizedString("Tier C requested · Tier A active", comment: "")
         }
         return NSLocalizedString("Tier A active", comment: "")
     }
 
     var detail: String {
-        if jit.isAvailable {
-            return NSLocalizedString("This process can map executable memory, but the embedded Linux/Node Tier C backend is not integrated yet. Work continues in the verified native Tier A runtime.", comment: "")
+        if activeTier == .tierC {
+            return NSLocalizedString("Tier C is running: an emulated iSH Alpine shell with this project mounted at /workspace. run_linux executes there. Commands are slow compared with native code but need no JIT.", comment: "")
         }
-        return NSLocalizedString("No JIT executable mapping was detected. The app automatically uses Tier A: native files, agent tools, and the embedded Lua runtime. Tier C requires a separate Linux backend and remains unavailable.", comment: "")
+        if tierCRequestedButUnavailable {
+            return NSLocalizedString("Tier C is selected but no Linux session is running yet, so Tier A is serving tools. The session starts on the first run_linux call; if it fails, the error is shown instead of pretending Tier C is active.", comment: "")
+        }
+        return NSLocalizedString("Tier A is active: native files, agent tools, and the embedded Lua runtime. Tier C (emulated iSH Alpine) is available if you select it.", comment: "")
     }
 
     private enum Keys {

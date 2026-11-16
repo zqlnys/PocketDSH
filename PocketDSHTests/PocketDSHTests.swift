@@ -201,13 +201,18 @@ final class RuntimeRoutingTests: XCTestCase {
         let runtime = RuntimeCapabilityStore(defaults: defaults)
         // The simulator cannot provide the device JIT entitlement.
         XCTAssertFalse(runtime.jit.isAvailable)
-        XCTAssertEqual(runtime.automaticTier, .tierA)
         XCTAssertEqual(runtime.activeTier, .tierA)
         XCTAssertFalse(runtime.wantsTierC)
 
         runtime.preferredTier = .tierC
         XCTAssertTrue(runtime.wantsTierC)
-        // The preference is allowed, but the backend is still not active.
+        // A preference is not an active backend.
         XCTAssertEqual(runtime.activeTier, .tierA)
+        XCTAssertTrue(runtime.tierCRequestedButUnavailable)
+
+        // Only a live session flips the reported backend.
+        runtime.linuxAvailable = true
+        XCTAssertEqual(runtime.activeTier, .tierC)
+        XCTAssertFalse(runtime.tierCRequestedButUnavailable)
     }
 }

@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import LuaRuntime
 import PocketDSHCore
@@ -92,6 +93,7 @@ final class AppState: ObservableObject {
     @Published var errorMessage: String?
     @Published var showOnboarding = false
     @Published var isTierCSmoke = false
+    private var sessionSubscription: AnyCancellable?
     @Published private(set) var isPluginDemo = false
 
     init() {
@@ -103,6 +105,10 @@ final class AppState: ObservableObject {
         systemActions = SystemActionStore()
         linuxRuntime = LinuxRuntime()
         luaEngine = LuaEngine()
+        sessionSubscription = linuxRuntime.$state
+            .map { $0 == .active }
+            .removeDuplicates()
+            .sink { [runtime] isActive in runtime.linuxAvailable = isActive }
         let arguments = ProcessInfo.processInfo.arguments
         showOnboarding = !keychain.hasKey
         #if DEBUG

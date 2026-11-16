@@ -313,10 +313,10 @@ struct SettingsView: View {
                 .font(.caption)
             LabeledContent("Active backend", value: runtime.activeTier.title)
                 .font(.caption)
-            LabeledContent("Automatic preference", value: runtime.automaticTier.title)
+            LabeledContent("Linux session", value: runtime.linuxAvailable ? "running" : "not running")
                 .font(.caption)
 
-            if runtime.wantsTierC {
+            if runtime.tierCRequestedButUnavailable {
                 Banner(
                     icon: "exclamationmark.triangle",
                     title: "Tier C is experimental",

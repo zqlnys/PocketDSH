@@ -11,7 +11,18 @@ import PocketDSHCore
 /// A one-shot bridge remains as a fallback: if the session cannot be created the
 /// runner still executes the command, just slower.
 @MainActor
-final class LinuxRuntime {
+final class LinuxRuntime: ObservableObject {
+    /// What the emulated backend is doing right now. Published so the runtime
+    /// status the UI shows is the real state, not a preference.
+    enum SessionState: Equatable {
+        case idle
+        case starting
+        case active
+        case failed(String)
+    }
+
+    @Published private(set) var state: SessionState = .idle
+
     private var busy = false
     private var rootfsURL: URL?
     private var prepared = false
@@ -44,6 +55,7 @@ final class LinuxRuntime {
             if result.hasPrefix("<shell error") {
                 // The session died mid-command; drop it so the next call rebuilds.
                 await discardSession()
+                state = .failed("session ended while running the command")
                 return .failure("Tier C session ended while running the command.\n\(result)")
             }
             return .success(result.isEmpty ? "(no output)" : result)
@@ -63,6 +75,7 @@ final class LinuxRuntime {
         guard let existing = session else { return }
         session = nil
         sessionWorkspace = nil
+        state = .idle
         await Task.detached { existing.stop() }.value
     }
 
@@ -79,12 +92,15 @@ final class LinuxRuntime {
 
         guard let root = prepareRootfs() else {
             lastSessionError = "rootfs not available in this build"
+            state = .failed(lastSessionError)
             return nil
         }
 
+        state = .starting
         var error = ""
         guard let created = PersistentShellSession(rootfs: root, workspace: workspace, error: &error) else {
-            lastSessionError = error
+            lastSessionError = error.isEmpty ? "shell failed to start" : error
+            state = .failed(lastSessionError)
             return nil
         }
 
@@ -97,9 +113,11 @@ final class LinuxRuntime {
         try? await Task.sleep(nanoseconds: 300_000_000)
         if !created.isRunning {
             lastSessionError = "shell exited during startup"
+            state = .failed(lastSessionError)
             await discardSession()
             return nil
         }
+        state = .active
         return created
     }
 
