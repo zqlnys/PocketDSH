@@ -372,8 +372,12 @@ e2_status e2_step(e2_machine *machine) {
     }
 
     // --- Bitfield: SBFM / BFM / UBFM ---
-    // Every narrowing or widening conversion compiles to one of these, so they
-    // appear immediately in libc.
+    // The field width is immS - immR + 1, not immS + 1. Using the wrong width
+    // silently returns extra high bits, which is how `ubfiz` turned into a
+    // garbage divisor and the division strength-reduction produced digits above 9.
+    //
+    // When immS < immR the field wraps: the low immS+1 bits are shifted left,
+    // which is the ubfiz/sbfiz alias family.
     if ((insn & 0x1F800000u) == 0x13000000u) {
         const unsigned opc = BITS(insn, 30, 29);  // 00 SBFM, 01 BFM, 10 UBFM
         const unsigned immr = BITS(insn, 21, 16);
@@ -387,33 +391,57 @@ e2_status e2_step(e2_machine *machine) {
         }
 
         const uint64_t src = cpu->x[rn] & width_mask;
-        const unsigned rotate = immr % width;
-        uint64_t rotated = rotate ? ((src >> rotate) | (src << (width - rotate))) : src;
-        rotated &= width_mask;
-
-        const unsigned bits = imms + 1;
-        const uint64_t field_mask = (bits >= 64) ? ~0ULL : ((1ULL << bits) - 1);
-        const uint64_t bot = rotated & field_mask;
-
         uint64_t result;
-        switch (opc) {
-            case 0: {  // SBFM: sign-extend the field
-                const uint64_t sign_bit = 1ULL << (imms % 64);
-                result = (bot ^ sign_bit) - sign_bit;
-                break;
-            }
-            case 1: {  // BFM: insert the field into the destination
-                const uint64_t dst = cpu->x[rd] & width_mask;
-                result = (dst & ~field_mask) | bot;
-                break;
-            }
-            default:   // UBFM: zero-extend the field
-                result = bot;
-                break;
-        }
-        result &= width_mask;
 
-        write_reg(cpu, rd, result, is64);
+        if (imms >= immr) {
+            const unsigned field_bits = imms - immr + 1;
+            const uint64_t field_mask = (field_bits >= 64) ? ~0ULL
+                                                           : ((1ULL << field_bits) - 1);
+            const uint64_t field = (src >> immr) & field_mask;
+            switch (opc) {
+                case 0: {  // SBFM: sign-extend the extracted field
+                    const uint64_t sign = 1ULL << (field_bits - 1);
+                    result = (field ^ sign) - sign;
+                    break;
+                }
+                case 1: {  // BFM: insert into destination at immr
+                    const uint64_t mask = field_mask << immr;
+                    const uint64_t dst = cpu->x[rd] & width_mask;
+                    result = (dst & ~mask) | (field << immr);
+                    break;
+                }
+                default:   // UBFM: zero-extend
+                    result = field;
+                    break;
+            }
+        } else {
+            // Wrapped: the field starts at bit 0 and shifts up by width - immr.
+            const unsigned field_bits = imms + 1;
+            const uint64_t field_mask = (field_bits >= 64) ? ~0ULL
+                                                           : ((1ULL << field_bits) - 1);
+            const uint64_t field = src & field_mask;
+            const unsigned shift = width - immr;
+            switch (opc) {
+                case 0: {  // SBFM
+                    const uint64_t sign = 1ULL << (field_bits - 1);
+                    const uint64_t extended = (field ^ sign) - sign;
+                    result = (extended << shift) & width_mask;
+                    break;
+                }
+                case 1: {  // BFM
+                    const uint64_t mask = (field_mask << shift) & width_mask;
+                    const uint64_t shifted = (field << shift) & width_mask;
+                    const uint64_t dst = cpu->x[rd] & width_mask;
+                    result = (dst & ~mask) | shifted;
+                    break;
+                }
+                default:   // UBFM (ubfiz family)
+                    result = (field << shift) & width_mask;
+                    break;
+            }
+        }
+
+        write_reg(cpu, rd, result & width_mask, is64);
         cpu->pc = next_pc;
         machine->instructions++;
         return E2_OK;
@@ -617,7 +645,10 @@ e2_status e2_step(e2_machine *machine) {
         return E2_OK;
     }
 
-    // --- MADD / MSUB ---
+    // --- MADD / MSUB / SMULH / UMULH ---
+    // Ra=31 is not an accumulator here: it is the marker for the high-half
+    // multiply variants. Treating it as a register read produced garbage
+    // accumulators, which showed up as loop counters turning into addresses.
     if ((insn & 0x1F000000u) == 0x1B000000u) {
         const bool is_sub = BIT(insn, 15) != 0;
         const unsigned rm = BITS(insn, 20, 16);
@@ -627,8 +658,21 @@ e2_status e2_step(e2_machine *machine) {
 
         const uint64_t a = e2_read_xzr(cpu, rn2) & mask;
         const uint64_t b = e2_read_xzr(cpu, rm) & mask;
-        const uint64_t acc = e2_read_xzr(cpu, ra) & mask;
-        uint64_t result = is_sub ? (acc - a * b) : (acc + a * b);
+
+        uint64_t result;
+        if (ra == E2_REG_XZR && is64) {
+            const unsigned __int128 product = (unsigned __int128)a * (unsigned __int128)b;
+            if (is_sub) {
+                // SMULH: signed high half
+                const __int128 sproduct = (__int128)(int64_t)a * (__int128)(int64_t)b;
+                result = (uint64_t)(sproduct >> 64);
+            } else {
+                result = (uint64_t)(product >> 64);
+            }
+        } else {
+            const uint64_t acc = e2_read_xzr(cpu, ra) & mask;
+            result = is_sub ? (acc - a * b) : (acc + a * b);
+        }
         write_reg(cpu, rd, result & mask, is64);
         cpu->pc = next_pc;
         machine->instructions++;
