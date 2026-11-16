@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -176,6 +177,10 @@ static void *shell_thread(void *argument) {
 
 pocket_shell *pocket_shell_start(const char *rootfs, const char *workspace,
                                  char *error, size_t error_size) {
+    // Callers may hand us an uninitialised buffer; normalise it before any path
+    // can read from it.
+    set_error(error, error_size, "");
+
     if (rootfs == NULL) {
         set_error(error, error_size, "rootfs path is required");
         return NULL;
@@ -204,6 +209,10 @@ pocket_shell *pocket_shell_start(const char *rootfs, const char *workspace,
     // Keep the guest side blocking; the host side polls with timeouts.
     fcntl(shell->to_guest[0], F_SETFL, 0);
     fcntl(shell->from_guest[0], F_SETFL, 0);
+
+    // A write into a pipe with no reader raises SIGPIPE, which kills the process
+    // by default. Do not depend on some other subsystem having ignored it.
+    signal(SIGPIPE, SIG_IGN);
 
     shell->rootfs = strdup(rootfs);
     shell->workspace = workspace != NULL ? strdup(workspace) : NULL;
@@ -314,7 +323,11 @@ long pocket_shell_exec(pocket_shell *shell, const char *command,
                     found_sentinel = 1;
                 }
             } else if (n == 0) {
-                break; // guest side closed
+                // Guest side closed its output pipe: no further output can ever
+                // arrive, so this session is unusable even if the thread runs on.
+                shell->running = 0;
+                shell->exited = 1;
+                break;
             }
         } else if (ready < 0 && errno != EINTR) {
             break;
