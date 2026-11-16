@@ -458,7 +458,41 @@ mallocng 的分配路径：`avail_mask` 位图 → `first = mask & -mask` → `i
 
 两个都在同一个 group（`[0x10000000, 0x10002000)`）内，相差 `0x50`，而 `0x50` 不是 `0x70`（slot 大小）的倍数——**说明其中至少一个不是合法的 slot 起点**。
 
-下一轮：查明 `0x770` 这个地址是怎么从位图算出来的，或者它压根没走 slot 分配（而是 `realloc`/`free` 路径里的指针运算）。
+**查明了：两个"重叠块"其实是同一个 slot 的两次分配。**
+
+mallocng 的参数（`meta.h`）：
+
+```c
+#define UNIT 16
+#define IB 4
+stride = UNIT * size_classes[sizeclass]     // 0x60 请求 → size_classes[6] = 7 → stride 0x70
+```
+
+而 `enframe()` 里有一个 **cycle offset** 机制：
+
+```c
+int off = (p[-3] ? *(uint16_t *)(p-2) + 1 : ctr) & 255;
+if (off) {
+    *(uint16_t *)(p-2) = off;
+    p[-3] = 7<<5;          // 标记"有偏移"
+    p += UNIT*off;         // 返回地址挪到 slot 内部
+    p[-4] = 0;
+}
+p[-3] = idx;
+```
+
+把这个代进去看：
+
+| 返回地址 | 相对 slot `0x700` | off |
+| --- | --- | --- |
+| `0x10000770` | `+7×16` | 7 |
+| `0x100007c0` | `+12×16` | 12 |
+
+**两者都落在 slot `0x700` 内**——所以不是"块重叠"，是**同一个 slot 被分配了两次**，只是 cycle offset 不同。
+
+也就是说 `avail_mask` 位图没有把该 slot 标为已占用。位图运算本身已验证正确（`mask & -mask`、`mask - first`、`neg`、`and`、`rbit`、`clz` 全部 exit 0），所以问题在**位图被写回之前**——可能是 `g` 指针不对，或者选中的 group 不是同一个。
+
+下一轮：追踪 `avail_mask` 在连续两次分配间的实际值。
 
 另一个纠正：被拒绝的字符是 **`0xff`**，不是空格——终端把它渲染成了不可见字符，导致前一轮在字符串里找一个根本不存在的空格。
 
