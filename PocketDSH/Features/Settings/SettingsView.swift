@@ -6,6 +6,7 @@ struct SettingsView: View {
     @EnvironmentObject private var keychain: KeychainStore
     @EnvironmentObject private var pluginStore: PluginStore
     @EnvironmentObject private var runtime: RuntimeCapabilityStore
+    @EnvironmentObject private var appState: AppState
 
     @State private var apiKeyDraft = ""
     @State private var revealKey = false
@@ -351,6 +352,16 @@ struct SettingsView: View {
             }
             .buttonStyle(SecondaryButtonStyle())
             .frame(maxWidth: .infinity)
+
+            if runtime.linuxAvailable {
+                Button(role: .destructive) {
+                    Task { await appState.linuxRuntime.discardSession() }
+                } label: {
+                    Label("Stop Linux session", systemImage: "stop.circle")
+                }
+                .buttonStyle(SecondaryButtonStyle())
+                .frame(maxWidth: .infinity)
+            }
         }
         .pocketCard()
     }

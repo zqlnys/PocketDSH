@@ -21,9 +21,9 @@ cat docs/TIER-C.md
 当前仓库：<https://github.com/zqlnys/PocketDSH>（**public**）
 当前分支：`main`
 当前源码头：见 `git log --oneline -1`
-最新已验证构建 commit：`72fbe9f`（tier-c: only tear down the session when the shell itself exits）
-最新构建 run：<https://github.com/zqlnys/PocketDSH/actions/runs/43796926038>
-最新 artifact：`pocketdsh-ios-89`
+最新已验证构建 commit：`8b96358`（tier-c: report the backend that is actually running）
+最新构建 run：<https://github.com/zqlnys/PocketDSH/actions/runs/43799762866>
+最新 artifact：`pocketdsh-ios-91`
 最新 IPA 本地路径：`/root/dsh/PocketDSH-builds/latest/PocketDSH-unsigned.ipa`
 
 最新 IPA：
@@ -94,7 +94,7 @@ cat docs/TIER-C.md
 | JIT 探测 | 已实现 | mmap 可执行映射探测，不执行动态代码 |
 | Tier 偏好 | 已实现 | Automatic / Tier A / Tier C，Tier C 受限提示 |
 | Tier C smoke test | 已实现 | 主 App 内 iSH Alpine，无 JIT，实际 `uname` |
-| `run_linux` | 部分实现 | 仍走一次性桥接；持久 shell 已可用但尚未接进工具 |
+| `run_linux` | **已接入持久 shell** | 复用同一会话，每条 ~0.4s；会话不可用时回退一次性桥接并说明 |
 | 持久 Linux shell | **模拟器已验证** | 6 条命令同一会话，每条 0.1s，run 43796926038 |
 | 文件工作区挂载到 Linux | **模拟器已验证** | realfs 直通，run 43793080884；真机未做 |
 | 真机 / 签名 / TestFlight | 未完成 | |
@@ -482,10 +482,11 @@ examples/workspace-inspector.dshplugin/
    - 6 条命令连续执行，每条 0.1s，外部命令退出不再杀掉会话；
    - 遗留：接进 `run_linux` 工具、与一次性 runner 的互斥、真机。
 
-3. **Tier 自动路由**
-   - 初始化成功才启用 Tier C；
-   - 失败自动回退 Tier A；
-   - UI 显示真实 active backend，不伪造。
+3. ~~**Tier 自动路由**~~ → 已完成（run 43799762866）
+   - `LinuxRuntime` 发布 `SessionState`（idle / starting / active / failed）；
+   - `activeTier` 只在「用户选了 Tier C **且** 会话真的在跑」时报告 Tier C；
+   - `tierCRequestedButUnavailable` 把回退暴露到 UI，不静默；
+   - Tier C 不再用 JIT 探测推断（它本来就不需要 JIT）。
 
 4. **真实 Key 端到端**
    - 用用户 Key 验证 DeepSeek 工具调用；
@@ -506,7 +507,7 @@ examples/workspace-inspector.dshplugin/
 
 如果新会话只做一件事：
 
-> **把持久 shell 接进 `run_linux` 工具**。桥接层已经跑通（build 89），但 Agent 仍然走一次性路径。需要处理持久会话与一次性 runner 的互斥（两者共用 iSH 全局 mount/pid 状态），并让每次 Agent 调用复用同一个会话。
+> **真机验证**（需要用户签名证书，当前跳过）。模拟器上 Tier C 的三块拼图都已跑通：realfs 挂载、持久 shell、真实 backend 报告。剩下的差异只有真机内存压力和签名。
 
 第二件事：
 
@@ -523,7 +524,7 @@ examples/workspace-inspector.dshplugin/
 复制以下内容到新会话：
 
 ```text
-继续 PocketDSH。先读 /root/dsh/PocketDSH/docs/HANDOFF.md、docs/BUILD.md、docs/TIER-C.md，检查 git status 和最新 CI。当前最新已验证构建是 run 43763977454 / pocketdsh-ios-83 / SHA 237d0175e71c2fa058c835deae4fddb3ffc6cd91aa7b09f1b5ec8d141e370780。主 App 已有 iSH Tier C smoke 和 run_linux 单命令，但项目工作区、持久 shell、Tier 自动路由、真机/GPL 未完成。从 Tier C 项目工作区开始，不要伪造已完成能力。
+继续 PocketDSH。先读 /root/dsh/PocketDSH/docs/HANDOFF.md、docs/BUILD.md、docs/TIER-C.md、docs/WORKSPACE-MOUNT.md、docs/PERSISTENT-SHELL.md，检查 git status 和最新 CI。当前最新已验证构建是 run 43799762866 / pocketdsh-ios-91。Tier C 三块已跑通：realfs 项目挂载（双向）、持久 shell（多命令、每条 ~0.4s）、真实 backend 报告（不伪造）。未完成：真机验证、GPLv3 分发决策、上游 DSH/Cordis 插件兼容。不要伪造已完成能力。
 ```
 
 ---
@@ -543,4 +544,4 @@ examples/workspace-inspector.dshplugin/
 
 ## 15. 一句话状态
 
-**PocketDSH 已经是一个可构建、可运行的原生 iOS 本地 Agent App；Tier C 的 iSH Alpine 已在主 App 内跑通，项目工作区通过 realfs 双向挂载，持久 shell 可连续执行多命令（每条 0.1s）；未完成的是把持久 shell 接进 `run_linux`、Tier 自动路由、真机与 GPLv3。最新可用构建是 `pocketdsh-ios-89`（run 43796926038）。**
+**PocketDSH 是一个可构建、可运行的原生 iOS 本地 Agent App。Tier C 已经完整可用：项目目录通过 realfs 双向挂载在 `/workspace`，`run_linux` 复用同一个持久 shell（每条命令 ~0.4s），Tier 状态只在会话真的在跑时才报告 Tier C。未完成：真机验证、GPLv3 分发决策、上游 DSH/Cordis 插件兼容。最新可用构建 `pocketdsh-ios-91`（run 43799762866）。**
