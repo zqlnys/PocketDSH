@@ -74,3 +74,8 @@ overlaps:
 tests/guest/shll.elf: tests/guest/shll.c | $(BUILD)
 	$(CLANG) --target=aarch64-linux-gnu -O2 -ffreestanding -nostdlib -static -c $< -o $(BUILD)/shll-guest.o
 	$(LLD) -static -o $@ $(BUILD)/shll-guest.o
+
+# Host harness, built on demand. It needs a root filesystem to point at, which
+# is why it is not part of `make test`.
+tools/rune: tools/rune.c $(SRC)
+	$(CC) $(CFLAGS) $(SRC) tools/rune.c -o $@

@@ -1,0 +1,582 @@
+// rune - host harness for the e2 backend.
+//
+// Loads a statically linked aarch64 program, binds its guest filesystem to a
+// root directory, and services syscalls against the host. This is the tool the
+// backend is developed against: instruction gaps and syscall bugs surface here
+// long before an iOS build is involved.
+//
+//   rune BINARY [args...]           run one program
+//   rune busybox sh -c 'SCRIPT'     exercise the shell
+//
+// Environment:
+//   E2_TRACE_ALL=1    print every syscall with its result
+//   E2_TRACE_RET=1    print only the syscalls that returned an error
+//   E2_TRACE_WAIT=1   print process starts, forks and reaps
+//   E2_TRACE_PIPE=1   print pipe/fork/exec/wait traffic
+//   E2_TRACE_EXEC=1   print the argv block an execve sees
+//   E2_TRACE_GREP=1   print the record table grep scans
+//
+// The process model is cooperative: one machine per process, and wait4 runs the
+// child to completion. Descriptor tables are per-process, fork shares open file
+// descriptions through a reference count, and execve honours FD_CLOEXEC - all
+// three are needed for shell pipelines to see EOF correctly.
+#define _GNU_SOURCE
+#include <errno.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <dirent.h>
+#include <time.h>
+#include <unistd.h>
+#include "e2/exec.h"
+#include "e2/loader.h"
+#include "e2/syscall.h"
+
+static const char *ROOT = "/tmp/alpine-root";
+// One descriptor table per process: fork must copy it and exec must keep it, so
+// a single global table let a child's dup3 rewrite the parent's descriptors.
+typedef struct { int fdtab; } procctx;
+static struct { int used, host; } g_fds[16][64];
+static void *g_dirs[16][64];
+static unsigned char g_cloexec[16][64];
+#define TAB(c) (g_fds[((const procctx *)(c))->fdtab])
+#define DIRTAB(c) (g_dirs[((const procctx *)(c))->fdtab])
+static void fd_init_tab(int tab) {
+    for (int i = 0; i < 64; i++) { g_fds[tab][i].used = 0; g_fds[tab][i].host = -1; }
+    for (int i = 0; i < 3; i++) { g_fds[tab][i].used = 1; g_fds[tab][i].host = i; }
+    for (int i = 0; i < 64; i++) { g_dirs[tab][i] = NULL; g_cloexec[tab][i] = 0; }
+}
+// fork shares the open file description, so a close in one process must not
+// close the descriptor for its siblings. Refcounting host descriptors models
+// that, and it is what lets a pipe reader see EOF once the writer exits.
+static int g_refs[1024];
+static void refs_init(void) {
+    for (int i = 0; i < 1024; i++) g_refs[i] = 0;
+    for (int i = 0; i < 3; i++) g_refs[i] = 1;
+}
+static void host_ref(int h) { if (h >= 0 && h < 1024) g_refs[h]++; }
+static void host_unref(int h) { if (h >= 0 && h < 1024 && g_refs[h] > 0) g_refs[h]--; }
+static void host_close_if_done(int h) {
+    if (h >= 3 && h < 1024 && g_refs[h] == 0) close(h);
+}
+static void fd_init(void) { fd_init_tab(0); refs_init(); }
+static int fd_alloc_tab(int tab, int host) {
+    for (int i = 3; i < 64; i++)
+        if (!g_fds[tab][i].used) { g_fds[tab][i].used = 1; g_fds[tab][i].host = host; return i; }
+    return -1;
+}
+
+static uint8_t *load_file(const char *p, size_t *n) {
+    FILE *f = fopen(p, "rb"); if (!f) return NULL;
+    fseek(f, 0, SEEK_END); long s = ftell(f); fseek(f, 0, SEEK_SET);
+    uint8_t *b = malloc((size_t)s);
+    if (fread(b, 1, (size_t)s, f) != (size_t)s) { fclose(f); free(b); return NULL; }
+    fclose(f); *n = (size_t)s; return b;
+}
+static void host_path(char *out, size_t n, const char *p) {
+    if (p[0] == '/') snprintf(out, n, "%s%s", ROOT, p);
+    else snprintf(out, n, "%s/%s", ROOT, p);
+}
+static int fs_open(void *c, const char *path, int fl, int m) {
+    (void)m;
+    char h[2048]; host_path(h, sizeof(h), path);
+    // Translate the guest's aarch64 open flags into host ones. O_CREAT without
+    // O_WRONLY/RDWR is meaningless, so only honour it when writing.
+    int hf = 0;
+    const int acc = fl & 3;
+    if (acc == 0) hf = O_RDONLY;
+    else if (acc == 1) hf = O_WRONLY;
+    else hf = O_RDWR;
+    if (fl & 0x40) hf |= O_CREAT;        // 0x40 = O_CREAT on aarch64
+    if (fl & 0x200) hf |= O_TRUNC;       // 0x200 = O_TRUNC
+    if (fl & 0x400) hf |= O_APPEND;      // 0x400 = O_APPEND
+    if (fl & 0x4000) hf |= O_DIRECTORY;   // musl aarch64 O_DIRECTORY
+    if (fl & 0x8000) hf |= O_NOFOLLOW;    // musl aarch64 O_NOFOLLOW
+    // 0x20000 is O_LARGEFILE: meaningless on a 64-bit host, so it is dropped.
+    int fd = open(h, hf, 0666);
+    if (fd < 0) return -errno;
+    host_ref(fd);
+    int guest = fd_alloc_tab(((const procctx *)c)->fdtab, fd);
+    if (guest < 0) { close(fd); return -24; }
+    return guest;
+}
+static long fs_read(void *c, int fd, void *b, size_t n, long long o) {
+    if (fd < 0 || fd >= 64 || !TAB(c)[fd].used) return -EBADF;
+    ssize_t r = o < 0 ? read(TAB(c)[fd].host, b, n) : pread(TAB(c)[fd].host, b, n, o);
+    return r < 0 ? -errno : (long)r;
+}
+static long fs_write(void *c, int fd, const void *b, size_t n, long long o) {
+    (void)o;
+    if (fd < 0 || fd >= 64 || !TAB(c)[fd].used) return -EBADF;
+    ssize_t r = write(TAB(c)[fd].host, b, n);
+    return r < 0 ? -errno : (long)r;
+}
+static int fs_close(void *c, int fd) {
+    if (fd < 0 || fd >= 64 || !TAB(c)[fd].used) return -EBADF;
+    {
+        const int h = TAB(c)[fd].host;
+        host_unref(h);
+        host_close_if_done(h);
+    }
+    TAB(c)[fd].used = 0; TAB(c)[fd].host = -1; return 0;
+}
+static int fs_stat(void *c, int fd, void *buf, size_t n) {
+    (void)n; struct stat st;
+    if (fd < 0 || fd >= 64 || !TAB(c)[fd].used) return -EBADF;
+    if (fstat(TAB(c)[fd].host, &st)) return -EBADF;
+    memset(buf, 0, 128);
+    // aarch64 struct stat: 64-bit st_dev/st_ino, st_mode at 16, st_size at 48.
+    uint8_t *p = buf;
+    *(uint64_t*)(p + 0)  = (uint64_t)st.st_dev;
+    *(uint64_t*)(p + 8)  = (uint64_t)st.st_ino;
+    *(uint32_t*)(p + 16) = (uint32_t)st.st_mode;
+    *(uint32_t*)(p + 20) = (uint32_t)st.st_nlink;
+    *(uint32_t*)(p + 24) = (uint32_t)st.st_uid;
+    *(uint32_t*)(p + 28) = (uint32_t)st.st_gid;
+    *(uint64_t*)(p + 32) = (uint64_t)st.st_rdev;
+    *(int64_t*)(p + 48)  = (int64_t)st.st_size;
+    *(int32_t*)(p + 56)  = 4096;
+    *(int64_t*)(p + 64)  = (int64_t)st.st_blocks;
+    *(int64_t*)(p + 72)  = (int64_t)st.st_atime;
+    *(int64_t*)(p + 88)  = (int64_t)st.st_mtime;
+    *(int64_t*)(p + 104) = (int64_t)st.st_ctime;
+    return 0;
+}
+static int fs_opendir(void *c, const char *path) {
+    char h[2048]; host_path(h, sizeof(h), path);
+    DIR *d = opendir(h); if (!d) return -errno;
+    for (int i = 0; i < 64; i++) if (!DIRTAB(c)[i]) { DIRTAB(c)[i] = d; return i; }
+    closedir(d); return -24;
+}
+static long fs_readdir(void *c, int h, void *buf, size_t buf_size) {
+    (void)buf_size;
+    if (h < 0 || h >= 64 || !DIRTAB(c)[h]) return 0;
+    struct dirent *e = readdir((DIR *)DIRTAB(c)[h]);
+    if (!e) return 0;
+    memcpy(buf, e, sizeof(*e));
+    return 1;
+}
+static long long fs_clock(void *c) {
+    (void)c; struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1000000000LL + ts.tv_nsec;
+}
+static int fs_pipe(void *c, int fds[2]) {
+    const int tab = ((const procctx *)c)->fdtab;
+    int p[2];
+    if (pipe(p) != 0) return -errno;
+    host_ref(p[0]);
+    host_ref(p[1]);
+    const int a = fd_alloc_tab(tab, p[0]);
+    if (a < 0) { close(p[0]); close(p[1]); return -24; }
+    const int b = fd_alloc_tab(tab, p[1]);
+    if (b < 0) { close(p[0]); close(p[1]); g_fds[tab][a].used = 0; return -24; }
+    fds[0] = a; fds[1] = b; return 0;
+}
+static int fs_dup3(void *c, int oldfd, int newfd, int flags) {
+    (void)flags;
+    if (oldfd < 0 || oldfd >= 64 || !TAB(c)[oldfd].used) return -EBADF;
+    if (newfd < 0 || newfd >= 64) return -EBADF;
+    if (oldfd == newfd) return newfd;
+    const int h = TAB(c)[oldfd].host;
+    if (TAB(c)[newfd].used) {
+        host_unref(TAB(c)[newfd].host);
+        host_close_if_done(TAB(c)[newfd].host);
+    }
+    host_ref(h);
+    TAB(c)[newfd].used = 1; TAB(c)[newfd].host = h;
+    return newfd;
+}
+static long fs_fcntl(void *c, int fd, int cmd, long arg) {
+    const int tab = ((const procctx *)c)->fdtab;
+    if (fd < 0 || fd >= 64 || !TAB(c)[fd].used) return -EBADF;
+    switch (cmd) {
+        case 0:      // F_DUPFD
+        case 1030: { // F_DUPFD_CLOEXEC
+            // Only the _CLOEXEC variant sets the flag; a plain F_DUPFD must
+            // survive exec, which is how a shell restores a saved stdout.
+            const int h = TAB(c)[fd].host;
+            for (int i = (int)arg; i < 64; i++) {
+                if (!g_fds[tab][i].used) {
+                    host_ref(h);
+                    g_fds[tab][i].used = 1;
+                    g_fds[tab][i].host = h;
+                    g_cloexec[tab][i] = (cmd == 1030) ? 1 : 0;
+                    return i;
+                }
+            }
+            return -24;
+        }
+        case 1: return g_cloexec[tab][fd] ? 1 : 0;   // F_GETFD
+        case 2: g_cloexec[tab][fd] = (arg & 1) ? 1 : 0; return 0;   // F_SETFD
+        case 3: return 0x8000; // F_GETFL (O_LARGEFILE only; callers just test bits)
+        case 4: return 0;    // F_SETFL
+        default: return -22; // EINVAL
+    }
+}
+static const e2_file_ops FS = {fs_open, fs_read, fs_write, fs_close, fs_stat,
+                               fs_opendir, fs_readdir, fs_clock, fs_pipe, fs_dup3,
+                               fs_fcntl};
+
+
+
+// --- processes -----------------------------------------------------------
+typedef struct {
+    procctx pc;   // must stay first: file ops cast ctx to procctx
+    e2_machine m;
+    int pid, ppid;
+    int alive;
+    int exit_status;
+    int stopped;
+    int used;
+} proc_t;
+static proc_t procs[16];
+static int g_next_pid = 2;
+static const char *g_self_path = NULL;
+
+static int proc_slot(void) {
+    for (int i = 1; i < 16; i++) if (!procs[i].used) return i;
+    return -1;
+}
+// fork copies the descriptor table; dup() gives the child independent closes
+// while pipe data stays shared, which is what the shell needs.
+static void fd_table_copy(int dst, int src) {
+    for (int i = 0; i < 64; i++) {
+        g_dirs[dst][i] = NULL;
+        g_cloexec[dst][i] = g_cloexec[src][i];
+        if (g_fds[src][i].used) {
+            g_fds[dst][i].used = 1;
+            g_fds[dst][i].host = g_fds[src][i].host;
+            host_ref(g_fds[dst][i].host);
+        } else {
+            g_fds[dst][i].used = 0;
+            g_fds[dst][i].host = -1;
+        }
+    }
+}
+
+static int run_proc(int idx);
+
+// A process's descriptors are released when it exits; without this the write
+// end of a pipe stays referenced forever and its reader never sees EOF.
+static void fd_table_release(int tab) {
+    for (int i = 0; i < 64; i++) {
+        if (!g_fds[tab][i].used) continue;
+        host_unref(g_fds[tab][i].host);
+        host_close_if_done(g_fds[tab][i].host);
+        g_fds[tab][i].used = 0;
+        g_fds[tab][i].host = -1;
+        g_cloexec[tab][i] = 0;
+        if (g_dirs[tab][i]) { closedir((DIR *)g_dirs[tab][i]); g_dirs[tab][i] = NULL; }
+    }
+}
+
+static void p_exit(void *ctx, int status) {
+    fd_table_release(((proc_t *)ctx)->pc.fdtab);
+    proc_t *p = ctx;
+    p->alive = 0;
+    p->exit_status = status;
+}
+
+static long p_fork(void *ctx, const e2_machine *parent) {
+    proc_t *self = ctx;
+    const int slot = proc_slot();
+    if (slot < 0) return -12;
+    proc_t *c = &procs[slot];
+    if (e2_machine_clone(parent, &c->m) != 0) return -12;
+    c->pc.fdtab = slot;
+    fd_table_copy(slot, self->pc.fdtab);
+    c->pid = g_next_pid++;
+    c->ppid = self->pid;
+    c->alive = 1;
+    c->used = 1;
+    c->exit_status = 0;
+    // The child's fork() returns 0; the parent's return value is written by the
+    // syscall layer after this callback returns.
+    c->m.cpu.x[0] = 0;
+    if (getenv("E2_TRACE_PROC"))
+        fprintf(stderr, "[fork] parent=%d child=%d pc=0x%llx sp=0x%llx regions=%u\n",
+                self->pid, c->pid, (unsigned long long)c->m.cpu.pc,
+                (unsigned long long)c->m.cpu.sp, c->m.mem.count);
+    return c->pid;
+}
+
+// Build a fresh address space for `path` and lay out argv/envp from the OLD
+// machine's memory, which is about to be discarded.
+static int p_execve(void *ctx, e2_machine *m, const char *path, uint64_t argv,
+                    uint64_t envp) {
+    (void)ctx;
+    char args[8][64]; int nargs = 0;
+    for (int i = 0; i < 8; i++) {
+        uint64_t ptr = 0;
+        const int rc = e2_memory_read(&m->mem, argv + (uint64_t)i * 8, &ptr, 8);
+        if (i == 0 && getenv("E2_TRACE_EXEC")) {
+            fprintf(stderr, "[exec] regions=%u sp=0x%llx\n", m->mem.count,
+                    (unsigned long long)m->cpu.sp);
+            for (unsigned k = 0; k < m->mem.count; k++)
+                fprintf(stderr, "   [%u] 0x%llx + 0x%llx prot=%d\n", k,
+                        (unsigned long long)m->mem.regions[k].base,
+                        (unsigned long long)m->mem.regions[k].size,
+                        m->mem.regions[k].prot);
+        }
+        if (getenv("E2_TRACE_EXEC"))
+            fprintf(stderr, "[exec] path=%s argv[i=%d] slot=0x%llx rc=%d ptr=0x%llx\n",
+                    path, i, (unsigned long long)(argv + (uint64_t)i * 8), rc,
+                    (unsigned long long)ptr);
+        if (rc != 0 || ptr == 0) break;
+        if (e2_memory_read(&m->mem, ptr, args[nargs], sizeof(args[0])) != 0) break;
+        if (getenv("E2_TRACE_EXEC")) fprintf(stderr, "[exec]   -> \"%s\"\n", args[nargs]);
+        nargs++;
+    }
+    char envs[8][96]; int nenv = 0;
+    for (int i = 0; i < 8; i++) {
+        uint64_t ptr = 0;
+        if (e2_memory_read(&m->mem, envp + (uint64_t)i * 8, &ptr, 8) != 0 || ptr == 0) break;
+        if (e2_memory_read(&m->mem, ptr, envs[nenv], sizeof(envs[0])) != 0) break;
+        nenv++;
+    }
+
+    // The image in the guest root is dynamically linked, which this backend
+    // cannot load yet. Real systems symlink applets to busybox, so substitute
+    // the static binary we are already running and let argv[0] pick the applet.
+    const char *load_path = g_self_path;
+    if (nargs == 0) {
+        const char *base = strrchr(path, '/');
+        snprintf(args[0], sizeof(args[0]), "%s", base ? base + 1 : path);
+        nargs = 1;
+    }
+    size_t sz; uint8_t *img = load_file(load_path, &sz);
+    if (!img) return -2;   // ENOENT
+
+    // execve closes every descriptor marked FD_CLOEXEC. A shell relies on this
+    // to drop the pipe end it does not want the child to keep open - without it
+    // a reader never sees EOF.
+    {
+        const int tab = ((const procctx *)ctx)->fdtab;
+        for (int i = 0; i < 64; i++) {
+            if (!g_fds[tab][i].used || !g_cloexec[tab][i]) continue;
+            host_unref(g_fds[tab][i].host);
+            host_close_if_done(g_fds[tab][i].host);
+            g_fds[tab][i].used = 0;
+            g_fds[tab][i].host = -1;
+            g_cloexec[tab][i] = 0;
+        }
+    }
+
+    // A fresh image needs a fresh address space *including the stack*, so go
+    // through e2_machine_init rather than rebuilding only the mapping table.
+    e2_memory_destroy(&m->mem);
+    e2_machine_init(m, 0, 1 << 20);
+
+    e2_loaded_image info = {0};
+    e2_load_result r = e2_load_elf_full(m, img, sz, true, &info);
+    free(img);
+    if (r != E2_LOAD_OK) return -8;   // ENOEXEC
+
+    uint64_t top = m->cpu.sp - 64, strs = top - 1024, cur = strs;
+    uint64_t argp[8], envp2[8];
+    for (int i = 0; i < nargs; i++) {
+        size_t l = strlen(args[i]) + 1;
+        e2_memory_write(&m->mem, cur, args[i], l);
+        argp[i] = cur; cur += (l + 15) & ~15ULL;
+    }
+    for (int i = 0; i < nenv; i++) {
+        size_t l = strlen(envs[i]) + 1;
+        e2_memory_write(&m->mem, cur, envs[i], l);
+        envp2[i] = cur; cur += (l + 15) & ~15ULL;
+    }
+    uint64_t sp = (strs - 512) & ~15ULL;
+    enum { AT_NULL=0, AT_PHDR=3, AT_PHENT=4, AT_PHNUM=5, AT_PAGESZ=6, AT_BASE=7, AT_ENTRY=9 };
+    uint64_t st[64]; int k = 0;
+    st[k++] = (uint64_t)nargs;
+    for (int i = 0; i < nargs; i++) st[k++] = argp[i];
+    st[k++] = 0;
+    for (int i = 0; i < nenv; i++) st[k++] = envp2[i];
+    st[k++] = 0;
+    st[k++] = AT_PAGESZ; st[k++] = 4096;
+    st[k++] = AT_PHDR;  st[k++] = info.phdr_addr;
+    st[k++] = AT_PHENT; st[k++] = info.phentsize;
+    st[k++] = AT_PHNUM; st[k++] = info.phnum;
+    st[k++] = AT_ENTRY; st[k++] = info.entry;
+    st[k++] = AT_BASE;  st[k++] = 0;
+    st[k++] = AT_NULL;  st[k++] = 0;
+    e2_memory_write(&m->mem, sp, st, (size_t)k * 8);
+    m->cpu.sp = sp;
+    return 0;
+}
+
+static long p_wait4(void *ctx, int pid, uint64_t status_ptr, int options) {
+    (void)options;
+    proc_t *self = ctx;
+    for (int i = 1; i < 16; i++) {
+        proc_t *c = &procs[i];
+        if (!c->used || c->ppid != self->pid) continue;
+        if (pid > 0 && c->pid != pid) continue;
+        if (c->alive) run_proc(i);
+        const int code = c->exit_status & 0xFF;
+        const uint32_t status = (uint32_t)(code << 8);
+        uint8_t *dst = e2_memory_host_ptr(&self->m.mem, status_ptr, 4, E2_PROT_WRITE);
+        if (dst) memcpy(dst, &status, 4);
+        if (getenv("E2_TRACE_WAIT"))
+            fprintf(stderr, "[wait] child=%d status=%d instr=%ld\n", c->pid, c->exit_status,
+                    (long)c->m.instructions);
+        const int reaped = c->pid;
+        fd_table_release(c->pc.fdtab);
+        e2_memory_destroy(&c->m.mem);
+        memset(c, 0, sizeof(*c));
+        return reaped;
+    }
+    return -10;   // ECHILD
+}
+
+static int g_fault = 0;
+static char g_reason[96];
+
+static int run_proc(int idx) {
+    proc_t *p = &procs[idx];
+    e2_syscall_env env = {.exit = p_exit, .files = &FS, .ctx = p,
+                          .fork = p_fork, .execve = p_execve, .wait4 = p_wait4};
+    if (getenv("E2_TRACE_WAIT"))
+        fprintf(stderr, "[run] pid=%d pc=0x%llx alive=%d\n", p->pid,
+                (unsigned long long)p->m.cpu.pc, p->alive);
+    long guard = 0;
+    while (p->alive) {
+        if (++guard > 40000000L) { snprintf(g_reason, sizeof(g_reason), "instruction cap"); g_fault = 1; break; }
+        if (getenv("E2_TRACE_GREP") && p->m.cpu.pc == 0x4c4408) {
+            static int ng = 0;
+            if (ng == 0) {
+                const uint64_t base = p->m.cpu.x[1];
+                fprintf(stderr, "[recs] base=0x%llx\n", (unsigned long long)base);
+                for (int k = 0; k < 10; k++) {
+                    uint32_t w = 0;
+                    if (e2_memory_read(&p->m.mem, base + (uint64_t)k * 56, &w, 4) != 0) {
+                        fprintf(stderr, "   [+%d] unreadable\n", k * 56);
+                        break;
+                    }
+                    fprintf(stderr, "   [+%3d] w3=0x%08x bit31=%u\n", k * 56, w, w >> 31);
+                }
+            }
+            if (ng < 8) ng++;
+        }
+        e2_status st = e2_step(&p->m);
+        if (st == E2_SYSCALL) {
+            const uint64_t pn = p->m.cpu.x[8];
+            if (getenv("E2_TRACE_PIPE") && (pn == 23 || pn == 24 || pn == 59 || pn == 220 || pn == 260 || pn == 221))
+                fprintf(stderr, "[p%d] sys %llu a0=%llu a1=%llu a2=%llu\n", p->pid,
+                        (unsigned long long)pn, (unsigned long long)p->m.cpu.x[0],
+                        (unsigned long long)p->m.cpu.x[1], (unsigned long long)p->m.cpu.x[2]);
+            st = e2_service_syscall(&p->m, &env);
+            const long long a0_before = (long long)p->m.cpu.x[0];
+            (void)a0_before;
+            if (getenv("E2_TRACE_ALL"))
+                fprintf(stderr, "[p%d] sys %llu -> %lld\n", p->pid,
+                        (unsigned long long)pn, (long long)p->m.cpu.x[0]);
+            if (getenv("E2_TRACE_RET") && (long long)p->m.cpu.x[0] < 0)
+                fprintf(stderr, "[p%d] sys %llu -> %lld\n", p->pid,
+                        (unsigned long long)pn, (long long)p->m.cpu.x[0]);
+            if (st == E2_HALTED) { p->alive = 0; break; }
+            if (st != E2_OK) {
+                snprintf(g_reason, sizeof(g_reason), "%s pid=%d pc=0x%llx",
+                         p->m.ctx.reason ? p->m.ctx.reason : "?", p->pid,
+                         (unsigned long long)p->m.cpu.pc);
+                g_fault = 1;
+                if (getenv("E2_TRACE_GREP")) {
+                    fprintf(stderr, "[fault] pid=%d regions=%u\n", p->pid, p->m.mem.count);
+                    for (unsigned k = 0; k < p->m.mem.count; k++)
+                        fprintf(stderr, "   [%u] 0x%llx + 0x%llx\n", k,
+                                (unsigned long long)p->m.mem.regions[k].base,
+                                (unsigned long long)p->m.mem.regions[k].size);
+                }
+                break;
+            }
+            continue;
+        }
+        if (st != E2_OK) {
+            snprintf(g_reason, sizeof(g_reason), "%s pid=%d pc=0x%llx",
+                     p->m.ctx.reason ? p->m.ctx.reason : "?", p->pid,
+                     (unsigned long long)p->m.cpu.pc);
+            g_fault = 1;
+            if (getenv("E2_TRACE_GREP")) {
+                fprintf(stderr, "[fault] pid=%d regions=%u\n", p->pid, p->m.mem.count);
+                for (unsigned k = 0; k < p->m.mem.count; k++)
+                    fprintf(stderr, "   [%u] 0x%llx + 0x%llx\n", k,
+                            (unsigned long long)p->m.mem.regions[k].base,
+                            (unsigned long long)p->m.mem.regions[k].size);
+            }
+            break;
+        }
+    }
+    return p->exit_status;
+}
+
+int main(int argc, char **argv) {
+    const char *path = argc > 1 ? argv[1] : "/tmp/bbs/bin/busybox.static";
+    g_self_path = path;
+    // busybox picks its applet from argv[0]'s basename, so present it as "busybox"
+    // and pass the real arguments after it.
+    const char *ga[32]; int nargs = 0;
+    ga[nargs++] = "busybox";
+    for (int i = 2; i < argc && nargs < 30; i++) ga[nargs++] = argv[i];
+    size_t size; uint8_t *img = load_file(path, &size);
+    if (!img) { fprintf(stderr, "cannot load %s\n", path); return 1; }
+
+    fd_init();
+    e2_machine m; e2_machine_init(&m, 0, 1 << 20);
+    e2_loaded_image info = {0};
+    e2_load_result r = e2_load_elf_full(&m, img, size, true, &info);
+    if (r != E2_LOAD_OK) { fprintf(stderr, "load failed: %s\n", e2_load_result_name(r)); return 1; }
+
+    // Lay argv strings at the top of the stack, pointer array below.
+    uint64_t top = m.cpu.sp - 64, strs = top - 1024;
+    uint64_t argp[32]; int n = 0;
+    uint64_t cur = strs;
+    for (int i = 0; i < nargs && n < 30; i++) {
+        size_t l = strlen(ga[i]) + 1;
+        e2_memory_write(&m.mem, cur, ga[i], l);
+        argp[n++] = cur; cur += (l + 15) & ~15ULL;
+    }
+    uint64_t sp = (strs - 512) & ~15ULL;
+    enum { AT_NULL=0, AT_PHDR=3, AT_PHENT=4, AT_PHNUM=5, AT_PAGESZ=6, AT_BASE=7, AT_ENTRY=9 };
+    uint64_t stack[64]; int k = 0;
+    stack[k++] = (uint64_t)n;
+    for (int i = 0; i < n; i++) stack[k++] = argp[i];
+    stack[k++] = 0;   // argv terminator
+    // Minimal environment; envp must be a NULL-terminated pointer array on the stack.
+    {
+        const char *env[] = {"PATH=/bin:/sbin:/usr/bin:/usr/sbin", "HOME=/root",
+                             "TERM=xterm", "PWD=/", NULL};
+        uint64_t ev = cur;
+        for (int i = 0; env[i]; i++) {
+            size_t l = strlen(env[i]) + 1;
+            e2_memory_write(&m.mem, ev, env[i], l);
+            stack[k++] = ev;
+            ev += (l + 15) & ~15ULL;
+        }
+    }
+    stack[k++] = 0;   // envp terminator
+    stack[k++] = AT_PAGESZ; stack[k++] = 4096;
+    stack[k++] = AT_PHDR;  stack[k++] = info.phdr_addr;
+    stack[k++] = AT_PHENT; stack[k++] = info.phentsize;
+    stack[k++] = AT_PHNUM; stack[k++] = info.phnum;
+    stack[k++] = AT_ENTRY; stack[k++] = info.entry;
+    stack[k++] = AT_BASE;  stack[k++] = 0;
+    stack[k++] = AT_NULL;  stack[k++] = 0;
+    e2_memory_write(&m.mem, sp, stack, (size_t)k * 8);
+    m.cpu.sp = sp;
+
+    // Hand the loaded image to the process table and run it as pid 1.
+    procs[1].used = 1;
+    fd_table_copy(1, 0);
+    procs[1].pc.fdtab = 1;
+    procs[1].pid = 1;
+    procs[1].ppid = 0;
+    procs[1].alive = 1;
+    procs[1].m = m;
+    const int status = run_proc(1);
+    (void)status;
+    printf("\n[exit %d] instructions=%ld%s%s\n", procs[1].exit_status,
+           (long)procs[1].m.instructions,
+           g_fault ? " FAULT reason=" : "", g_fault ? g_reason : "");
+    return 0;
+}
