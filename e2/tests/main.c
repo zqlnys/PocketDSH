@@ -1393,6 +1393,55 @@ static void test_scalar_immediates(void) {
         e2_memory_destroy(&m.mem);
     }
 
+    {
+        // 128-bit load and store. Splitting these into two 8-byte halves is fine
+        // only if both halves are written; the regex engine stores a character
+        // class this way and loses half of it when they are not.
+        e2_machine m;
+        e2_machine_init(&m, 0, 1 << 20);
+        const uint64_t code = 0x30000000ULL;
+        const uint64_t data = 0x31000000ULL;
+        e2_memory_map_at(&m.mem, code, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+        e2_memory_map_at(&m.mem, data, 0x2000, E2_PROT_READ | E2_PROT_WRITE);
+
+        uint32_t insn = 0x3D800020u;   // str q0, [x1]
+        e2_memory_write(&m.mem, code, &insn, 4);
+        m.cpu.pc = code;
+        m.cpu.x[1] = data;
+        m.cpu.v[0][0] = 0x0123456789ABCDEFULL;
+        m.cpu.v[0][1] = 0xFEDCBA9876543210ULL;
+        e2_step(&m);
+        uint64_t lo = 0, hi = 0;
+        e2_memory_read(&m.mem, data, &lo, 8);
+        e2_memory_read(&m.mem, data + 8, &hi, 8);
+        CHECK(lo == 0x0123456789ABCDEFULL, "str q0 writes the low half");
+        CHECK(hi == 0xFEDCBA9876543210ULL, "str q0 writes the high half");
+
+        // The same through an offset form, which takes a different decoder path.
+        uint32_t off_insn = 0x3D800C20u;   // str q0, [x1, #48]
+        e2_memory_write(&m.mem, code, &off_insn, 4);
+        m.cpu.pc = code;
+        m.cpu.x[1] = data;
+        e2_step(&m);
+        e2_memory_read(&m.mem, data + 48, &lo, 8);
+        e2_memory_read(&m.mem, data + 56, &hi, 8);
+        CHECK(lo == 0x0123456789ABCDEFULL && hi == 0xFEDCBA9876543210ULL,
+              "str q0, [x1, #48] writes both halves");
+
+        // And the load must bring both halves back.
+        uint32_t ld_insn = 0x3DC00C20u;    // ldr q0, [x1, #48]
+        e2_memory_write(&m.mem, code, &ld_insn, 4);
+        m.cpu.pc = code;
+        m.cpu.x[1] = data;
+        m.cpu.v[0][0] = 0;
+        m.cpu.v[0][1] = 0;
+        e2_step(&m);
+        CHECK(m.cpu.v[0][0] == 0x0123456789ABCDEFULL &&
+              m.cpu.v[0][1] == 0xFEDCBA9876543210ULL,
+              "ldr q0, [x1, #48] reads both halves");
+        e2_memory_destroy(&m.mem);
+    }
+
     // UMOV moves a vector element into a general register. musl's memset does
     // `mov x1, v0.d[0]` to materialise the replicated byte pattern, so a broken
     // UMOV silently turned every memset into a zero fill. It used to decode as
