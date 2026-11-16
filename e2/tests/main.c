@@ -1442,6 +1442,37 @@ static void test_scalar_immediates(void) {
         e2_memory_destroy(&m.mem);
     }
 
+    {
+        // The two instructions the regex engine uses to build a 64-bit pair from
+        // two 32-bit arguments. `mov v0.s[1], w2` then `sshll v0.2d, v0.2s, #0`
+        // must leave lane 1 of the widened register holding w2's sign extension.
+        e2_machine m;
+        e2_machine_init(&m, 0, 1 << 20);
+        const uint64_t at = 0x30000000ULL;
+        e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+
+        uint32_t insn = 0x4E0C1C40u;   // mov v0.s[1], w2
+        e2_memory_write(&m.mem, at, &insn, 4);
+        m.cpu.pc = at;
+        m.cpu.v[0][0] = 0x1111111122222222ULL;   // lane0 = 0x22222222, lane1 = 0x11111111
+        m.cpu.x[2] = 0x61;
+        e2_step(&m);
+        CHECK(m.cpu.v[0][0] == 0x0000006122222222ULL,
+              "mov v0.s[1], w2 writes lane 1 and leaves lane 0 alone");
+
+        insn = 0x0F20A400u;            // sshll v0.2d, v0.2s, #0
+        e2_memory_write(&m.mem, at, &insn, 4);
+        m.cpu.pc = at;
+        m.cpu.v[0][0] = 0x0000006100000022ULL;   // lane0 = 0x22, lane1 = 0x61
+        m.cpu.v[0][1] = 0;
+        e2_step(&m);
+        CHECK(m.cpu.v[0][0] == 0x0000000000000022ULL, "sshll widens lane 0 into the low half");
+        fprintf(stderr, "[sshll] got hi=0x%llx lo=0x%llx\n",
+                (unsigned long long)m.cpu.v[0][1], (unsigned long long)m.cpu.v[0][0]);
+        CHECK(m.cpu.v[0][1] == 0x0000000000000061ULL, "sshll widens lane 1 into the high half");
+        e2_memory_destroy(&m.mem);
+    }
+
     // UMOV moves a vector element into a general register. musl's memset does
     // `mov x1, v0.d[0]` to materialise the replicated byte pattern, so a broken
     // UMOV silently turned every memset into a zero fill. It used to decode as

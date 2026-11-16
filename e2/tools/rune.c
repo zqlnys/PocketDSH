@@ -1321,6 +1321,15 @@ static int run_proc(int idx) {
                         (unsigned long long)(p->m.cpu.pc + (int64_t)imm * 4));
             }
         }
+        if (getenv("E2_TRACE_ARG5") && p->m.cpu.pc == 0x4c4674) {
+            static int n2 = 0;
+            if (++n2 <= 3)
+                fprintf(stderr, "[arg] x0=0x%llx x1=0x%llx x2=0x%llx x3=0x%llx\n",
+                        (unsigned long long)p->m.cpu.x[0],
+                        (unsigned long long)p->m.cpu.x[1],
+                        (unsigned long long)p->m.cpu.x[2],
+                        (unsigned long long)p->m.cpu.x[3]);
+        }
         const uint64_t pre_pc = p->m.cpu.pc;
         // Shadow call stack. Chasing a bad argument by re-running with a probe
         // one frame up, over and over, was the slowest part of the last few

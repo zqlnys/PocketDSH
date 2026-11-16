@@ -1415,11 +1415,20 @@ not_a_shift:;
         const unsigned shift = ((immh << 3) | immb) - esize;
         const unsigned lanes = 64u / esize;
         const uint64_t emask = (esize >= 64) ? ~0ULL : ((1ULL << esize) - 1);
+        // Read the whole source before writing anything: the destination is
+        // frequently the same register as the source (`sshll v0.2d, v0.2s` is
+        // the common form), and the first iteration would otherwise clobber the
+        // value the second one still needs. That cost every widened high half,
+        // which is how the regex engine lost half of each character class.
+        const uint64_t src_lo = cpu->v[rn2][0];
+        const uint64_t src_hi = cpu->v[rn2][1];
         // Q selects the upper half of the source; every destination lane is
         // twice as wide as its source lane.
         for (unsigned i = 0; i < lanes; i++) {
             const unsigned src_idx = (q ? lanes : 0u) + i;
-            uint64_t v = (cpu->v[rn2][0] >> (src_idx * esize)) & emask;
+            const unsigned src_bit = src_idx * esize;
+            const uint64_t src_word = (src_bit >= 64) ? src_hi : src_lo;
+            uint64_t v = (src_word >> (src_bit % 64)) & emask;
             if (!is_unsigned && (v & (1ULL << (esize - 1))) != 0) {
                 v |= ~emask;   // sign-extend to 64 bits before shifting
             }
