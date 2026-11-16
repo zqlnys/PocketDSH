@@ -30,6 +30,18 @@ while IFS= read -r cmd; do
         pass=$((pass + 1))
     fi
 done <<'EOF'
+printf 'c\na\nb\na\n' > /tmp/m3p; sort /tmp/m3p | uniq -c
+printf 'c\na\nb\na\n' > /tmp/m3p; sort /tmp/m3p | uniq -d
+printf 'c\na\nb\na\n' > /tmp/m3p; cat /tmp/m3p | grep -c a
+printf 'c\na\nb\na\n' > /tmp/m3p; cat /tmp/m3p | head -2 | tail -1
+seq 10 | paste -sd-
+seq 10 | awk '{s+=$1} END{print s/NR}'
+seq 5 | xargs echo
+echo 'a b c' | tr ' ' '\n' | wc -l
+seq 6 | sed -n '2,4p' | wc -l
+printf 'c\na\nb\na\n' > /tmp/m3p; cat /tmp/m3p | sort -u | wc -l
+yes | head -100 | wc -l
+seq 3 | cat; echo $?
 (exit 3); echo $?
 sh -c "exit 3"; echo $?
 /bin/false; echo $?
