@@ -1,7 +1,5 @@
 #include "e2/exec.h"
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 // This interpreter is written from the ARM Architecture Reference Manual and the
