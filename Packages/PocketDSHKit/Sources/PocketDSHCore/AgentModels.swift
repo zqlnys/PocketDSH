@@ -266,4 +266,8 @@ public enum ToolNames {
     /// agent how to do a kind of task. Listing and loading share one tool so the
     /// model does not have to guess whether the directory is empty.
     public static let useSkill = "use_skill"
+    /// Runs a self-contained sub-task with its own conversation and returns only
+    /// the final answer, so intermediate reasoning never enters the parent's
+    /// context.
+    public static let subagent = "subagent"
 }

@@ -63,6 +63,11 @@ final class AgentRunner: ObservableObject {
 
     private var runTask: Task<Void, Never>?
     private var cancelRequested = false
+    /// How many sub-agents deep this runner is. A sub-agent may delegate further,
+    /// but only so far: without a ceiling a model that keeps delegating would
+    /// recurse until the process dies, and the failure would look like a hang.
+    private var subagentDepth = 0
+    static let maxSubagentDepth = 2
 
     init(
         workspace: WorkspaceFileSystem,
@@ -139,7 +144,8 @@ final class AgentRunner: ObservableObject {
         save()
     }
 
-    private func runLoop(apiKey: String) async {
+    @discardableResult
+    private func runLoop(apiKey: String) async -> String? {
         defer {
             isRunning = false
             currentStep = 0
@@ -194,7 +200,7 @@ final class AgentRunner: ObservableObject {
                     phase = .finished
                     appendEvent(.status, title: "Task complete", detail: "The model returned a final answer.")
                     save()
-                    return
+                    return assistant.content ?? ""
                 }
 
                 for call in toolCalls {
@@ -206,10 +212,18 @@ final class AgentRunner: ObservableObject {
                         detail: call.function.arguments
                     )
 
-                    let result = await toolExecutor.execute(
-                        name: call.function.name,
-                        argumentsJSON: call.function.arguments
-                    )
+                    let result: ToolExecutionResult
+                    if call.function.name == ToolNames.subagent {
+                        result = await runSubtaskTool(
+                            argumentsJSON: call.function.arguments,
+                            apiKey: apiKey
+                        )
+                    } else {
+                        result = await toolExecutor.execute(
+                            name: call.function.name,
+                            argumentsJSON: call.function.arguments
+                        )
+                    }
                     try Task.checkCancellation()
 
                     messages.append(
@@ -248,6 +262,59 @@ final class AgentRunner: ObservableObject {
             appendEvent(.error, title: "Agent error", detail: error.localizedDescription)
             save()
         }
+        return nil
+    }
+
+    /// Run one `subagent` tool call.
+    ///
+    /// The child gets its own conversation and its own conversation file, so
+    /// nothing it reasons through leaks into the parent's context - only the
+    /// answer comes back. It shares the tool executor, so a sub-agent's edits
+    /// and plan updates are the same ones the workspace already tracks.
+    private func runSubtaskTool(argumentsJSON: String, apiKey: String) async -> ToolExecutionResult {
+        guard subagentDepth < Self.maxSubagentDepth else {
+            return .failure(
+                "subagent nesting limit reached (\(Self.maxSubagentDepth)). Do this work directly instead."
+            )
+        }
+        guard let data = argumentsJSON.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let prompt = (object["prompt"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !prompt.isEmpty
+        else {
+            return .failure("subagent requires a non-empty prompt.")
+        }
+        let label = (object["label"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        appendEvent(.status, title: "Sub-agent started", detail: label ?? String(prompt.prefix(120)))
+
+        let tempRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("subagent-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let child = AgentRunner(
+            workspace: workspace,
+            toolExecutor: toolExecutor,
+            pluginRuntime: pluginRuntime,
+            keychain: keychain,
+            settings: settings,
+            projectName: projectName,
+            metadataRoot: tempRoot
+        )
+        child.subagentDepth = subagentDepth + 1
+        child.messages.append(LLMMessage(role: .user, content: prompt))
+        child.isRunning = true
+        let answer = await child.runLoop(apiKey: apiKey)
+
+        appendEvent(
+            .status,
+            title: "Sub-agent finished",
+            detail: label ?? String(prompt.prefix(120))
+        )
+        guard let answer, !answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return .failure("The sub-agent did not return an answer. Try giving it a narrower task.")
+        }
+        return .success(answer)
     }
 
     /// The conversation as Markdown, for sharing or keeping.

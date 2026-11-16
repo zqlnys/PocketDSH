@@ -315,6 +315,23 @@ final class PocketDSHTests: XCTestCase {
         XCTAssertEqual(name, "plugin__com_example_workspace_inspector__workspace_report")
         XCTAssertTrue(name.range(of: "^[A-Za-z0-9_-]+$", options: .regularExpression) != nil)
     }
+
+    func testSubagentIsDeclaredWithARequiredPrompt() {
+        let spec = ToolCatalog.specs.first { $0.function.name == ToolNames.subagent }
+        XCTAssertNotNil(spec, "subagent must be offered to the model")
+        let parameters = spec?.function.parameters.objectValue
+        XCTAssertEqual(parameters?["required"]?.arrayValue, [.string("prompt")])
+        XCTAssertNotNil(parameters?["properties"]?.objectValue?["prompt"])
+    }
+
+    func testSubagentIsExplainedInTheSystemPrompt() {
+        let prompt = ToolCatalog.systemPrompt(projectName: "Demo")
+        XCTAssertTrue(prompt.contains("subagent"))
+        // The prompt is a numbered list; a repeated number quietly reorders the
+        // guidance, so the last item must be the highest number.
+        XCTAssertTrue(prompt.contains("11. Report changed paths"))
+        XCTAssertFalse(prompt.contains("9. Report changed paths"))
+    }
 }
 
 final class PluginLifecycleTests: XCTestCase {

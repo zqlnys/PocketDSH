@@ -149,6 +149,15 @@ enum ToolCatalog {
             required: ["query"]
         ),
         tool(
+            name: ToolNames.subagent,
+            description: "Run a self-contained sub-task in its own conversation and return only its final answer. The sub-agent cannot see this conversation, so state everything it needs in the prompt. Use it to keep intermediate reasoning out of the main context.",
+            properties: [
+                "prompt": property("string", "A complete, self-contained instruction for the sub-agent"),
+                "label": property("string", "Short name for this sub-task, shown in the timeline")
+            ],
+            required: ["prompt"]
+        ),
+        tool(
             name: ToolNames.runLinux,
             description: "Experimental Tier C: run one command in the bundled Alpine Linux rootfs through the embedded iSH interpreter. No JIT. It cannot see the project workspace yet; use file tools for project files. One command per app launch.",
             properties: [
@@ -183,7 +192,8 @@ enum ToolCatalog {
         7. When a task produces a file worth opening, mark it with present so it appears as a card above the conversation. Present files that already exist; the tool does not create them.
         8. Use fetch_url to read documentation the workspace does not contain. It performs a plain GET and reduces HTML to text; it cannot write to the workspace, and results are truncated, so prefer the file tools for anything already on the device.
         9. Use web_search when you do not know which page holds the answer. It returns titles, URLs and snippets; follow up with fetch_url on the one worth reading. It reaches the public web only - nothing on this device and nothing behind a login.
-        9. Report changed paths, real tool results, and anything you could not verify.
+        10. Use subagent for a self-contained piece of work whose intermediate steps you do not need to see - a broad search, an independent check, a focused edit. It runs with its own conversation and returns only the final answer, so the parent context stays small. Give it everything it needs: it cannot see this conversation.
+        11. Report changed paths, real tool results, and anything you could not verify.
 
         Existing files require overwrite=true in write_file. Every overwrite creates a recovery backup and a diff. Never request a destructive operation just to make a build pass. If a tool fails, inspect the error and try a different safe approach. Do not invent tool output.
 

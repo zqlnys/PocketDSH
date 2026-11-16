@@ -40,7 +40,8 @@
 | MCP 客户端 | 未实现；需要独立传输与权限模型 | 未实现 |
 | DSH session log 格式 | 自有 JSON 格式 | 未实现 |
 | DSH profile / bundle 配置 | 自有 SwiftUI/AppState | 不兼容 |
-| 子 Agent / Agent Team | 未实现 | 未实现 |
+| 子 Agent | `subagent` 工具：独立会话、只回传最终答案、最多嵌套 2 层 | **已实现** |
+| Agent Team（多 Agent 协作）| 未实现 | 未实现 |
 
 ## App 内 Linux 后端（E2）
 
@@ -72,7 +73,8 @@ E2 是自写的 aarch64 解释器 + syscall 层，不复用 iSH 的 GPL 代码�
 | `web_fetch` | 有 `fetch_url` | 纯 GET，HTML 转文本；无渲染、无 POST、无 cookie |
 | `web_search` | **已实现** | 走 DuckDuckGo 的 HTML 端点，无需密钥；返回标题/URL/摘要，再用 `fetch_url` 取正文 |
 | `todo_write` | 有 `todo_write` | 整表覆盖式提交；对话上方显示进度条与步骤 |
-| `subagent` / 并行委派 | **缺失** | 单 Agent 串行执行 |
+| `subagent` | 有 `subagent` | 独立会话、只回传最终答案；最多嵌套 2 层，防止无限递归；子 Agent 与父共享工具状态，但看不到父的对话 |
+| 并行委派 | **缺失** | 子 Agent 串行执行，不并行 |
 | `skill` 技能目录 | 有 `use_skill` | 工作区 `skills/*.md`；无参列出、给名加载 |
 | `bash` | 部分 | `run_linux` 依赖 E2，M4 未完成 |
 | `grep` 正则 | 部分 | `search_files` 是字面搜索，非正则 |
