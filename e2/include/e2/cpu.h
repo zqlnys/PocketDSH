@@ -31,8 +31,32 @@ typedef struct {
     uint64_t sp;         ///< stack pointer (separate from x31)
     uint64_t pc;         ///< program counter
     uint64_t tpidr_el0;  ///< thread pointer, used for TLS
+    uint64_t v[32][2];   ///< SIMD/FP registers, 128 bits each as two halves
     e2_flags flags;
 } e2_cpu;
+
+// SIMD helpers. Vector registers hold 128 bits; element accessors keep the
+// instruction implementations readable.
+
+/// Reads lane `index` of `width` bits (8/16/32/64) from a vector register.
+static inline uint64_t e2_v_get(const e2_cpu *cpu, unsigned reg, unsigned width, unsigned index) {
+    const unsigned per_half = 64 / width;
+    const unsigned half = index / per_half;
+    const unsigned slot = index % per_half;
+    const uint64_t mask = (width == 64) ? ~0ULL : ((1ULL << width) - 1);
+    return (cpu->v[reg][half] >> (slot * width)) & mask;
+}
+
+/// Writes lane `index` of `width` bits into a vector register.
+static inline void e2_v_set(e2_cpu *cpu, unsigned reg, unsigned width, unsigned index,
+                            uint64_t value) {
+    const unsigned per_half = 64 / width;
+    const unsigned half = index / per_half;
+    const unsigned slot = index % per_half;
+    const uint64_t mask = (width == 64) ? ~0ULL : ((1ULL << width) - 1);
+    const unsigned shift = slot * width;
+    cpu->v[reg][half] = (cpu->v[reg][half] & ~(mask << shift)) | ((value & mask) << shift);
+}
 
 /// Result of one step of execution.
 typedef enum {

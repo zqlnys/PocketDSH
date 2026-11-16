@@ -276,7 +276,7 @@ e2_status e2_step(e2_machine *machine) {
     }
 
     // --- LDP / STP (signed offset, pre-index, post-index) ---
-    if ((insn & 0x3A000000u) == 0x28000000u) {
+    if ((insn & 0x3A000000u) == 0x28000000u && BIT(insn, 26) == 0) {
         const bool is_load = BIT(insn, 22) != 0;
         const unsigned mode = BITS(insn, 24, 23);  // 01 post, 10 offset, 11 pre
         const int64_t imm7 = (int64_t)sign_extend(BITS(insn, 21, 15), 7);
@@ -321,6 +321,124 @@ e2_status e2_step(e2_machine *machine) {
             e2_write_sp(cpu, rn2, (uint64_t)((int64_t)base + offset));
         } else if (mode == 3) {
             e2_write_sp(cpu, rn2, base);
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
+    // --- SIMD: DUP (general) ---
+    // `dup v0.16b, w1` is the first instruction of musl's memset, so this is the
+    // entry point for vector support.
+    if ((insn & 0x9FF80C00u) == 0x0E000C00u) {
+        const bool q = BIT(insn, 30) != 0;
+        const unsigned imm5 = BITS(insn, 20, 16);
+        const unsigned rn_v = BITS(insn, 9, 5);
+        const unsigned rd_v = BITS(insn, 4, 0);
+
+        unsigned width;
+        if (imm5 & 1u) {
+            width = 8;
+        } else if (imm5 & 2u) {
+            width = 16;
+        } else if (imm5 & 4u) {
+            width = 32;
+        } else {
+            width = 64;
+        }
+        const uint64_t element = width == 64 ? cpu->x[rn_v] : cpu->x[rn_v] & ((1ULL << width) - 1);
+        const unsigned lanes = (q ? 128u : 64u) / width;
+
+        cpu->v[rd_v][0] = 0;
+        cpu->v[rd_v][1] = 0;
+        for (unsigned i = 0; i < lanes; i++) {
+            e2_v_set(cpu, rd_v, width, i, element);
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
+    // --- SIMD: LDR / STR (unsigned immediate) ---
+    if ((insn & 0x3F000000u) == 0x3D000000u) {
+        const bool is_load = BIT(insn, 22) != 0;
+        const unsigned size_code = BITS(insn, 31, 30);
+        const unsigned q = BIT(insn, 23);
+        const unsigned bytes = (size_code == 0 ? 16u : (1u << size_code)) * (q ? 2u : 1u);
+        const uint64_t offset = (uint64_t)BITS(insn, 21, 10) * bytes;
+        const uint64_t addr = e2_read_sp(cpu, rn) + offset;
+        const unsigned rt_v = BITS(insn, 4, 0);
+
+        if (is_load) {
+            if (e2_memory_read(&machine->mem, addr, &cpu->v[rt_v][0], bytes > 8 ? 8 : bytes) != 0) {
+                machine->ctx.reason = "simd load outside mapped memory";
+                return E2_FAULT;
+            }
+            if (bytes > 8 && e2_memory_read(&machine->mem, addr + 8, &cpu->v[rt_v][1], 8) != 0) {
+                machine->ctx.reason = "simd load outside mapped memory";
+                return E2_FAULT;
+            }
+        } else {
+            if (e2_memory_write(&machine->mem, addr, &cpu->v[rt_v][0], bytes > 8 ? 8 : bytes) != 0) {
+                machine->ctx.reason = "simd store outside mapped memory";
+                return E2_FAULT;
+            }
+            if (bytes > 8 && e2_memory_write(&machine->mem, addr + 8, &cpu->v[rt_v][1], 8) != 0) {
+                machine->ctx.reason = "simd store outside mapped memory";
+                return E2_FAULT;
+            }
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
+    // --- SIMD: LDP / STP (V=1 shares the encoding group with the integer pair) ---
+    if ((insn & 0x3A000000u) == 0x28000000u && BIT(insn, 26) != 0) {
+        const bool is_load = BIT(insn, 22) != 0;
+        const unsigned opc = BITS(insn, 31, 30);   // 00=S, 01=D, 10=Q
+        const unsigned mode = BITS(insn, 24, 23);  // 01 post, 10 offset, 11 pre
+        const unsigned scale = (opc == 2) ? 16u : (4u << opc);
+        const int64_t imm7 = (int64_t)sign_extend(BITS(insn, 21, 15), 7);
+        const int64_t offset = imm7 * (int64_t)scale;
+        const unsigned rt_v = BITS(insn, 4, 0);
+        const unsigned rn_v = BITS(insn, 9, 5);
+        const unsigned rt2_v = BITS(insn, 14, 10);
+
+        uint64_t base = e2_read_sp(cpu, rn_v);
+        uint64_t addr;
+        if (mode == 1) {
+            addr = base;
+        } else if (mode == 3) {
+            base = (uint64_t)((int64_t)base + offset);
+            addr = base;
+        } else {
+            addr = (uint64_t)((int64_t)base + offset);
+        }
+
+        const size_t half = scale > 8 ? 8 : scale;
+        if (is_load) {
+            if (e2_memory_read(&machine->mem, addr, &cpu->v[rt_v][0], half) != 0 ||
+                e2_memory_read(&machine->mem, addr + half, &cpu->v[rt_v][1], half) != 0 ||
+                e2_memory_read(&machine->mem, addr + scale, &cpu->v[rt2_v][0], half) != 0 ||
+                e2_memory_read(&machine->mem, addr + scale + half, &cpu->v[rt2_v][1], half) != 0) {
+                machine->ctx.reason = "simd ldp outside mapped memory";
+                return E2_FAULT;
+            }
+        } else {
+            if (e2_memory_write(&machine->mem, addr, &cpu->v[rt_v][0], half) != 0 ||
+                e2_memory_write(&machine->mem, addr + half, &cpu->v[rt_v][1], half) != 0 ||
+                e2_memory_write(&machine->mem, addr + scale, &cpu->v[rt2_v][0], half) != 0 ||
+                e2_memory_write(&machine->mem, addr + scale + half, &cpu->v[rt2_v][1], half) != 0) {
+                machine->ctx.reason = "simd stp outside mapped memory";
+                return E2_FAULT;
+            }
+        }
+
+        if (mode == 1) {
+            e2_write_sp(cpu, rn_v, (uint64_t)((int64_t)base + offset));
+        } else if (mode == 3) {
+            e2_write_sp(cpu, rn_v, base);
         }
         cpu->pc = next_pc;
         machine->instructions++;
@@ -387,6 +505,47 @@ e2_status e2_step(e2_machine *machine) {
         const uint64_t offset = (uint64_t)BITS(insn, 21, 10) * (1u << size_code);
         const uint64_t addr = cpu->x[rn] + offset;
         const unsigned bytes = 1u << size_code;
+
+        if (is_load) {
+            uint64_t value = 0;
+            if (e2_memory_read(&machine->mem, addr, &value, bytes) != 0) {
+                machine->ctx.reason = "load outside mapped memory";
+                return E2_FAULT;
+            }
+            write_reg(cpu, rd, value, size_code == 3);
+        } else {
+            uint64_t value = cpu->x[rd];
+            if (e2_memory_write(&machine->mem, addr, &value, bytes) != 0) {
+                machine->ctx.reason = "store outside mapped memory";
+                return E2_FAULT;
+            }
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
+    // --- LDR / STR (register offset) ---
+    // Byte-at-a-time loops over a pointer index compile to this form, so it shows
+    // up immediately in any libc string routine.
+    if ((insn & 0x3B200C00u) == 0x38200800u) {
+        const bool is_load = BIT(insn, 22) != 0;
+        const unsigned size_code = BITS(insn, 31, 30);
+        const unsigned rm = BITS(insn, 20, 16);
+        const unsigned option = BITS(insn, 15, 13);
+        const bool scale = BIT(insn, 12) != 0;
+        const unsigned bytes = 1u << size_code;
+
+        uint64_t offset;
+        switch (option) {
+            case 0x2: offset = cpu->x[rm] & 0xFFFFFFFFu; break;                  // UXTW
+            case 0x6: offset = (uint64_t)(int64_t)(int32_t)(cpu->x[rm] & 0xFFFFFFFFu); break;  // SXTW
+            default: offset = cpu->x[rm]; break;                                  // LSL / SXTX
+        }
+        if (scale) {
+            offset <<= size_code;
+        }
+        const uint64_t addr = e2_read_sp(cpu, rn) + offset;
 
         if (is_load) {
             uint64_t value = 0;
