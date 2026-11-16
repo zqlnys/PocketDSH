@@ -97,7 +97,7 @@ Linux pocketdsh 4.20.69-ish SUPER AWESOME ... i686 Linux
 
 ![Tier C probe](tierc/tierc-probe.png)
 
-已知问题：emulated shell 在命令输出后仍保持运行，probe 使用 3 秒观察窗口读取输出。接入主 App 前需要实现持久 shell 的命令/退出协议，不能把 probe 的固定等待窗口当成正式工具。主 App 目前仍未链接 iSH，Tier C 仍不可用。
+`TierCProbe` 是早期的最小复现工程，使用固定 3 秒观察窗口。主 App 已经不再走这条路径：它链接同一批静态库，并用持久 shell（pipe + sentinel）替代固定窗口，详见 [PERSISTENT-SHELL.md](PERSISTENT-SHELL.md)。
 
 持久 shell 原型（run `43731872117`）未稳定启动，已回退到已验证的一次性 probe；shell 生命周期仍是下一个阻塞点。
 

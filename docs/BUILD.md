@@ -28,9 +28,9 @@
 | iOS 模拟器测试 | PASS | 8/8，`** TEST SUCCEEDED **` |
 | 插件生命周期测试 | PASS | install → enable → invoke → configure → disable → uninstall |
 | 系统动作测试 | PASS | 消息/电话准备保持 pending，必须用户确认 |
-| Tier C smoke test | PASS | 主 App 内 iSH Alpine `uname`，无 JIT |
+| Tier C smoke test | PASS | 主 App 内 iSH Alpine，持久 shell，6 条命令一条 0.4s（run 43799762866） |
 | Tier C 设置卡 | PASS | 明确 experimental、单命令和 GPLv3 限制 |
-| Tier C 项目工作区 | NOT VERIFIED | fakefs 元数据未收录裸拷贝文件，已回退 |
+| Tier C 项目工作区 | PASS | realfs 直通挂载，见 [WORKSPACE-MOUNT.md](WORKSPACE-MOUNT.md)（run 43793080884） |
 | Tier C 状态提示 | PASS | 链接后显示 Tier A default · Tier C experimental |
 | Tier 路由测试 | PASS | 选择 Tier C 不会伪造 activeTier |
 | 本地通知工具 | PASS | `schedule_alert` 参数校验通过 |
