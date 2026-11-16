@@ -30,6 +30,11 @@ while IFS= read -r cmd; do
         pass=$((pass + 1))
     fi
 done <<'EOF'
+# Above roughly six thousand lines the consumer used to finish a read before the
+# producer had written the rest, which only a wide enough time slice papered over.
+# This case would have caught it.
+seq 6000 | wc -l
+seq 3000 | grep -c 1
 printf 'c\na\nb\na\n' > /tmp/m3p; sort /tmp/m3p | uniq -c
 printf 'c\na\nb\na\n' > /tmp/m3p; sort /tmp/m3p | uniq -d
 printf 'c\na\nb\na\n' > /tmp/m3p; cat /tmp/m3p | grep -c a
