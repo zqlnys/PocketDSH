@@ -1128,6 +1128,51 @@ static void test_scalar_immediates(void) {
         e2_memory_destroy(&m.mem);
     }
 
+    {
+        // mvni v0.4s, #0 - MOVI with the op bit set, so the result is the
+        // complement. Ignoring that bit made it produce zero, and the regex
+        // engine uses this to write a -1 marker into a freshly built state.
+        e2_machine m;
+        e2_machine_init(&m, 0, 1 << 20);
+        const uint64_t at = 0x30000000ULL;
+        e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+        uint32_t insn = 0x6F000400u;   // mvni v0.4s, #0
+        e2_memory_write(&m.mem, at, &insn, 4);
+        m.cpu.pc = at;
+        e2_step(&m);
+        CHECK(m.cpu.v[0][0] == 0xFFFFFFFFFFFFFFFFULL,
+              "mvni v0.4s, #0 sets every bit");
+        CHECK(m.cpu.v[0][1] == 0xFFFFFFFFFFFFFFFFULL,
+              "mvni v0.4s, #0 sets the upper half too");
+
+        // The same immediate with op clear stays a plain move.
+        uint32_t movi = 0x4F000400u;   // movi v0.4s, #0
+        e2_memory_write(&m.mem, at, &movi, 4);
+        m.cpu.pc = at;
+        m.cpu.v[0][0] = ~0ULL;
+        m.cpu.v[0][1] = ~0ULL;
+        e2_step(&m);
+        CHECK(m.cpu.v[0][0] == 0 && m.cpu.v[0][1] == 0,
+              "movi v0.4s, #0 clears the register");
+        e2_memory_destroy(&m.mem);
+    }
+
+    {
+        // DCZID_EL0 must report DZP when DC ZVA is not implemented. Saying it
+        // works makes memset take a fast path that then writes nothing, which
+        // is silent and only shows up much later as uninitialised state.
+        e2_machine m;
+        e2_machine_init(&m, 0, 1 << 20);
+        const uint64_t at = 0x30000000ULL;
+        e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+        uint32_t insn = 0xD53B00E0u;   // mrs x0, dczid_el0
+        e2_memory_write(&m.mem, at, &insn, 4);
+        m.cpu.pc = at;
+        e2_step(&m);
+        CHECK((m.cpu.x[0] & 0x10) != 0, "DCZID_EL0 reports DZP: DC ZVA is prohibited");
+        e2_memory_destroy(&m.mem);
+    }
+
     // UMOV moves a vector element into a general register. musl's memset does
     // `mov x1, v0.d[0]` to materialise the replicated byte pattern, so a broken
     // UMOV silently turned every memset into a zero fill. It used to decode as

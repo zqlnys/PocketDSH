@@ -1286,6 +1286,31 @@ static int run_proc(int idx) {
                 fflush(stdout);
             }
         }
+        if (getenv("E2_TRACE_DIV2") && p->m.cpu.pc == 0x4c7fcc) {
+            static int n2 = 0;
+            if (++n2 <= 6) {
+                uint64_t f20 = 0, f24 = 0, arr = 0;
+                e2_memory_read(&p->m.mem, p->m.cpu.x[24] + 20, &f20, 8);
+                e2_memory_read(&p->m.mem, p->m.cpu.x[24] + 24, &f24, 8);
+                e2_memory_read(&p->m.mem, p->m.cpu.x[27] + 16, &arr, 8);
+                fprintf(stderr,
+                        "[d2] hit=%d w1=0x%llx [x24+20]=0x%llx [x24+24]=0x%llx "
+                        "x24=0x%llx x0=0x%llx x27=0x%llx\n",
+                        n2, (unsigned long long)p->m.cpu.x[1],
+                        (unsigned long long)f20, (unsigned long long)f24,
+                        (unsigned long long)p->m.cpu.x[24],
+                        (unsigned long long)p->m.cpu.x[0],
+                        (unsigned long long)p->m.cpu.x[27]);
+            }
+        }
+        if (getenv("E2_TRACE_MEMSET") && p->m.cpu.pc == 0x4004f4) {
+            static int n2 = 0;
+            if (++n2 <= 2)
+                fprintf(stderr, "[ms] x5=0x%llx x2=%llu w1=0x%llx\n",
+                        (unsigned long long)p->m.cpu.x[5],
+                        (unsigned long long)p->m.cpu.x[2],
+                        (unsigned long long)p->m.cpu.x[1]);
+        }
         const uint64_t pre_pc = p->m.cpu.pc;
         // Shadow call stack. Chasing a bad argument by re-running with a probe
         // one frame up, over and over, was the slowest part of the last few

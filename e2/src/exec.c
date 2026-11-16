@@ -1543,22 +1543,32 @@ not_a_shift:;
         } else if (cmode == 0x8 || cmode == 0xA) {
             const unsigned shift = (cmode == 0x8) ? 0u : 8u;
             const unsigned lanes = q ? 8u : 4u;
+            uint64_t val = (uint64_t)imm8 << shift;
+            // op set turns MOVI into MVNI: the value is complemented, not just
+            // shifted. Ignoring it here made `mvni v0.2s, #0` produce zero
+            // instead of all ones, and the regex engine relies on exactly that
+            // to mark an unset field - which is why grep and awk failed.
+            if (op) val = ~val & 0xFFFFu;
             for (unsigned i = 0; i < lanes; i++) {
-                e2_v_set(cpu, rd_v, 16, i, (uint64_t)imm8 << shift);
+                e2_v_set(cpu, rd_v, 16, i, val);
             }
         } else if (cmode == 0x0 || cmode == 0x2 || cmode == 0x4 || cmode == 0x6) {
             const unsigned shift = (cmode >> 1) * 8u;
             const unsigned lanes = q ? 4u : 2u;
+            uint64_t val = (uint64_t)imm8 << shift;
+            if (op) val = ~val & 0xFFFFFFFFu;
             for (unsigned i = 0; i < lanes; i++) {
-                e2_v_set(cpu, rd_v, 32, i, (uint64_t)imm8 << shift);
+                e2_v_set(cpu, rd_v, 32, i, val);
             }
         } else if (cmode == 0xC || cmode == 0xD) {
             // movi Vd.4s, #imm8, msl #8/#16 - the low bits become ones.
             const unsigned shift = (cmode == 0xC) ? 8u : 16u;
             const uint64_t ones = (1ULL << shift) - 1;
             const unsigned lanes = q ? 4u : 2u;
+            uint64_t val = (((uint64_t)imm8 << shift) | ones) & 0xFFFFFFFFu;
+            if (op) val = ~val & 0xFFFFFFFFu;
             for (unsigned i = 0; i < lanes; i++) {
-                e2_v_set(cpu, rd_v, 32, i, ((uint64_t)imm8 << shift) | ones);
+                e2_v_set(cpu, rd_v, 32, i, val);
             }
         } else if (false) {
             // placeholder so the chain still ends in the unimplemented branch
@@ -2400,9 +2410,14 @@ not_a_shift:;
                     write_reg(cpu, rt, 0x8444C004ULL, true);
                 }
                 break;
-            case 0xD807:  // DCZID_EL0: data cache zero id, no DZP
+            case 0xD807:  // DCZID_EL0: data cache zero id
+                // DZP is bit 4: set means "DC ZVA is prohibited". This core does
+                // not implement DC ZVA, so it must say so. Returning 4 (DZP
+                // clear) claimed the instruction worked, and memset then took
+                // the `dc zva` fast path and wrote nothing at all - which is
+                // what made the regex engine operate on uninitialised memory.
                 if (is_read) {
-                    write_reg(cpu, rt, 0x4ULL, true);
+                    write_reg(cpu, rt, 0x10ULL, true);
                 }
                 break;
             default:
