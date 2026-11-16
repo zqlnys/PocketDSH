@@ -188,12 +188,40 @@ guest 写入的文件被宿主读回，证明 realfs 不是只读空壳，而是
 1. **`realpath()` 在 iOS 沙盒路径上的行为**——`/var` 是指向 `/private/var` 的符号链接，`realpath` 会展开。realfs 保存的是展开后的路径，`open()` 能正常访问。
 2. **security-scoped 外部目录**——如果 bookmark 失效或 `startAccessing` 失败，`open(O_DIRECTORY)` 返回 `EPERM`。诊断行会显示出来。
 3. **`mounts` 列表累积**——已用 `do_umount` 兜底，但没做引用计数审计。
-4. **写入回宿主的语义**——realfs 是直通，guest 写文件会直接改宿主文件。**这绕过了 `WorkspaceFileSystem` 的备份与路径守卫**，需要在 UI 上明确提示，或者后续加只读挂载（`do_mount` 的 `flags` 参数支持 `MS_READONLY_`）。
+4. **写入回宿主的语义**——realfs 是直通，guest 写文件会直接改宿主文件。**这绕过了 `WorkspaceFileSystem` 的备份与路径守卫。** 只读挂载已经实现，见下一节；默认仍为读写。
 
 ---
 
-## 五、后续
+## 五、只读挂载
+
+`MS_READONLY_` 会被存进 `mount->flags`，但 **iSH 的读写路径从不检查它**——只传这个标志挂载，guest 照样能写。所以只读需要真正的拦截层。
+
+实现方式：在 realfs 外面包一层 `fs_ops`（`readonly_realfs`）。
+
+| 操作 | 行为 |
+| --- | --- |
+| `open`（`O_RDONLY`） | 转发 realfs |
+| `open`（写模式 / `O_CREAT` / `O_TRUNC` / `O_APPEND`） | `EROFS` |
+| `readlink`、`stat`、`fstat`、`getpath`、`statfs`、`flock` | 转发 realfs |
+| `link`、`unlink`、`rmdir`、`rename`、`symlink`、`mknod`、`mkdir` | `EROFS` |
+| `setattr`、`fsetattr`、`utime` | `EROFS` |
+| `umount` | 关闭包装层接管的目录 fd |
+
+挂载时会打印实际模式：
+
+```
+[workspace] mounted /path/to/project -> /workspace (read-only)
+[workspace] mounted /path/to/project -> /workspace (read-write)
+```
+
+**默认仍是读写。** 是否默认只读是个产品决定：读写能让 guest 的构建/格式化工具正常工作，但会绕过工作区备份；只读更安全但限制用途。开关已经接好（`LinuxRuntime.workspaceReadOnly`，变化时自动重建会话），定下来只需改一行默认值。
+
+状态：编译通过（build 96）。**运行时尚未验证**——用只读模式跑一次写命令、确认返回 `EROFS` 是下一步。
+
+一个实现细节：`realfs_mount` 在 libish 里是导出符号，但 `fs/real.h` 没有声明它，包装层需要自己补原型，否则编译报 `use of undeclared identifier`。
+
+## 六、后续
 
 1. CI 通过后，在模拟器跑 `ls /workspace`，把输出存进 `docs/tierc/`。
-2. 考虑默认只读挂载，写入能力单独开关。
+2. 决定默认挂载模式（读写 / 只读）。能力已实现，默认值待产品确认。
 3. 持久 shell 做好后，`/workspace` 跟随会话切换（卸载 + 重挂）。
