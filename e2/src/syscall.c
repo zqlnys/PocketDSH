@@ -171,6 +171,35 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             memcpy(dst, &st, sizeof(st));
             E2_RETURN(0);
         }
+        case 79: {  // newfstatat: stat by path
+            if (files == NULL) {
+                E2_RETURN(-E2_ENOSYS);
+            }
+            char path[512];
+            int rc = read_guest_string(m, a1, path, sizeof(path));
+            if (rc != 0) {
+                E2_RETURN(rc);
+            }
+            e2_guest_stat st;
+            memset(&st, 0, sizeof(st));
+            uint8_t *dst = e2_memory_host_ptr(&m->mem, a2, sizeof(st), E2_PROT_WRITE);
+            if (dst == NULL) {
+                E2_RETURN(-E2_EFAULT);
+            }
+            // The host layer indexes files by descriptor, so resolve the path
+            // through open/close rather than adding a second stat entry point.
+            const int fd = files->open(env->ctx, path, 0, 0);
+            if (fd < 0) {
+                E2_RETURN(fd);
+            }
+            const int src = files->stat(env->ctx, fd, &st, sizeof(st));
+            files->close(env->ctx, fd);
+            if (src < 0) {
+                E2_RETURN(src);
+            }
+            memcpy(dst, &st, sizeof(st));
+            E2_RETURN(0);
+        }
         case E2_SYS_lseek: {
             // Only SEEK_SET/SEEK_CUR/SEEK_END with a 64-bit offset.
             if (files == NULL) {
@@ -207,6 +236,55 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
         }
         case 96:  // set_tid_address
             E2_RETURN(1);
+        case 172:  // getpid
+        case 173:  // getppid
+        case 174:  // getuid
+        case 175:  // geteuid
+        case 176:  // getgid
+        case 177:  // getegid
+            E2_RETURN(0);
+        case 178:  // gettid
+            E2_RETURN(1);
+        case 135:  // rt_sigaction: report success, do not install anything.
+            // libc only checks the return value during start-up; the guest runs
+            // single-threaded and nothing can deliver a signal to it.
+            E2_RETURN(0);
+        case 134:  // rt_sigprocmask
+            E2_RETURN(0);
+        case 132:  // sigaltstack
+            E2_RETURN(0);
+        case 129:  // rt_sigqueueinfo / kill family: nothing to deliver
+        case 130:
+            E2_RETURN(0);
+        case 97:  // uname
+        case 160:  // uname (aarch64 uses 160)
+            if (a0 != 0) {
+                uint8_t *dst = e2_memory_host_ptr(&m->mem, a0, 390, E2_PROT_WRITE);
+                if (dst != NULL) {
+                    memset(dst, 0, 390);
+                    memcpy(dst + 0, "Linux", 5);
+                    memcpy(dst + 65, "e2", 2);
+                    memcpy(dst + 130, "6.1.0-e2", 8);
+                    memcpy(dst + 195, "#1", 2);
+                    memcpy(dst + 260, "aarch64", 7);
+                }
+            }
+            E2_RETURN(0);
+        case 233:  // madvise
+            E2_RETURN(0);
+        case 261:  // prlimit64: report defaults, ignore new limits
+            E2_RETURN(0);
+        case 278:  // getrandom: return a fixed but non-zero stream
+            if (a0 != 0) {
+                uint8_t *dst = e2_memory_host_ptr(&m->mem, a0, (size_t)a1, E2_PROT_WRITE);
+                if (dst == NULL) {
+                    E2_RETURN(-E2_EFAULT);
+                }
+                for (size_t k = 0; k < (size_t)a1; k++) {
+                    dst[k] = (uint8_t)(0x5A + (k * 31));
+                }
+            }
+            E2_RETURN((int64_t)a1);
         case 98:  // futex: single-threaded, so nothing ever blocks
             E2_RETURN(0);
         case 29:  // ioctl: report "not a tty"

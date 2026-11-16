@@ -1189,6 +1189,92 @@ e2_status e2_step(e2_machine *machine) {
         return E2_OK;
     }
 
+    // --- Data processing (1 source): RBIT / REV16 / REV32 / REV / CLZ / CLS ---
+    // Bit manipulation that has no scalar equivalent in C; compilers emit these
+    // for byte-order swaps and bit-scanning loops.
+    if ((insn & 0x7FE00000u) == 0x5AC00000u) {
+        const unsigned opcode = BITS(insn, 15, 10);
+        const unsigned rn2 = BITS(insn, 9, 5);
+        const unsigned width = is64 ? 64 : 32;
+        const uint64_t mask = is64 ? ~0ULL : 0xFFFFFFFFULL;
+        uint64_t v = e2_read_xzr(cpu, rn2) & mask;
+        uint64_t result;
+
+        switch (opcode) {
+            case 0x00: {  // RBIT
+                uint64_t r = 0;
+                for (unsigned k = 0; k < width; k++) {
+                    if ((v >> k) & 1u) {
+                        r |= 1ULL << (width - 1 - k);
+                    }
+                }
+                result = r;
+                break;
+            }
+            case 0x01: {  // REV16: reverse bytes within each halfword
+                result = 0;
+                for (unsigned k = 0; k < width; k += 16) {
+                    const uint64_t hw = (v >> k) & 0xFFFF;
+                    result |= ((hw & 0xFF) << 8 | ((hw >> 8) & 0xFF)) << k;
+                }
+                break;
+            }
+            case 0x02: {  // REV32 (64-bit) / REV (32-bit): reverse bytes per word
+                if (is64) {
+                    result = 0;
+                    for (unsigned k = 0; k < 64; k += 32) {
+                        const uint64_t w = (v >> k) & 0xFFFFFFFFULL;
+                        const uint64_t r = ((w & 0xFF) << 24) | ((w & 0xFF00) << 8) |
+                                           ((w >> 8) & 0xFF00) | ((w >> 24) & 0xFF);
+                        result |= r << k;
+                    }
+                } else {
+                    result = ((v & 0xFF) << 24) | ((v & 0xFF00) << 8) |
+                             ((v >> 8) & 0xFF00) | ((v >> 24) & 0xFF);
+                }
+                break;
+            }
+            case 0x03: {  // REV (64-bit only): reverse all bytes
+                result = 0;
+                for (unsigned k = 0; k < 64; k += 8) {
+                    result |= ((v >> k) & 0xFF) << (56 - k);
+                }
+                break;
+            }
+            case 0x04: {  // CLZ
+                unsigned n = 0;
+                for (unsigned k = width; k > 0; k--) {
+                    if ((v >> (k - 1)) & 1u) {
+                        break;
+                    }
+                    n++;
+                }
+                result = n;
+                break;
+            }
+            case 0x05: {  // CLS: count leading bits equal to the sign bit
+                const unsigned sign = (unsigned)((v >> (width - 1)) & 1u);
+                unsigned n = 0;
+                for (unsigned k = width; k > 0; k--) {
+                    if (((v >> (k - 1)) & 1u) != sign) {
+                        break;
+                    }
+                    n++;
+                }
+                result = n - 1;
+                break;
+            }
+            default:
+                machine->ctx.reason = "unimplemented 1-source data processing";
+                return E2_UNIMPL;
+        }
+
+        write_reg(cpu, rd, result & mask, is64);
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     // --- MRS / MSR (system registers) ---
     // Only the handful a userspace process actually touches. TPIDR_EL0 is the
     // thread pointer, which is how TLS is addressed; libc sets and reads it
