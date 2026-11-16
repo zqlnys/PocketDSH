@@ -135,6 +135,31 @@ final class PocketDSHTests: XCTestCase {
         XCTAssertTrue(missing.isError)
     }
 
+    @MainActor
+    func testEveryAdvertisedToolIsDispatched() async throws {
+        // A tool the model can see but the executor does not handle fails at the
+        // worst possible moment: mid-task, after the model has already committed
+        // to using it. Calling each one with empty arguments is enough to prove
+        // a handler exists - the arguments error is expected, "Unknown tool" is
+        // not.
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let workspace = WorkspaceFileSystem(root: root)
+        let executor = ToolExecutor(
+            workspace: workspace,
+            luaEngine: LuaEngine(),
+            systemActions: SystemActionStore()
+        )
+
+        for spec in ToolCatalog.specs {
+            let result = await executor.execute(name: spec.function.name,
+                                                argumentsJSON: "{}")
+            XCTAssertFalse(result.content.contains("Unknown tool"),
+                           "\(spec.function.name) is advertised but not dispatched")
+        }
+    }
+
     func testDeliverablesRoundTrip() throws {
         let original = AgentConversation(
             messages: [],

@@ -130,9 +130,12 @@ struct ProjectsView: View {
                 .foregroundStyle(PocketTheme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
 
+            // One pill, not two: the footer already says where the model runs,
+            // and "Local copy" is the label for a managed project elsewhere in
+            // this very screen - as a trust badge it reads as a claim about the
+            // project instead of about the app.
             HStack(spacing: PocketSpacing.sm) {
                 StatusPill(text: "On-device files", tint: PocketTheme.accent)
-                StatusPill(text: "Local copy", tint: PocketTheme.secondaryText)
             }
             .padding(.top, PocketSpacing.xxs)
         }
