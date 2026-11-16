@@ -11,7 +11,7 @@ struct SystemActionSheet: View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 18) {
                 Text(NSLocalizedString(action.title, comment: ""))
-                    .font(.system(size: 30, weight: .medium, design: .serif))
+                    .font(PocketTheme.displayFont(size: 30))
                     .foregroundStyle(PocketTheme.primaryText)
 
                 Text(action.detail)

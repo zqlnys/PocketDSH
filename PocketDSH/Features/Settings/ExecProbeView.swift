@@ -14,7 +14,7 @@ struct ExecProbeView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Execution probe")
-                .font(.system(size: 34, weight: .medium, design: .serif))
+                .font(PocketTheme.displayFont(size: 34))
             Text("can this process run runtime-loaded code?")
                 .font(.caption.monospaced())
                 .foregroundStyle(PocketTheme.secondaryText)
@@ -75,7 +75,7 @@ struct ExecProbeView: View {
             }
             .padding(PocketSpacing.md)
             .background(PocketTheme.codeSurface)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: PocketRadius.md, style: .continuous))
 
             Button {
                 report = ExecutionProbe.run()

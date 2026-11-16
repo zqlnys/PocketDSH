@@ -166,7 +166,7 @@ struct ProjectsView: View {
                     .padding(.horizontal, PocketSpacing.md)
                     .padding(.vertical, PocketSpacing.md)
                     .overlay {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        RoundedRectangle(cornerRadius: PocketRadius.md, style: .continuous)
                             .stroke(PocketTheme.stroke, lineWidth: 1)
                     }
             }

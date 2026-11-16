@@ -8,7 +8,7 @@ struct TierCSmokeView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Tier C smoke test")
-                .font(.system(size: 34, weight: .medium, design: .serif))
+                .font(PocketTheme.displayFont(size: 34))
             Text("iSH · Alpine · no JIT · persistent shell")
                 .font(.caption.monospaced())
                 .foregroundStyle(PocketTheme.secondaryText)
@@ -20,7 +20,7 @@ struct TierCSmokeView: View {
             }
             .padding(PocketSpacing.md)
             .background(PocketTheme.codeSurface)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: PocketRadius.md, style: .continuous))
         }
         .padding(PocketSpacing.xl)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -115,7 +115,7 @@ struct TierCSmokeView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Tier C smoke test")
-                .font(.system(size: 34, weight: .medium, design: .serif))
+                .font(PocketTheme.displayFont(size: 34))
             Text("This build does not include the Linux backend.")
                 .font(.caption.monospaced())
                 .foregroundStyle(PocketTheme.secondaryText)

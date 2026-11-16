@@ -136,7 +136,7 @@ struct AgentView: View {
                     .padding(.horizontal, PocketSpacing.sm)
                     .padding(.vertical, 5)
                     .background {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        RoundedRectangle(cornerRadius: PocketRadius.xs, style: .continuous)
                             .fill(PocketTheme.elevatedSurface)
                     }
             }
@@ -161,7 +161,7 @@ struct AgentView: View {
                     .padding(.horizontal, PocketSpacing.sm)
                     .padding(.vertical, 5)
                     .background {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        RoundedRectangle(cornerRadius: PocketRadius.xs, style: .continuous)
                             .fill(PocketTheme.elevatedSurface)
                     }
             }
@@ -234,11 +234,11 @@ struct AgentView: View {
                     .padding(.horizontal, 13)
                     .padding(.vertical, 10)
                     .background {
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        RoundedRectangle(cornerRadius: PocketRadius.lg, style: .continuous)
                             .fill(PocketTheme.elevatedSurface)
                     }
                     .overlay {
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        RoundedRectangle(cornerRadius: PocketRadius.lg, style: .continuous)
                             .stroke(PocketTheme.stroke.opacity(0.7), lineWidth: 1)
                     }
                     .disabled(agent.isRunning)

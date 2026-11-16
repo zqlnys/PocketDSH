@@ -203,11 +203,11 @@ struct FilesView: View {
         }
         .padding(PocketSpacing.lg)
         .background {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: PocketRadius.xl, style: .continuous)
                 .fill(PocketTheme.surface)
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: PocketRadius.xl, style: .continuous)
                 .stroke(PocketTheme.stroke.opacity(0.7), lineWidth: 1)
         }
     }

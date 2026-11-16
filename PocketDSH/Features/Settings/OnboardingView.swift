@@ -39,7 +39,7 @@ struct OnboardingView: View {
     private var brand: some View {
         VStack(alignment: .leading, spacing: 12) {
             ZStack {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: PocketRadius.md, style: .continuous)
                     .fill(PocketTheme.accent)
                     .frame(width: 54, height: 54)
                 Image(systemName: "chevron.left.forwardslash.chevron.right")
@@ -48,12 +48,14 @@ struct OnboardingView: View {
             }
 
             Text("Connect the model")
-                .font(.system(size: 38, weight: .medium, design: .serif))
+                .font(PocketTheme.displayFont(size: 36))
                 .foregroundStyle(PocketTheme.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
 
             Text("PocketDSH keeps your projects on this iPhone. The model reasons over them through the DeepSeek API.")
                 .font(.subheadline)
                 .foregroundStyle(PocketTheme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -66,9 +68,9 @@ struct OnboardingView: View {
                 .font(.caption)
                 .foregroundStyle(PocketTheme.secondaryText)
         }
-        .padding(14)
+        .padding(PocketSpacing.md)
         .background {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: PocketRadius.md, style: .continuous)
                 .fill(PocketTheme.elevatedSurface)
         }
     }
@@ -99,11 +101,11 @@ struct OnboardingView: View {
                 .focused($focused)
                 .padding(13)
                 .background {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: PocketRadius.md, style: .continuous)
                         .fill(PocketTheme.surface)
                 }
                 .overlay {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: PocketRadius.md, style: .continuous)
                         .stroke(PocketTheme.stroke, lineWidth: 1)
                 }
 
