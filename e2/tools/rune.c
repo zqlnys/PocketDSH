@@ -89,7 +89,11 @@ static void host_close_if_done(int h) {
 }
 static void fd_init(void) { fd_init_tab(0); refs_init(); }
 static int fd_alloc_tab(int tab, int host) {
-    for (int i = 3; i < 64; i++)
+    // POSIX says open returns the lowest free descriptor, and real kernels do.
+    // Starting at 3 looked safe but is not: a program that closes stdin and then
+    // opens a file expects to get 0 back, and hard-coding 3 breaks every tool
+    // built that way - uniq was the one that showed it.
+    for (int i = 0; i < 64; i++)
         if (!g_fds[tab][i].used) { g_fds[tab][i].used = 1; g_fds[tab][i].host = host; return i; }
     return -1;
 }

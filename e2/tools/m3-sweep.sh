@@ -89,18 +89,23 @@ yes | head -3
 seq 1000 | head -2
 seq 5 | tail -1
 cat /tmp/m3in | wc -l
+printf 'a 1 10\nb 2 20\na 3 30\n' > /tmp/m3aw; awk '{print $1}' /tmp/m3aw
+printf 'a 1 10\nb 2 20\na 3 30\n' > /tmp/m3aw; awk 'END{print NR}' /tmp/m3aw
+printf 'a 1 10\nb 2 20\na 3 30\n' > /tmp/m3aw; awk '$1 == "a" {print $2}' /tmp/m3aw
+printf 'a 1 10\nb 2 20\na 3 30\n' > /tmp/m3aw; awk '{s += $3} END{print s}' /tmp/m3aw
+printf 'a 1 10\nb 2 20\na 3 30\n' > /tmp/m3aw; awk 'BEGIN{print 1+2}'
+printf 'aaa\nbbb\naaa\n' > /tmp/m3in; sed -n '2p' /tmp/m3in
+printf 'aaa\nbbb\naaa\n' > /tmp/m3in; sed s/a/X/g /tmp/m3in
+printf 'aaa\nbbb\naaa\n' > /tmp/m3in; grep -c a /tmp/m3in
+printf 'aaa\nbbb\naaa\n' > /tmp/m3in; grep -v a /tmp/m3in
+printf 'aaa\nbbb\naaa\n' > /tmp/m3in; grep -o b /tmp/m3in
+expr abc : 'a.c'
 EOF
 
-# Known failures: the BRE engine. grep, sed and awk without -F all die at
-# pc 0x4c4408, so they are reported but not counted against the sweep until that
-# is fixed - otherwise the exit status stays red for one known cause and hides
-# new ones.
-known=0
+# The BRE engine is fixed, so the sweep no longer excuses grep, sed or awk.
+# Anything that fails now is a real failure.
+echo "M3 sweep: $pass passed, $fail failed"
 if [ "$fail" -ne 0 ]; then
-    known=$(printf '%s' "$failed" | grep -c "grep \|sed \|awk " || true)
-fi
-echo "M3 sweep: $pass passed, $fail failed ($known known: BRE engine)"
-if [ "$fail" -ne 0 ] && [ "$known" -lt "$fail" ]; then
     printf 'failures:%s\n' "$failed"
     exit 1
 fi

@@ -36,6 +36,18 @@ while IFS= read -r cmd; do
         pass=$((pass + 1))
     fi
 done <<'EOF'
+printf 'a\nb\na\n' > /tmp/m2in; uniq /tmp/m2in
+printf 'a\nb\na\n' > /tmp/m2in; sort /tmp/m2in
+printf 'a\nb\na\n' > /tmp/m2in; comm /tmp/m2in /tmp/m2in
+printf 'a\nb\na\n' > /tmp/m2in; tac /tmp/m2in
+printf 'a\nb\na\n' > /tmp/m2in; nl /tmp/m2in
+printf 'a\nb\na\n' > /tmp/m2in; fold /tmp/m2in
+printf 'a\nb\na\n' > /tmp/m2in; paste /tmp/m2in
+printf 'a\nb\na\n' > /tmp/m2in; base64 /tmp/m2in
+printf 'a\nb\na\n' > /tmp/m2in; md5sum /tmp/m2in
+printf 'a\nb\na\n' > /tmp/m2in; cksum /tmp/m2in
+printf 'a\nb\na\n' > /tmp/m2in; rev /tmp/m2in
+echo abc | tr a-z A-Z
 ls
 ls -l
 ls -a
@@ -101,7 +113,6 @@ awk '{print $1}'
 find /tmp -maxdepth 1 -name t*
 grep -c x /dev/null
 EOF
-
 echo "M2 sweep: $pass passed, $fail failed"
 if [ "$fail" -ne 0 ]; then
     printf 'failures:%s\n' "$failed"
