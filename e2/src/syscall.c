@@ -289,7 +289,11 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             if (env->wait4 == NULL) {
                 E2_RETURN(-E2_ENOSYS);
             }
-            E2_RETURN(env->wait4(env->ctx, (int)a0, a2, (int)m->cpu.x[3]));
+            // wait4(pid, status, options, rusage). The status pointer is a1 and
+            // options is a2; passing a2 as the status wrote the child's exit
+            // code into the options slot instead, so $? stayed zero for every
+            // external command while builtins kept working.
+            E2_RETURN(env->wait4(env->ctx, (int)a0, a1, (int)a2));
         }
         case E2_SYS_pipe2: {
             if (files == NULL || files->pipe == NULL) {

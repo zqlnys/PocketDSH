@@ -30,6 +30,11 @@ while IFS= read -r cmd; do
         pass=$((pass + 1))
     fi
 done <<'EOF'
+(exit 3); echo $?
+sh -c "exit 3"; echo $?
+/bin/false; echo $?
+true; echo $?
+trap "echo bye" EXIT; echo hi
 printf 'p q\nr s\n' > /tmp/m3r; while read x y; do echo $y-$x; done < /tmp/m3r
 echo a b | while read x y; do echo $y $x; done
 echo a | read x; echo got $x
