@@ -114,7 +114,7 @@ struct OnboardingView: View {
                 } label: {
                     Image(systemName: revealKey ? "eye.slash" : "eye")
                         .foregroundStyle(PocketTheme.secondaryText)
-                        .frame(width: 40, height: 40)
+                        .frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)
             }

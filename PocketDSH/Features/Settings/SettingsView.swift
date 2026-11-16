@@ -92,7 +92,7 @@ struct SettingsView: View {
                 } label: {
                     Image(systemName: revealKey ? "eye.slash" : "eye")
                         .foregroundStyle(PocketTheme.secondaryText)
-                        .frame(width: 36, height: 36)
+                        .frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(revealKey ? "Hide key" : "Show key")

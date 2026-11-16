@@ -107,7 +107,7 @@ struct ProjectsView: View {
                 Image(systemName: "gearshape")
                     .font(.system(size: 17, weight: .regular))
                     .foregroundStyle(PocketTheme.secondaryText)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)

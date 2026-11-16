@@ -304,7 +304,10 @@ struct AgentView: View {
                     .font(.caption2.monospaced())
                     .foregroundStyle(PocketTheme.secondaryText)
                     .padding(.horizontal, PocketSpacing.sm)
-                    .padding(.vertical, 5)
+                    // A caption-sized chip is a small target; this brings the
+                    // tappable height near 44pt without making it look bulky.
+                    .padding(.vertical, 11)
+                    .contentShape(Rectangle())
                     .background {
                         RoundedRectangle(cornerRadius: PocketRadius.xs, style: .continuous)
                             .fill(PocketTheme.elevatedSurface)
@@ -396,7 +399,7 @@ struct AgentView: View {
                     Image(systemName: "arrow.up")
                         .font(.system(size: 17, weight: .bold))
                         .foregroundStyle(Color(hex: "#062018"))
-                        .frame(width: 42, height: 42)
+                        .frame(width: 44, height: 44)
                         .background(Circle().fill(PocketTheme.accent))
                         .opacity(canSend ? 1 : 0.35)
                 }
@@ -409,12 +412,14 @@ struct AgentView: View {
                 Button {
                     settings.thinkingEnabled.toggle()
                 } label: {
-                    HStack(spacing: 4) {
+                    HStack(spacing: PocketSpacing.xs) {
                         Image(systemName: settings.thinkingEnabled ? "brain.head.profile" : "brain")
                         Text("Thinking")
                     }
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(settings.thinkingEnabled ? PocketTheme.accent : PocketTheme.secondaryText)
+                    .padding(.vertical, PocketSpacing.sm)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
 
