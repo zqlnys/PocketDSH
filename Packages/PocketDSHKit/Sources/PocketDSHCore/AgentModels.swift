@@ -258,4 +258,8 @@ public enum ToolNames {
     public static let todoWrite = "todo_write"
     /// Marks a workspace file as something the user should open.
     public static let present = "present"
+    /// Loads a skill: a skill is a markdown file in the workspace that tells the
+    /// agent how to do a kind of task. Listing and loading share one tool so the
+    /// model does not have to guess whether the directory is empty.
+    public static let useSkill = "use_skill"
 }

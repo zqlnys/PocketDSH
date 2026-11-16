@@ -90,6 +90,14 @@ enum ToolCatalog {
             required: ["number"]
         ),
         tool(
+            name: ToolNames.useSkill,
+            description: "Skills are markdown files under skills/ in the workspace that explain how to carry out a kind of task. Call with no arguments to list what is available; call with a name to load that skill's full text. Load a skill before starting work it covers, and follow what it says.",
+            properties: [
+                "name": property("string", "Skill name, without the .md suffix. Omit to list available skills.")
+            ],
+            required: []
+        ),
+        tool(
             name: ToolNames.present,
             description: "Mark a file in the workspace as a finished artifact for the user to open. The path must already exist; this does not create files. Use it when a task produces something worth looking at, not for every file you touch. Calling it again with the same path updates the summary instead of adding a duplicate.",
             properties: [
@@ -162,9 +170,10 @@ enum ToolCatalog {
         3. Read the changed file again after editing when correctness matters.
         4. Use run_lua for local computation and executable checks. Lua is available; shell commands, Node, Python, Xcode, and subprocesses are not in this build.
         5. For work that needs more than two or three steps, record the plan with todo_write before starting and update it as steps finish. Send the whole list each time, keep exactly one step in_progress, and keep entries to one short line. Skip it for single-step requests.
-        6. When a task produces a file worth opening, mark it with present so it appears as a card above the conversation. Present files that already exist; the tool does not create them.
-        7. Use fetch_url to read documentation the workspace does not contain. It performs a plain GET and reduces HTML to text; it cannot write to the workspace, and results are truncated, so prefer the file tools for anything already on the device.
-        8. Report changed paths, real tool results, and anything you could not verify.
+        6. Call use_skill with no arguments to see what skills this workspace defines, and load the one that matches the task before starting. Skills are written by the user and are instructions, not data to summarise.
+        7. When a task produces a file worth opening, mark it with present so it appears as a card above the conversation. Present files that already exist; the tool does not create them.
+        8. Use fetch_url to read documentation the workspace does not contain. It performs a plain GET and reduces HTML to text; it cannot write to the workspace, and results are truncated, so prefer the file tools for anything already on the device.
+        9. Report changed paths, real tool results, and anything you could not verify.
 
         Existing files require overwrite=true in write_file. Every overwrite creates a recovery backup and a diff. Never request a destructive operation just to make a build pass. If a tool fails, inspect the error and try a different safe approach. Do not invent tool output.
 

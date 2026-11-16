@@ -65,7 +65,7 @@ E2 是自写的 aarch64 解释器 + syscall 层，不复用 iSH 的 GPL 代码�
 
 桌面 DSH 的工具集（`bash`、`read`、`write`、`edit`、`glob`、`grep`、`web_search`、
 `web_fetch`、`todo_write`、`subagent`、`skill`、`schedule_*`、`present`）与 PocketDSH
-当前提供的 14 个工具相比，缺口是：
+当前提供的 15 个工具相比，缺口是：
 
 | 桌面 DSH 能力 | PocketDSH | 说明 |
 | --- | --- | --- |
@@ -73,14 +73,14 @@ E2 是自写的 aarch64 解释器 + syscall 层，不复用 iSH 的 GPL 代码�
 | `web_search` | **缺失** | 需要搜索 API 或密钥，未接入 |
 | `todo_write` | 有 `todo_write` | 整表覆盖式提交；对话上方显示进度条与步骤 |
 | `subagent` / 并行委派 | **缺失** | 单 Agent 串行执行 |
-| `skill` 技能目录 | **缺失** | 无按需加载的能力包 |
+| `skill` 技能目录 | 有 `use_skill` | 工作区 `skills/*.md`；无参列出、给名加载 |
 | `bash` | 部分 | `run_linux` 依赖 E2，M4 未完成 |
 | `grep` 正则 | 部分 | `search_files` 是字面搜索，非正则 |
 | `schedule_*` | 等价 | 有 `schedule_alert` / `schedule_reminder`，但只到通知/提醒 |
 | `present` 交付物 | 有 `present` | 校验文件存在；对话上方以卡片显示，点击跳到文件页 |
 
-按对体验的影响排序，补的优先级应是：**web_search → subagent → skill**。
-（`fetch_url`、`todo_write`、`present` 已补上。）
+按对体验的影响排序，补的优先级应是：**web_search → subagent**。
+（`fetch_url`、`todo_write`、`present`、`use_skill` 已补上。）
 
 ## 工具名称映射
 

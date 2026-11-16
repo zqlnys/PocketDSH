@@ -86,6 +86,8 @@ final class ToolExecutor {
                 return todoWrite(arguments)
             case ToolNames.present:
                 return present(arguments)
+            case ToolNames.useSkill:
+                return try useSkill(arguments)
             default:
                 return .failure("Unknown tool: \(name)")
             }
@@ -236,6 +238,68 @@ final class ToolExecutor {
         guard !result.isError else { return result }
         return .success("Linux output (Tier C):\n\(result.content)")
     }
+    /// List or load a skill.
+    ///
+    /// A skill is a markdown file under skills/ that tells the agent how to do
+    /// a kind of task. Listing and loading are one tool because the model
+    /// otherwise has to guess whether the directory exists at all, and a guess
+    /// that is wrong wastes a whole turn.
+    private func useSkill(_ arguments: [String: JSONValue]) throws -> ToolExecutionResult {
+        let requested = (arguments["name"]?.stringValue ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        // A workspace with no skills/ directory is the normal case, not an
+        // error: listing must not throw just because nobody has written one.
+        let entries = (try? workspace.listFiles(path: "skills", maxDepth: 1,
+                                                includeHidden: false)) ?? []
+        let skills = entries.filter { !$0.isDirectory && $0.path.hasSuffix(".md") }
+
+        if requested.isEmpty {
+            guard !skills.isEmpty else {
+                return .success("No skills are defined. Create skills/<name>.md in the workspace to add one.")
+            }
+            var output = "Available skills:\n"
+            for entry in skills {
+                let name = Self.skillName(from: entry.path)
+                // The first non-empty line is the description; skills are
+                // written to start with one.
+                let preview = (try? workspace.read(path: entry.path, offset: 1, limit: 1))?
+                    .lines.first ?? ""
+                output += "  \(name)"
+                if !preview.isEmpty {
+                    output += " - \(preview.trimmingCharacters(in: .whitespaces))"
+                }
+                output += "\n"
+            }
+            return .success(output)
+        }
+
+        let wanted = requested.hasSuffix(".md") ? requested : requested + ".md"
+        guard let entry = skills.first(where: { Self.skillName(from: $0.path) == requested
+            || $0.path.hasSuffix("/" + wanted) || $0.path == wanted || $0.path == "skills/" + wanted })
+        else {
+            return .failure("No skill named \(requested). Call use_skill with no arguments to list them.")
+        }
+        let result = try workspace.read(path: entry.path, offset: 1, limit: 2_000)
+        var output = "skill: \(Self.skillName(from: entry.path))\n"
+        if result.truncated {
+            output += "note: truncated at 2000 lines.\n"
+        }
+        output += "-----\n"
+        output += result.lines.joined(separator: "\n")
+        return .success(output)
+    }
+
+    private static func skillName(from path: String) -> String {
+        var name = path
+        if name.hasPrefix("skills/") {
+            name = String(name.dropFirst("skills/".count))
+        }
+        if name.hasSuffix(".md") {
+            name = String(name.dropLast(3))
+        }
+        return name
+    }
+
     /// Declare a finished artifact.
     ///
     /// The file has to exist. `present` says "this is worth opening", not "here

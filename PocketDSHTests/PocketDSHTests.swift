@@ -16,6 +16,7 @@ final class PocketDSHTests: XCTestCase {
         XCTAssertTrue(names.contains(ToolNames.fetchURL))
         XCTAssertTrue(names.contains(ToolNames.todoWrite))
         XCTAssertTrue(names.contains(ToolNames.present))
+        XCTAssertTrue(names.contains(ToolNames.useSkill))
     }
 
     func testToolSchemasAreObjectsWithRequiredFields() {
@@ -97,6 +98,41 @@ final class PocketDSHTests: XCTestCase {
                                           from: try encoder.encode(original))
         XCTAssertEqual(restored.todos.map(\.content), ["first", "second"])
         XCTAssertEqual(restored.todos.map(\.status), [.completed, .inProgress])
+    }
+
+    @MainActor
+    func testSkillListingAndLoading() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let workspace = WorkspaceFileSystem(root: root)
+        let executor = ToolExecutor(
+            workspace: workspace,
+            luaEngine: LuaEngine(),
+            systemActions: SystemActionStore()
+        )
+
+        // No skills/ directory at all: listing must explain, not throw.
+        let empty = await executor.execute(name: ToolNames.useSkill, argumentsJSON: "{}")
+        XCTAssertFalse(empty.isError)
+        XCTAssertTrue(empty.content.contains("No skills"))
+
+        _ = try workspace.write(path: "skills/release.md",
+                                content: "Cut a release\n\nRun the tests twice.\n",
+                                overwrite: true)
+
+        let listed = await executor.execute(name: ToolNames.useSkill, argumentsJSON: "{}")
+        XCTAssertFalse(listed.isError)
+        XCTAssertTrue(listed.content.contains("release"))
+
+        let loaded = await executor.execute(name: ToolNames.useSkill,
+                                            argumentsJSON: #"{"name":"release"}"#)
+        XCTAssertFalse(loaded.isError)
+        XCTAssertTrue(loaded.content.contains("Run the tests twice"))
+
+        let missing = await executor.execute(name: ToolNames.useSkill,
+                                             argumentsJSON: #"{"name":"nope"}"#)
+        XCTAssertTrue(missing.isError)
     }
 
     func testDeliverablesRoundTrip() throws {
