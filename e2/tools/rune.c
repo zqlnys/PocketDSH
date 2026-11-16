@@ -420,7 +420,11 @@ static const char *elf_interp(const uint8_t *img, size_t n) {
 // program at the low base, its interpreter above it, argv/envp/auxv on the new
 // stack, and the entry point taken from the interpreter when there is one.
 // Returns 0 on success, negative errno otherwise.
-static int start_image(e2_machine *m, const char *path, char args[][64], int nargs,
+// 64 bytes per argument silently truncated anything longer - a long awk program, a
+// long sed script, any command line past 63 characters. The limit was invisible
+// until an awk program of 66 characters failed to parse.
+#define ARG_MAX 1024
+static int start_image(e2_machine *m, const char *path, char args[][ARG_MAX], int nargs,
                        char envs[][96], int nenv) {
     size_t size = 0;
     uint8_t *img = load_file(path, &size);
@@ -629,7 +633,7 @@ static long p_fork(void *ctx, const e2_machine *parent) {
 // machine's memory, which is about to be discarded.
 static int p_execve(void *ctx, e2_machine *m, const char *path, uint64_t argv,
                     uint64_t envp) {
-    char args[8][64]; int nargs = 0;
+    char args[8][ARG_MAX]; int nargs = 0;
     for (int i = 0; i < 8; i++) {
         uint64_t ptr = 0;
         if (e2_memory_read(&m->mem, argv + (uint64_t)i * 8, &ptr, 8) != 0 || ptr == 0) break;
@@ -1714,7 +1718,7 @@ int main(int argc, char **argv) {
     e2_machine m;
     e2_machine_init(&m, 0, 1 << 20);
 
-    char args[16][64]; int nargs = 0;
+    char args[16][ARG_MAX]; int nargs = 0;
     // argv[0] must be the program's own name: busybox picks an applet from it and
     // python prints it in usage text, so a hardcoded name lies to both.
     {
