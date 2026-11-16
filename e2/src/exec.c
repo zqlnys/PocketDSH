@@ -884,7 +884,7 @@ e2_status e2_step(e2_machine *machine) {
     // normal here. The high-multiply variants live in a different encoding group
     // (bit 23 set) and are handled separately below; keying on Ra alone made
     // every plain multiply return the high half of the product, i.e. zero.
-    if ((insn & 0x1F200000u) == 0x1B000000u) {
+    if ((insn & 0x1F600000u) == 0x1B000000u) {
         const bool is_sub = BIT(insn, 15) != 0;
         const unsigned rm = BITS(insn, 20, 16);
         const unsigned ra = BITS(insn, 14, 10);
@@ -1024,7 +1024,7 @@ e2_status e2_step(e2_machine *machine) {
     }
 
     // --- LDR / STR (unsigned immediate offset) ---
-    if ((insn & 0x3B000000u) == 0x39000000u) {
+    if ((insn & 0x3B000000u) == 0x39000000u && BIT(insn, 26) == 0) {
         const unsigned size_code = BITS(insn, 31, 30);
         const unsigned opc = BITS(insn, 23, 22);
         const bool is_load = opc != 0;

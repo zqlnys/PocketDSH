@@ -59,3 +59,14 @@ test: $(TEST_BIN) $(GUEST_ELF)
 
 clean:
 	rm -rf $(BUILD)
+
+# Decode-rule overlap check: needs real binaries, so it only runs when they are
+# present. Catches the "one prefix, several families" bug class before it turns
+# into a debugging session.
+overlaps: 
+	@if [ -f /tmp/alpine-root/lib/ld-musl-aarch64.so.1 ]; then \
+		python3 tools/check-decode-overlaps.py \
+			/tmp/alpine-root/lib/ld-musl-aarch64.so.1 /tmp/alpine-root/bin/busybox; \
+	else \
+		echo "skip: no reference binaries"; \
+	fi
