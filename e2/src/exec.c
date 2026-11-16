@@ -1412,7 +1412,11 @@ not_a_shift:;
     // IEEE round-to-nearest-even, which is the architecturally default mode.
     if ((insn & 0x7F3FFC00u) == 0x1E230000u || (insn & 0x7F3FFC00u) == 0x1E220000u) {
         const bool wide = BIT(insn, 31) != 0;
-        const bool is_unsigned = BIT(insn, 20) != 0;
+        // scvtf and ucvtf differ in bit 16: 0x9E62_0000 against 0x9E63_0000.
+        // Testing bit 20 instead made every ucvtf run as signed, so an unsigned
+        // value above INT64_MAX converted as if it were negative - and INT64_MIN
+        // turning up in results is exactly that signature.
+        const bool is_unsigned = BIT(insn, 16) != 0;
         const bool to_double = BIT(insn, 22) != 0;
         const unsigned rn2 = BITS(insn, 9, 5);
         const uint64_t raw = e2_read_xzr(cpu, rn2);
