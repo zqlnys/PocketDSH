@@ -18,6 +18,12 @@ pass=0
 fail=0
 failed=""
 
+# A small tree reused by the recursive-walk cases: building it inside each case
+# spent most of the timeout on rm and mkdir rather than on the walk being tested.
+rm -rf /tmp/alpine-root/tmp/m2tree 2>/dev/null || true
+mkdir -p /tmp/alpine-root/tmp/m2tree/a/b 2>/dev/null || true
+touch /tmp/alpine-root/tmp/m2tree/a/f1 /tmp/alpine-root/tmp/m2tree/a/b/f2 2>/dev/null || true
+
 while IFS= read -r cmd; do
     [ -z "$cmd" ] && continue
     out=$(timeout "$LIMIT" "$RUNE" "$BUSYBOX" sh -c "$cmd" < /dev/null 2>&1)
@@ -36,6 +42,10 @@ while IFS= read -r cmd; do
         pass=$((pass + 1))
     fi
 done <<'EOF'
+find /tmp/m2tree | sort
+ls -R /tmp/m2tree
+find /tmp/m2tree -type f
+find /tmp/m2tree -type d | wc -l
 rm -rf /tmp/m2d; mkdir -p /tmp/m2d; mkdir /tmp/m2d/d && ls /tmp/m2d
 rm -rf /tmp/m2d; mkdir -p /tmp/m2d; echo hi > /tmp/m2d/a; cp /tmp/m2d/a /tmp/m2d/b && cat /tmp/m2d/b
 rm -rf /tmp/m2d; mkdir -p /tmp/m2d; echo x > /tmp/m2d/a; mv /tmp/m2d/a /tmp/m2d/c && ls /tmp/m2d

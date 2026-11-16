@@ -156,7 +156,11 @@ static long fs_write(void *c, int fd, const void *b, size_t n, long long o) {
 }
 static int fs_close(void *c, int fd) {
     if (fd < 0 || fd >= 64 || !TAB(c)[fd].used) return -EBADF;
-    {
+    // A directory descriptor has no host fd of its own; it owns a DIR stream.
+    if (DIRTAB(c)[fd] != NULL) {
+        closedir((DIR *)DIRTAB(c)[fd]);
+        DIRTAB(c)[fd] = NULL;
+    } else {
         const int h = TAB(c)[fd].host;
         host_unref(h);
         host_close_if_done(h);
@@ -188,8 +192,14 @@ static int fs_stat(void *c, int fd, void *buf, size_t n) {
 static int fs_opendir(void *c, const char *path) {
     char h[2048]; host_path(h, sizeof(h), path);
     DIR *d = opendir(h); if (!d) return -errno;
-    for (int i = 0; i < 64; i++) if (!DIRTAB(c)[i]) { DIRTAB(c)[i] = d; return i; }
-    closedir(d); return -24;
+    // A directory is a descriptor like any other and must come from the same
+    // table. Taking the first free slot of g_dirs handed back 0, 1 and 2 - so a
+    // recursive walk silently installed its directories over stdin, stdout and
+    // stderr, and the last write failed with EBADF.
+    const int fd = fd_alloc_tab(((const procctx *)c)->fdtab, -1);
+    if (fd < 0) { closedir(d); return -24; }
+    DIRTAB(c)[fd] = d;
+    return fd;
 }
 static long fs_readdir(void *c, int h, void *buf, size_t buf_size) {
     if (h < 0 || h >= 64 || !DIRTAB(c)[h]) return 0;
