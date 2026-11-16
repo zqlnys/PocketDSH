@@ -138,6 +138,34 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             }
             E2_RETURN(files->read(env->ctx, (int)a0, dst, (size_t)a2, (long long)m->cpu.x[3]));
         }
+        case E2_SYS_pipe2: {
+            if (files == NULL || files->pipe == NULL) {
+                E2_RETURN(-E2_ENOSYS);
+            }
+            int fds[2] = {-1, -1};
+            const int rc = files->pipe(env->ctx, fds);
+            if (rc < 0) {
+                E2_RETURN(rc);
+            }
+            uint8_t *dst = e2_memory_host_ptr(&m->mem, a0, 8, E2_PROT_WRITE);
+            if (dst == NULL) {
+                E2_RETURN(-E2_EFAULT);
+            }
+            memcpy(dst, fds, 8);
+            E2_RETURN(0);
+        }
+        case E2_SYS_fcntl: {
+            if (files == NULL || files->fcntl == NULL) {
+                E2_RETURN(-E2_ENOSYS);
+            }
+            E2_RETURN(files->fcntl(env->ctx, (int)a0, (int)a1, (long)a2));
+        }
+        case E2_SYS_dup3: {
+            if (files == NULL || files->dup3 == NULL) {
+                E2_RETURN(-E2_ENOSYS);
+            }
+            E2_RETURN(files->dup3(env->ctx, (int)a0, (int)a1, (int)a2));
+        }
         case E2_SYS_openat: {
             if (files == NULL) {
                 E2_RETURN(-E2_ENOSYS);
@@ -147,8 +175,9 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             if (rc != 0) {
                 E2_RETURN(rc);
             }
-            // O_DIRECTORY (0x4000 on aarch64) means the caller wants a listing
-            // handle, which the host serves through a different entry point.
+            // O_DIRECTORY is 040000 (0x4000) in musl's aarch64 fcntl.h. Note
+            // that 0x20000 is O_LARGEFILE, not O_DIRECTORY - mapping it wrongly
+            // made every `>` redirection fail with EINVAL.
             if (((int)a2 & 0x4000) != 0 && files->opendir != NULL) {
                 E2_RETURN(files->opendir(env->ctx, path));
             }

@@ -631,43 +631,58 @@ e2_status e2_step(e2_machine *machine) {
         cpu->v[rd_v][0] = 0;
         cpu->v[rd_v][1] = 0;
 
-        if (cmode == 0x0) {
-            // movi Vd.8b/16b, #imm8
+        // cmode selects the element size and shift. The mapping was taken from
+        // the disassembler rather than from memory, because the obvious guess
+        // (cmode 0 = byte lanes) is wrong: 0xE is byte lanes and 0x0 is 32-bit.
+        /*
+         *  cmode  op  element  shift
+         *  0x0    0   32       -
+         *  0x2    0   32       8
+         *  0x4    0   32       16
+         *  0x6    0   32       24
+         *  0x8    0   16       -
+         *  0xA    0   16       8
+         *  0xC    0   32       msl 8
+         *  0xD    0   32       msl 16
+         *  0xE    0   8        -
+         *  0xE    1   64       -
+         *  0xF    x   floating point (not handled here)
+         */
+        if (cmode == 0xE && !op) {
             const unsigned lanes = q ? 16u : 8u;
             for (unsigned i = 0; i < lanes; i++) {
                 e2_v_set(cpu, rd_v, 8, i, imm8);
             }
-        } else if (cmode == 0x2) {
-            // movi Vd.4h/8h, #imm8
+        } else if (cmode == 0xE && op) {
+            // movi Vd.2d, #imm8 - replicate the byte across the whole register.
+            uint64_t pattern = 0;
+            for (unsigned i = 0; i < 8; i++) {
+                pattern = (pattern << 8) | imm8;
+            }
+            cpu->v[rd_v][0] = pattern;
+            cpu->v[rd_v][1] = pattern;
+        } else if (cmode == 0x8 || cmode == 0xA) {
+            const unsigned shift = (cmode == 0x8) ? 0u : 8u;
             const unsigned lanes = q ? 8u : 4u;
             for (unsigned i = 0; i < lanes; i++) {
-                e2_v_set(cpu, rd_v, 16, i, imm8);
+                e2_v_set(cpu, rd_v, 16, i, (uint64_t)imm8 << shift);
             }
-        } else if (cmode == 0x4) {
-            // movi Vd.2s/4s, #imm8
-            const unsigned lanes = q ? 4u : 2u;
-            for (unsigned i = 0; i < lanes; i++) {
-                e2_v_set(cpu, rd_v, 32, i, imm8);
-            }
-        } else if (cmode == 0x6) {
-            // movi Vd.2d, #imm8 (Q must be 1)
-            if (q) {
-                e2_v_set(cpu, rd_v, 64, 0, imm8);
-                e2_v_set(cpu, rd_v, 64, 1, imm8);
-            }
-        } else if (cmode == 0x8 || cmode == 0xA || cmode == 0xC) {
-            // movi Vd.{2,4,8}s, #imm8, lsl #8/16/24
-            const unsigned shift = (cmode == 0x8) ? 8u : (cmode == 0xA ? 16u : 24u);
+        } else if (cmode == 0x0 || cmode == 0x2 || cmode == 0x4 || cmode == 0x6) {
+            const unsigned shift = (cmode >> 1) * 8u;
             const unsigned lanes = q ? 4u : 2u;
             for (unsigned i = 0; i < lanes; i++) {
                 e2_v_set(cpu, rd_v, 32, i, (uint64_t)imm8 << shift);
             }
-        } else if (cmode == 0xE && op) {
-            // movi Vd.2d, #imm8 (op=1 variant) - all bits set if imm8 bit set
-            const uint64_t pattern = (imm8 & 0x01) ? ~0ULL : 0ULL;
-            cpu->v[rd_v][0] = pattern;
-            cpu->v[rd_v][1] = pattern;
-        } else {
+        } else if (cmode == 0xC || cmode == 0xD) {
+            // movi Vd.4s, #imm8, msl #8/#16 - the low bits become ones.
+            const unsigned shift = (cmode == 0xC) ? 8u : 16u;
+            const uint64_t ones = (1ULL << shift) - 1;
+            const unsigned lanes = q ? 4u : 2u;
+            for (unsigned i = 0; i < lanes; i++) {
+                e2_v_set(cpu, rd_v, 32, i, ((uint64_t)imm8 << shift) | ones);
+            }
+        } else if (false) {
+            // placeholder so the chain still ends in the unimplemented branch
             machine->ctx.reason = "unimplemented MOVI cmode";
             return E2_UNIMPL;
         }

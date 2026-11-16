@@ -8,7 +8,10 @@
 
 /// Linux AArch64 syscall numbers used so far. The ABI is asm-generic, which is
 /// the numbering every aarch64 Linux userspace binary is built against.
+#define E2_SYS_dup3 24
+#define E2_SYS_fcntl 25
 #define E2_SYS_openat 56
+#define E2_SYS_pipe2 59
 #define E2_SYS_close 57
 #define E2_SYS_lseek 62
 #define E2_SYS_read 63
@@ -47,6 +50,15 @@ typedef struct {
     long (*readdir)(void *ctx, int fd, void *buf, size_t buf_size);
     /// Current wall clock in nanoseconds since the epoch.
     long long (*clock_ns)(void *ctx);
+    /// Creates a pipe and writes its two guest fds into `fds`. Returns 0 or a
+    /// negative errno. Optional: shells need it for pipelines.
+    int (*pipe)(void *ctx, int fds[2]);
+    /// Duplicates `oldfd` onto `newfd` (closing it first). Returns `newfd` or a
+    /// negative errno. Optional: shells need it for redirection.
+    int (*dup3)(void *ctx, int oldfd, int newfd, int flags);
+    /// fcntl(2) for the commands a shell needs: F_DUPFD / F_DUPFD_CLOEXEC and
+    /// the FD/FL inspectors. Returns the command's result or a negative errno.
+    long (*fcntl)(void *ctx, int fd, int cmd, long arg);
 } e2_file_ops;
 
 /// Everything the syscall layer needs from its host. The iOS layer will provide
