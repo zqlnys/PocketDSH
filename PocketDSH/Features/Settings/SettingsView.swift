@@ -12,6 +12,7 @@ struct SettingsView: View {
     @State private var revealKey = false
     @State private var keyMessage: String?
     @State private var keyError: String?
+    @State private var isTestingKey = false
     @State private var showTierCSmoke = false
     @State private var showExecProbe = false
 
@@ -108,6 +109,21 @@ struct SettingsView: View {
                 }
                 .buttonStyle(SecondaryButtonStyle())
                 .disabled(!keychain.hasKey)
+
+                // Saving a key only proves it was stored. This is the one place
+                // the app can tell you it actually works, before a task fails
+                // halfway through.
+                Button {
+                    testKey()
+                } label: {
+                    if isTestingKey {
+                        ProgressView()
+                    } else {
+                        Text("Test")
+                    }
+                }
+                .buttonStyle(SecondaryButtonStyle())
+                .disabled(isTestingKey || (apiKeyDraft.isEmpty && !keychain.hasKey))
             }
 
             if let keyMessage {
@@ -438,6 +454,29 @@ struct SettingsView: View {
             keyMessage = keychain.hasKey ? "Saved to Keychain." : "Key removed."
         } catch {
             keyError = error.localizedDescription
+        }
+    }
+
+    private func testKey() {
+        keyMessage = nil
+        keyError = nil
+        let candidate = apiKeyDraft.isEmpty ? (keychain.apiKey() ?? "") : apiKeyDraft
+        guard !candidate.isEmpty else {
+            keyError = NSLocalizedString("Enter a key first.", comment: "")
+            return
+        }
+        isTestingKey = true
+        // Explicitly main-actor: this Task writes @State when it finishes.
+        Task { @MainActor in
+            defer { isTestingKey = false }
+            do {
+                keyMessage = try await DeepSeekClient().verify(
+                    apiKey: candidate,
+                    model: settings.model
+                )
+            } catch {
+                keyError = error.localizedDescription
+            }
         }
     }
 

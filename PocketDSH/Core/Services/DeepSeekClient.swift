@@ -78,6 +78,26 @@ struct DeepSeekClient {
         }
     }
 
+    /// Check that a key works, without doing any real work.
+    ///
+    /// A one-token request is the cheapest thing that exercises everything the
+    /// agent will use: the endpoint, the bearer header, the model name and the
+    /// response decoder. Without this the first sign of a wrong key is a task
+    /// failing halfway through.
+    func verify(apiKey: String, model: String) async throws -> String {
+        let reply = try await complete(
+            apiKey: apiKey,
+            model: model,
+            messages: [LLMMessage(role: .user, content: "Reply with the single word OK.")],
+            tools: [],
+            thinkingEnabled: false,
+            reasoningEffort: .low,
+            maxTokens: 8
+        )
+        let text = (reply.content ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? "The key works, but the model returned no text." : "Key works. Model replied: \(text.prefix(40))"
+    }
+
     func complete(
         apiKey: String,
         model: String,
