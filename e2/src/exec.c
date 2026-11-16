@@ -765,22 +765,50 @@ e2_status e2_step(e2_machine *machine) {
         return E2_OK;
     }
 
+    // --- EXTR (extract from a register pair) ---
+    // Bit 23 distinguishes this from the bitfield group (100110 vs 100111), and
+    // Rn may differ from Rm, so this is not just a rotate.
+    if ((insn & 0x7FA00000u) == 0x13800000u) {
+        const unsigned rm = BITS(insn, 20, 16);
+        const unsigned imms = BITS(insn, 15, 10);
+        const unsigned rn2 = BITS(insn, 9, 5);
+        const unsigned width = is64 ? 64u : 32u;
+        const uint64_t lo_v = e2_read_xzr(cpu, rm) & (is64 ? ~0ULL : 0xFFFFFFFFULL);
+        const uint64_t hi_v = e2_read_xzr(cpu, rn2) & (is64 ? ~0ULL : 0xFFFFFFFFULL);
+        uint64_t result;
+        if (imms == 0) {
+            result = lo_v;
+        } else {
+            result = (lo_v >> imms) | (hi_v << (width - imms));
+        }
+        write_reg(cpu, rd, result & (is64 ? ~0ULL : 0xFFFFFFFFULL), is64);
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     // --- Conditional select: CSEL / CSINC / CSINV / CSNEG ---
     // Ternary operators and min/max compile to these; CSET is CSINC with an
     // inverted condition.
     if ((insn & 0x1FE00000u) == 0x1A800000u) {
-        const unsigned op = BITS(insn, 30, 29);
+        // The four operations are selected by bit 30 together with bit 10 (op2),
+        // NOT by bits 30-29: bit 29 is the S field and is always zero here.
+        // Reading bit 29 made CSINC look like CSEL, so `cset` (which lowers to
+        // `csinc Rd, ZR, ZR, invert(cond)`) returned ZR - always zero.
+        const unsigned op = BIT(insn, 30);
+        const unsigned op2 = BIT(insn, 10);
         const unsigned rm = BITS(insn, 20, 16);
         const unsigned cond = BITS(insn, 15, 12);
         const unsigned rn2 = BITS(insn, 9, 5);
         const uint64_t mask = is64 ? ~0ULL : 0xFFFFFFFFULL;
+        const unsigned sel = (op << 1) | op2;
 
         uint64_t result;
         if (condition_holds(cpu, cond)) {
             result = e2_read_xzr(cpu, rn2);
         } else {
             const uint64_t other = e2_read_xzr(cpu, rm);
-            switch (op) {
+            switch (sel) {
                 case 0: result = other; break;            // CSEL
                 case 1: result = other + 1; break;        // CSINC
                 case 2: result = ~other; break;           // CSINV
