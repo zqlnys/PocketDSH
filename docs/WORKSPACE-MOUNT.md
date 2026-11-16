@@ -216,7 +216,17 @@ guest 写入的文件被宿主读回，证明 realfs 不是只读空壳，而是
 
 **默认仍是读写。** 是否默认只读是个产品决定：读写能让 guest 的构建/格式化工具正常工作，但会绕过工作区备份；只读更安全但限制用途。开关已经接好（`LinuxRuntime.workspaceReadOnly`，变化时自动重建会话），定下来只需改一行默认值。
 
-状态：编译通过（build 96）。**运行时尚未验证**——用只读模式跑一次写命令、确认返回 `EROFS` 是下一步。
+状态：**运行时已验证**（run 43806552415 / build 97）。只读挂载下写命令返回 `EROFS`，读操作正常，宿主确认没有文件产生。
+
+```
+[4/7] $ echo tierc-write-ok > /workspace/.tierc-probe.txt
+/bin/sh: can't create /workspace/.tierc-probe.txt: Read-only file system
+[6/7] $ ls /workspace
+README.md
+[read-only check] write rejected, no file created.
+```
+
+证据：[tierc/readonly-mount.txt](tierc/readonly-mount.txt)、[tierc/readonly-mount.png](tierc/readonly-mount.png)
 
 一个实现细节：`realfs_mount` 在 libish 里是导出符号，但 `fs/real.h` 没有声明它，包装层需要自己补原型，否则编译报 `use of undeclared identifier`。
 

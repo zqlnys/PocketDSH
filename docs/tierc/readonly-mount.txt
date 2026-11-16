@@ -1,0 +1,56 @@
+Run: https://github.com/zqlnys/PocketDSH/actions/runs/43806552415
+Build: pocketdsh-ios-97
+Commit: 77ebd31
+Device: iPhone 17 Pro Max, iOS 26.2 simulator
+Launch args: -PocketDSHTierCSmoke -PocketDSHWorkspaceDemo -PocketDSHTierCReadOnly
+
+Build: read-only workspace mount, runtime verified
+
+Captured output (Tier C smoke screen):
+
+  Running 7 commands through the shared session (read-only).
+
+  [1/7 +0.3s] $ pwd
+  /
+  [2/7 +0.3s] $ uname -m
+  i686
+  [3/7 +0.3s] $ echo alive-after-external
+  alive-after-external
+
+  [4/7 +0.3s] $ echo tierc-write-ok > /workspace/.tierc-probe.txt
+  /bin/sh: can't create /workspace/.tierc-probe.txt: Read-only file system
+
+  [5/7 +0.3s] $ read v < /workspace/.tierc-probe.txt; echo got:$v
+  /bin/sh: can't open /workspace/.tierc-probe.txt: no such file
+  got:
+
+  [6/7 +0.4s] $ ls /workspace
+  README.md
+
+  [7/7 +0.4s] $ echo should-fail > /workspace/.tierc-ro-probe.txt; echo write-exit:$?
+  /bin/sh: can't create /workspace/.tierc-ro-probe.txt: Read-only file system
+  write-exit:1
+
+  session active: yes
+
+  [read-only check] write rejected, no file created.
+  [host readback] .tierc-probe.txt missing — guest write did not reach the host directory.
+
+Why this proves the wrapper works:
+
+- iSH's realfs stores MS_READONLY_ in mount->flags but never reads it, so a
+  read-only mount that only set the flag would still accept writes. That is
+  why the wrapper exists.
+- Both write attempts failed with "Read-only file system": the EROFS the
+  wrapper returns travels through the emulated kernel into the guest shell.
+- Reads still work: `ls /workspace` lists README.md, so the mount is not
+  simply broken.
+- The host confirms no file was created, so this is not just a shell-level
+  error message.
+- `write-exit:1` is the exit status the guest observed.
+
+Note: commands 4 and 5 belong to the read-write probe sequence, which this
+run inherits; they fail here by design. A later revision switches the command
+set by mount mode so the read-only screenshot only shows relevant checks.
+
+Screenshot: readonly-mount.png

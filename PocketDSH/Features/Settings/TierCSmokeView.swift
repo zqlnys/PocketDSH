@@ -53,13 +53,15 @@ struct TierCSmokeView: View {
             "pwd",
             "uname -m",                                             // external: forks a child
             "echo alive-after-external",                            // session survived it?
-            "echo tierc-write-ok > /workspace/.tierc-probe.txt",
-            "read v < /workspace/.tierc-probe.txt; echo got:$v",    // builtin read of the mount
             "ls /workspace"                                         // external again
         ]
         if readOnly {
             // Proves the wrapper rejects writes rather than trusting the mount flag.
             commands.append("echo should-fail > /workspace/.tierc-ro-probe.txt; echo write-exit:$?")
+        } else {
+            commands.append("echo tierc-write-ok > /workspace/.tierc-probe.txt")
+            commands.append("read v < /workspace/.tierc-probe.txt; echo got:$v")  // builtin read of the mount
+            commands.append("ls /workspace")
         }
 
         let mode = readOnly ? "read-only" : "read-write"
@@ -82,8 +84,12 @@ struct TierCSmokeView: View {
             text += FileManager.default.fileExists(atPath: readOnlyProbe.path)
                 ? "\n[read-only check] FAILED — guest wrote into a read-only mount."
                 : "\n[read-only check] write rejected, no file created."
+        }
+
+        guard !readOnly else {
             try? FileManager.default.removeItem(at: readOnlyProbe)
             output = text
+            return
         }
 
         if let written = try? String(contentsOf: probeURL, encoding: .utf8) {
