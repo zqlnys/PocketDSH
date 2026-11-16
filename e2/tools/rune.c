@@ -1330,6 +1330,16 @@ static int run_proc(int idx) {
                         (unsigned long long)p->m.cpu.x[2],
                         (unsigned long long)p->m.cpu.x[3]);
         }
+            (p->m.cpu.pc == 0x494408 || p->m.cpu.pc == 0x4944c4)) {
+            uint64_t slot = 0;
+            e2_memory_read(&p->m.mem, p->m.cpu.sp, &slot, 8);
+            fprintf(stderr, "[awk2] pc=0x%llx sp=0x%llx [sp]=0x%llx x0=0x%llx x1=0x%llx\n",
+                    (unsigned long long)p->m.cpu.pc,
+                    (unsigned long long)p->m.cpu.sp,
+                    (unsigned long long)slot,
+                    (unsigned long long)p->m.cpu.x[0],
+                    (unsigned long long)p->m.cpu.x[1]);
+        }
         const uint64_t pre_pc = p->m.cpu.pc;
         // Shadow call stack. Chasing a bad argument by re-running with a probe
         // one frame up, over and over, was the slowest part of the last few

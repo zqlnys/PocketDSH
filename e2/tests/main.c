@@ -1473,6 +1473,28 @@ static void test_scalar_immediates(void) {
         e2_memory_destroy(&m.mem);
     }
 
+    {
+        // str x0, [sp] - an ordinary 64-bit store to the stack pointer. It looks
+        // too simple to be wrong, which is exactly why it was the last place
+        // anyone looked when a stack slot kept reading back as zero.
+        e2_machine m;
+        e2_machine_init(&m, 0, 1 << 20);
+        const uint64_t at = 0x30000000ULL;
+        e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+        uint32_t insn = 0xF90003E0u;   // str x0, [sp]
+        e2_memory_write(&m.mem, at, &insn, 4);
+        m.cpu.pc = at;
+        m.cpu.x[0] = 0x520200;
+        const uint64_t sp_before = m.cpu.sp;
+        uint64_t slot = 0xBAD;
+        e2_memory_write(&m.mem, sp_before, &slot, 8);
+        e2_step(&m);
+        e2_memory_read(&m.mem, sp_before, &slot, 8);
+        CHECK(slot == 0x520200, "str x0, [sp] stores to the stack pointer");
+        CHECK(m.cpu.sp == sp_before, "str x0, [sp] leaves sp alone");
+        e2_memory_destroy(&m.mem);
+    }
+
     // UMOV moves a vector element into a general register. musl's memset does
     // `mov x1, v0.d[0]` to materialise the replicated byte pattern, so a broken
     // UMOV silently turned every memset into a zero fill. It used to decode as
