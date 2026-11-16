@@ -717,7 +717,12 @@ static int run_proc(int idx) {
             fprintf(stderr, "[progress] %ld instr pc=0x%llx syscalls_so_far=%ld\n",
                     guard, (unsigned long long)p->m.cpu.pc, syscalls_seen);
         }
-        if (++guard > 60000000L) {
+        static long cap = -1;
+        if (cap < 0) {
+            const char *e = getenv("E2_CAP");
+            cap = e ? atol(e) : 60000000L;
+        }
+        if (++guard > cap) {
             snprintf(g_reason, sizeof(g_reason), "instruction cap");
             g_fault = 1;
             if (getenv("E2_TRACE_HIST")) {
@@ -824,6 +829,24 @@ static int run_proc(int idx) {
             armed = 1;
             prev_pc = p->m.cpu.pc;
             e2_memory_read(&p->m.mem, p->m.cpu.pc, &prev_insn, 4);
+        }
+        if (getenv("E2_TRACE_AT") && p->m.cpu.pc == strtoull(getenv("E2_TRACE_AT"), NULL, 0)) {
+            static int once = 0;
+            if (!once) {
+                once = 1;
+                const uint64_t at = p->m.cpu.pc;
+                fprintf(stderr, "[at] pc=0x%llx x0=0x%llx x1=0x%llx x2=0x%llx x9=0x%llx x10=0x%llx\n",
+                        (unsigned long long)at,
+                        (unsigned long long)p->m.cpu.x[0], (unsigned long long)p->m.cpu.x[1],
+                        (unsigned long long)p->m.cpu.x[2], (unsigned long long)p->m.cpu.x[9],
+                        (unsigned long long)p->m.cpu.x[10]);
+                for (uint64_t a = at - 16; a < at + 24; a += 16) {
+                    uint32_t w[4] = {0,0,0,0};
+                    e2_memory_read(&p->m.mem, a, w, 16);
+                    fprintf(stderr, "  0x%llx: %08x %08x %08x %08x\n",
+                            (unsigned long long)a, w[0], w[1], w[2], w[3]);
+                }
+            }
         }
         if (getenv("E2_TRACE_ARGS") && p->m.cpu.pc == 0x1017c568) {
             {

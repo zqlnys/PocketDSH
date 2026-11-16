@@ -1766,7 +1766,10 @@ e2_status e2_step(e2_machine *machine) {
         const unsigned size_code = BITS(insn, 31, 30);
         const unsigned mode = BITS(insn, 11, 10);
         const int64_t imm9 = (int64_t)sign_extend(BITS(insn, 20, 12), 9);
-        const unsigned bytes = 1u << size_code;
+        // Same width rule as the register-offset form: size 0 is the 16-byte
+        // vector encoding, not one byte. `stur q0, [x19, #24]` was writing a
+        // single zero byte over two pointer-sized fields.
+        const unsigned bytes = (size_code == 0) ? 16u : (1u << size_code);
         const unsigned rt_v = BITS(insn, 4, 0);
 
         uint64_t base = e2_read_sp(cpu, rn);
