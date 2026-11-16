@@ -1330,18 +1330,6 @@ static int run_proc(int idx) {
                         (unsigned long long)p->m.cpu.x[2],
                         (unsigned long long)p->m.cpu.x[3]);
         }
-            (p->m.cpu.pc == 0x4940e0 || p->m.cpu.pc == 0x494110 ||
-             p->m.cpu.pc == 0x494408 || p->m.cpu.pc == 0x4944c4)) {
-            static int seen[4];
-            const int slot = (p->m.cpu.pc == 0x4940e0) ? 0 :
-                             (p->m.cpu.pc == 0x494110) ? 1 :
-                             (p->m.cpu.pc == 0x494408) ? 2 : 3;
-            if (++seen[slot] <= 1)
-                fprintf(stderr, "[fr] pc=0x%llx sp=0x%llx lr=0x%llx\n",
-                        (unsigned long long)p->m.cpu.pc,
-                        (unsigned long long)p->m.cpu.sp,
-                        (unsigned long long)p->m.cpu.x[30]);
-        }
         const uint64_t pre_pc = p->m.cpu.pc;
         // Shadow call stack. Chasing a bad argument by re-running with a probe
         // one frame up, over and over, was the slowest part of the last few
