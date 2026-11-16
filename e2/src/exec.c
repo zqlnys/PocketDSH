@@ -884,7 +884,7 @@ e2_status e2_step(e2_machine *machine) {
     // normal here. The high-multiply variants live in a different encoding group
     // (bit 23 set) and are handled separately below; keying on Ra alone made
     // every plain multiply return the high half of the product, i.e. zero.
-    if ((insn & 0x1F000000u) == 0x1B000000u && BIT(insn, 23) == 0) {
+    if ((insn & 0x1F200000u) == 0x1B000000u) {
         const bool is_sub = BIT(insn, 15) != 0;
         const unsigned rm = BITS(insn, 20, 16);
         const unsigned ra = BITS(insn, 14, 10);
