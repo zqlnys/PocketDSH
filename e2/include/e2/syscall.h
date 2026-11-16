@@ -39,6 +39,12 @@ typedef struct {
     int (*close)(void *ctx, int fd);
     /// Fills `buf` with a struct stat (aarch64 layout). Returns 0 or negative errno.
     int (*stat)(void *ctx, int fd, void *buf, size_t buflen);
+    /// Opens a directory for getdents64. Returns a guest fd or negative errno.
+    int (*opendir)(void *ctx, const char *path);
+    /// Reads one directory entry into a linux_dirent64 record. Writes at most
+    /// `buf_size` bytes and returns the record length, 0 at end, or negative
+    /// errno. Uses the host's own cursor for that directory.
+    long (*readdir)(void *ctx, int fd, void *buf, size_t buf_size);
     /// Current wall clock in nanoseconds since the epoch.
     long long (*clock_ns)(void *ctx);
 } e2_file_ops;

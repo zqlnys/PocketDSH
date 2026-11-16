@@ -147,6 +147,11 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             if (rc != 0) {
                 E2_RETURN(rc);
             }
+            // O_DIRECTORY (0x4000 on aarch64) means the caller wants a listing
+            // handle, which the host serves through a different entry point.
+            if (((int)a2 & 0x4000) != 0 && files->opendir != NULL) {
+                E2_RETURN(files->opendir(env->ctx, path));
+            }
             E2_RETURN(files->open(env->ctx, path, (int)a2, (int)m->cpu.x[3]));
         }
         case E2_SYS_close:
@@ -170,6 +175,17 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             }
             memcpy(dst, &st, sizeof(st));
             E2_RETURN(0);
+        }
+        case 61: {  // getdents64
+            if (files == NULL) {
+                E2_RETURN(-E2_ENOSYS);
+            }
+            uint8_t *dst = e2_memory_host_ptr(&m->mem, a1, (size_t)a2, E2_PROT_WRITE);
+            if (dst == NULL) {
+                E2_RETURN(-E2_EFAULT);
+            }
+            long n = files->readdir(env->ctx, (int)a0, dst, (size_t)a2);
+            E2_RETURN(n);
         }
         case 79: {  // newfstatat: stat by path
             if (files == NULL) {
@@ -287,8 +303,11 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             E2_RETURN((int64_t)a1);
         case 98:  // futex: single-threaded, so nothing ever blocks
             E2_RETURN(0);
-        case 29:  // ioctl: report "not a tty"
-            E2_RETURN(-E2_ENOTSUP);
+        case 29:  // ioctl
+            // ENOTTY, not ENOTSUP: callers test specifically for ENOTTY to mean
+            // "not a terminal" and fall back to a default width. Any other error
+            // is treated as fatal and aborts the command.
+            E2_RETURN(-25);  // ENOTTY
         case E2_SYS_brk: {
             // Back the break with a real mapping. Returning a plausible address
             // without mapping it makes every later store fault, which is exactly

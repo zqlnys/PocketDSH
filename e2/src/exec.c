@@ -45,6 +45,16 @@ void e2_machine_init(e2_machine *machine, uint64_t entry, size_t stack_size) {
 
     if (stack_size > 0) {
         const size_t rounded = (stack_size + E2_PAGE_SIZE - 1) & ~(size_t)(E2_PAGE_SIZE - 1);
+        // Place the stack high, the way Linux does. A low stack collides with
+        // fixed-address executables: statically linked busybox owns 0x400000.
+        {
+            const uint64_t high = 0x7F000000ULL;
+            if (e2_memory_map_at(&machine->mem, high, rounded + E2_PAGE_SIZE,
+                                 E2_PROT_READ | E2_PROT_WRITE) == 0) {
+                machine->cpu.sp = high + rounded - 64;
+                return;
+            }
+        }
         // One spare page above SP: startup code in musl zeroes the region between
         // a computed base and the stack top, and the top itself is exclusive, so
         // the last store lands one word past SP. Real kernels leave room there;
