@@ -1173,6 +1173,54 @@ static void test_scalar_immediates(void) {
         e2_memory_destroy(&m.mem);
     }
 
+    {
+        // The four Advanced SIMD logical operations share an encoding and are
+        // selected by the size field. The regex engine builds its character
+        // sets with these, so getting one wrong makes matching fail silently.
+        static const struct { uint32_t insn; uint64_t a, b, want; const char *what; } ops[] = {
+            {0x4E221C20u, 0xFF00FF00FF00FF00ULL, 0x0F0F0F0F0F0F0F0FULL,
+             0x0F000F000F000F00ULL, "and v.16b"},
+            {0x4E621C20u, 0xFF00FF00FF00FF00ULL, 0x0F0F0F0F0F0F0F0FULL,
+             0xF000F000F000F000ULL, "bic v.16b"},
+            {0x4EA21C20u, 0xFF00FF00FF00FF00ULL, 0x0F0F0F0F0F0F0F0FULL,
+             0xFF0FFF0FFF0FFF0FULL, "orr v.16b"},
+        };
+        for (unsigned i = 0; i < sizeof(ops) / sizeof(ops[0]); i++) {
+            e2_machine m;
+            e2_machine_init(&m, 0, 1 << 20);
+            const uint64_t at = 0x30000000ULL;
+            e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+            e2_memory_write(&m.mem, at, &ops[i].insn, 4);
+            m.cpu.pc = at;
+            m.cpu.v[1][0] = ops[i].a;
+            m.cpu.v[2][0] = ops[i].b;
+            e2_step(&m);
+            CHECK(m.cpu.v[0][0] == ops[i].want, "%s", ops[i].what);
+            e2_memory_destroy(&m.mem);
+        }
+    }
+
+    {
+        // cmeq v0.16b, v1.16b, v2.16b - per-byte compare. A regex DFA tests a
+        // byte against the set this way, so a broken compare means a pattern
+        // can never match a literal character.
+        e2_machine m;
+        e2_machine_init(&m, 0, 1 << 20);
+        const uint64_t at = 0x30000000ULL;
+        e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+        uint32_t insn = 0x6E228C20u;
+        e2_memory_write(&m.mem, at, &insn, 4);
+        m.cpu.pc = at;
+        // Bytes 0, 2, 4 and 6 agree, the rest do not, so those lanes come back
+        // all ones and the others zero.
+        m.cpu.v[1][0] = 0x0102030405060708ULL;
+        m.cpu.v[2][0] = 0xFF02FF04FF06FF08ULL;
+        e2_step(&m);
+        CHECK(m.cpu.v[0][0] == 0x00FF00FF00FF00FFULL,
+              "cmeq v.16b marks equal bytes with 0xFF");
+        e2_memory_destroy(&m.mem);
+    }
+
     // UMOV moves a vector element into a general register. musl's memset does
     // `mov x1, v0.d[0]` to materialise the replicated byte pattern, so a broken
     // UMOV silently turned every memset into a zero fill. It used to decode as

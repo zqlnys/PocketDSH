@@ -783,6 +783,23 @@ e2_status e2_step(e2_machine *machine) {
             }
         } else if (key == 35 && size == 0) {  // eor
             r0 = a0 ^ b0; r1 = a1 ^ b1;
+        } else if (key == 49) {              // cmeq: per-element equality
+            // Marks each equal element with all ones. A regex engine tests a
+            // byte against a set this way, so without it a pattern can never
+            // match a literal character - it simply reports no match, silently.
+            const unsigned width = 8u << size;
+            const unsigned lanes = (q ? 128u : 64u) / width;
+            const uint64_t mask = (width >= 64) ? ~0ULL : ((1ULL << width) - 1);
+            for (unsigned i = 0; i < lanes; i++) {
+                const unsigned bit_off = i * width;
+                const int half = bit_off / 64;
+                const unsigned off = bit_off % 64;
+                const uint64_t av = ((half ? a1 : a0) >> off) & mask;
+                const uint64_t bv = ((half ? b1 : b0) >> off) & mask;
+                const uint64_t rv = (av == bv) ? mask : 0;
+                if (half) r1 = (r1 & ~(mask << off)) | (rv << off);
+                else      r0 = (r0 & ~(mask << off)) | (rv << off);
+            }
         } else if (key == 16 || key == 48 || key == 19) {   // add / sub / mul
             const unsigned lanes = q ? (128u / (8u << size)) : (64u / (8u << size));
             const unsigned width = 8u << size;
