@@ -1701,6 +1701,33 @@ static void test_scalar_immediates(void) {
         e2_memory_destroy(&m.mem);
     }
 
+    {
+        // The same conversions with a register other than 0. awk's integer check
+        // uses x3, so an off-by-one in the register field would only show up
+        // there and not in a test written against x0.
+        e2_machine m;
+        e2_machine_init(&m, 0, 1 << 20);
+        const uint64_t at = 0x30000000ULL;
+        e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+
+        uint32_t insn = 0x9E620060u;   // scvtf d0, x3
+        e2_memory_write(&m.mem, at, &insn, 4);
+        m.cpu.x[3] = 7;
+        m.cpu.pc = at;
+        e2_step(&m);
+        double d = 0;
+        memcpy(&d, &m.cpu.v[0][0], 8);
+        CHECK(d == 7.0, "scvtf d0, x3 converts from x3");
+
+        uint32_t back = 0x9E780003u;   // fcvtzs x3, d0
+        e2_memory_write(&m.mem, at, &back, 4);
+        m.cpu.x[3] = 0;
+        m.cpu.pc = at;
+        e2_step(&m);
+        CHECK(m.cpu.x[3] == 7, "fcvtzs x3, d0 writes to x3");
+        e2_memory_destroy(&m.mem);
+    }
+
     // UMOV moves a vector element into a general register. musl's memset does
     // `mov x1, v0.d[0]` to materialise the replicated byte pattern, so a broken
     // UMOV silently turned every memset into a zero fill. It used to decode as
