@@ -1736,22 +1736,26 @@ not_a_shift:;
             addr = (uint64_t)((int64_t)base + offset);
         }
 
-        const size_t half = scale > 8 ? 8 : scale;
-        if (is_load) {
-            if (e2_memory_read(&machine->mem, addr, &cpu->v[rt_v][0], half) != 0 ||
-                e2_memory_read(&machine->mem, addr + half, &cpu->v[rt_v][1], half) != 0 ||
-                e2_memory_read(&machine->mem, addr + scale, &cpu->v[rt2_v][0], half) != 0 ||
-                e2_memory_read(&machine->mem, addr + scale + half, &cpu->v[rt2_v][1], half) != 0) {
-                machine->ctx.reason = "simd ldp outside mapped memory";
-                return E2_FAULT;
-            }
-        } else {
-            if (e2_memory_write(&machine->mem, addr, &cpu->v[rt_v][0], half) != 0 ||
-                e2_memory_write(&machine->mem, addr + half, &cpu->v[rt_v][1], half) != 0 ||
-                e2_memory_write(&machine->mem, addr + scale, &cpu->v[rt2_v][0], half) != 0 ||
-                e2_memory_write(&machine->mem, addr + scale + half, &cpu->v[rt2_v][1], half) != 0) {
-                machine->ctx.reason = "simd stp outside mapped memory";
-                return E2_FAULT;
+        // Each register occupies `scale` bytes, so a 128-bit pair spans four
+        // 8-byte halves but a 64-bit pair spans only two. Writing four halves
+        // unconditionally made `stp d8, d9, [sp, #208]` also write 16 bytes past
+        // the pair - which landed on the caller's stack slot and zeroed it.
+        const unsigned parts = (scale > 8) ? 2u : 1u;
+        const size_t half = (scale > 8) ? 8u : (size_t)scale;
+        for (unsigned k = 0; k < parts; k++) {
+            const uint64_t off = (uint64_t)k * 8u;
+            if (is_load) {
+                if (e2_memory_read(&machine->mem, addr + off, &cpu->v[rt_v][k], half) != 0 ||
+                    e2_memory_read(&machine->mem, addr + scale + off, &cpu->v[rt2_v][k], half) != 0) {
+                    machine->ctx.reason = "simd ldp outside mapped memory";
+                    return E2_FAULT;
+                }
+            } else {
+                if (e2_memory_write(&machine->mem, addr + off, &cpu->v[rt_v][k], half) != 0 ||
+                    e2_memory_write(&machine->mem, addr + scale + off, &cpu->v[rt2_v][k], half) != 0) {
+                    machine->ctx.reason = "simd stp outside mapped memory";
+                    return E2_FAULT;
+                }
             }
         }
 

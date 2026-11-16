@@ -1557,14 +1557,22 @@ static void test_scalar_immediates(void) {
         m.cpu.v[8][0] = 0x1111111111111111ULL;
         m.cpu.v[9][0] = 0x2222222222222222ULL;
         const uint64_t sp = m.cpu.sp;
-        uint64_t a = 0xBAD, b = 0xBAD;
+        uint64_t a = 0xBAD, b = 0xBAD, guard = 0xCAFE;
         e2_memory_write(&m.mem, sp + 208, &a, 8);
         e2_memory_write(&m.mem, sp + 216, &b, 8);
+        e2_memory_write(&m.mem, sp + 224, &guard, 8);
         e2_step(&m);
         e2_memory_read(&m.mem, sp + 208, &a, 8);
         e2_memory_read(&m.mem, sp + 216, &b, 8);
         CHECK(a == 0x1111111111111111ULL && b == 0x2222222222222222ULL,
               "stp d8, d9, [sp, #208] stores at +208 and +216");
+        // A 64-bit pair spans 16 bytes, not 32. Writing the extra halves lands on
+        // whatever follows the pair - for this instruction in awk that was the
+        // caller's stack slot, which is why it went undetected for so long: the
+        // two values that matter were correct, only the overflow was wrong.
+        uint64_t beyond = 0;
+        e2_memory_read(&m.mem, sp + 224, &beyond, 8);
+        CHECK(beyond == 0xCAFE, "stp d8, d9 does not write past the pair");
         e2_memory_destroy(&m.mem);
     }
 
