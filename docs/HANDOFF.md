@@ -324,6 +324,7 @@ docs/WORKSPACE-MOUNT.md   ← Tier C 项目工作区挂载实现
 docs/PERSISTENT-SHELL.md  ← Tier C 持久 shell 设计与验证
 docs/BUILD-TARGETS.md     ← 发布版 / Lab 版的许可边界与验证方法
 docs/EXECUTION-PROBE.md   ← 真机能否执行运行时加载代码（已定论：不能）
+docs/E2-BACKEND.md        ← E2 重写后端：策略、进度、踩坑记录
 docs/BUILD.md
 docs/BUILD-INSTALL.md
 docs/PHASE1-VALIDATION.md
@@ -545,6 +546,21 @@ examples/workspace-inspector.dshplugin/
 **因此**：native userland 路线排除，重写后端必须自带 aarch64 解释器，工期 4–6 个月（不是 1–2 个月）。
 
 详见 [EXECUTION-PROBE.md](EXECUTION-PROBE.md)。
+
+## 11.6 E2 后端进度（长期项目）
+
+目标：不复用 iSH 的 GPL 代码，自写 aarch64 解释器 + syscall 层，产出许可自主的 Linux 运行时。
+
+**策略**：核心是平台无关 C11，本机 `make test` 秒级反馈；iOS 只做 fd 与 rootfs 的薄封装。这条策略已在 M1 抓到 4 个真 bug，其中 2 个是硬错误。
+
+| 里程碑 | 内容 | 状态 |
+| --- | --- | --- |
+| M1 | 解释器 + ELF 加载 + 基础 syscall，跑通 hello world 与递归 fib | ✅ |
+| M2 | SIMD/FP + 动态链接 + 更多 syscall，跑通 musl ld.so | 未开始 |
+| M3 | busybox / sh 脚本 / 管道 | 未开始 |
+| M4 | python | 未开始 |
+
+代码在 `e2/`，文档在 [E2-BACKEND.md](E2-BACKEND.md)。**E2 不阻塞上架**——发布版与它无关。
 
 ## 12. 下一步建议
 
