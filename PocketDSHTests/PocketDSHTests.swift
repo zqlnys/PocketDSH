@@ -63,6 +63,49 @@ final class PocketDSHTests: XCTestCase {
         XCTAssertEqual(executor.todos.first?.status, .completed)
     }
 
+    func testConversationDecodesWithoutTodosKey() throws {
+        // Conversations written before plans existed have no "todos" key. If
+        // decoding them failed, loading a project would silently drop its
+        // entire history - which is why AgentConversation has a hand-written
+        // decoder rather than the synthesized one.
+        let json = """
+        {"messages":[],"events":[],"updatedAt":"2024-01-01T00:00:00Z"}
+        """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let conversation = try decoder.decode(AgentConversation.self,
+                                              from: Data(json.utf8))
+        XCTAssertTrue(conversation.todos.isEmpty)
+        XCTAssertTrue(conversation.messages.isEmpty)
+    }
+
+    func testConversationRoundTripsTodos() throws {
+        let original = AgentConversation(
+            messages: [],
+            events: [],
+            todos: [TodoItem(content: "first", status: .completed),
+                    TodoItem(content: "second", status: .inProgress)],
+            updatedAt: Date(timeIntervalSince1970: 0)
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let restored = try decoder.decode(AgentConversation.self,
+                                          from: try encoder.encode(original))
+        XCTAssertEqual(restored.todos.map(\.content), ["first", "second"])
+        XCTAssertEqual(restored.todos.map(\.status), [.completed, .inProgress])
+    }
+
+    func testTodoStatusDecodesFromSnakeCase() throws {
+        let json = #"{"messages":[],"events":[],"updatedAt":"2024-01-01T00:00:00Z","todos":[{"id":"00000000-0000-0000-0000-000000000001","content":"x","status":"in_progress"}]}"#
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let conversation = try decoder.decode(AgentConversation.self,
+                                              from: Data(json.utf8))
+        XCTAssertEqual(conversation.todos.first?.status, .inProgress)
+    }
+
     func testHTMLIsReducedToReadableText() {
         let html = """
         <html><head><style>body{color:red}</style>
