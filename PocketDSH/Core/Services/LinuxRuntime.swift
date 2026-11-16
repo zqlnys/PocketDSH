@@ -12,7 +12,10 @@ final class LinuxRuntime {
     private var rootfsURL: URL?
     private var prepared = false
 
-    func run(command: String) async -> ToolExecutionResult {
+    /// Runs one command. When `workspace` is provided, the directory is mounted
+    /// read-write at `/workspace` inside the guest through iSH's realfs backend,
+    /// so the guest sees the real project files rather than a metadata copy.
+    func run(command: String, workspace: URL? = nil) async -> ToolExecutionResult {
         guard !busy else {
             return .failure("Tier C shell is busy. One Linux command is supported per app launch in this experimental build.")
         }
@@ -26,12 +29,16 @@ final class LinuxRuntime {
             .appendingPathComponent("pocketdsh-linux-\(UUID().uuidString).txt")
         let rootPath = root.path
         let outputPath = outputURL.path
+        // Empty string means "do not mount anything"; the C side checks for it.
+        let workspacePath = workspace?.path ?? ""
 
         Task.detached(priority: .userInitiated) {
             rootPath.withCString { rootPointer in
                 commandToRun.withCString { commandPointer in
                     outputPath.withCString { outputPointer in
-                        _ = pocket_ish_run(rootPointer, commandPointer, outputPointer)
+                        workspacePath.withCString { workspacePointer in
+                            _ = pocket_ish_run(rootPointer, workspacePointer, commandPointer, outputPointer)
+                        }
                     }
                 }
             }

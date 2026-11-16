@@ -3,12 +3,15 @@
 
 #include <stddef.h>
 
-/// Runs one Linux command through iSH. The output is written to output_path.
+/// Runs one Linux command through iSH. Output is written to output_path.
+///
+/// - `rootfs`: host path to the Alpine rootfs directory.
+/// - `workspace`: optional host path mounted at /workspace inside the guest via
+///   iSH's realfs backend. Pass NULL to skip the mount.
+/// - `command`: shell command executed by /bin/sh -c.
+///
 /// Returns the emulated shell exit code, or a negative error code.
-int pocket_ish_run(const char *rootfs, const char *command, const char *output_path);
-
-/// Registers an already-copied project tree under /workspace in the iSH fakefs
-/// metadata database. Returns 0 on success, negative errno on failure.
-int pocket_ish_register_workspace(const char *rootfs, const char *workspace_path);
+int pocket_ish_run(const char *rootfs, const char *workspace, const char *command,
+                   const char *output_path);
 
 #endif

@@ -25,8 +25,12 @@ struct TierCSmokeView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(PocketTheme.background)
         .task {
-            let command = "uname -a; cat /etc/alpine-release"
-            let result = await appState.linuxRuntime.run(command: command)
+            let workspaceURL = appState.activeSession?.rootURL
+            var command = "uname -a; cat /etc/alpine-release"
+            if workspaceURL != nil {
+                command += "; echo '--- /workspace ---'; ls -la /workspace"
+            }
+            let result = await appState.linuxRuntime.run(command: command, workspace: workspaceURL)
             output = result.content
         }
     }

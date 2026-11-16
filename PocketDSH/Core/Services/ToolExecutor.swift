@@ -216,7 +216,9 @@ final class ToolExecutor {
         guard let linuxRuntime else {
             return .failure("Tier C is not linked in this build.")
         }
-        return await linuxRuntime.run(command: command)
+        // The active project root is mounted at /workspace via iSH realfs, so a
+        // guest command sees the same files the Swift tools operate on.
+        return await linuxRuntime.run(command: command, workspace: workspace.root)
     }
     private func scheduleAlert(_ arguments: [String: JSONValue]) async throws -> ToolExecutionResult {
         guard let title = arguments["title"]?.stringValue else {

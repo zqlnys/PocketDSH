@@ -77,9 +77,11 @@ enum TierCProbeRunner {
         mark("bridge-start")
         let runTask = Task.detached(priority: .userInitiated) {
             _ = root.path.withCString { rootPtr in
-                "echo tier-c-probe-ok; uname -a; cat /etc/alpine-release".withCString { commandPtr in
-                    output.path.withCString { outputPtr in
-                        pocket_ish_run(rootPtr, commandPtr, outputPtr)
+                "".withCString { workspacePtr in
+                    "echo tier-c-probe-ok; uname -a; cat /etc/alpine-release".withCString { commandPtr in
+                        output.path.withCString { outputPtr in
+                            pocket_ish_run(rootPtr, workspacePtr, commandPtr, outputPtr)
+                        }
                     }
                 }
             }
