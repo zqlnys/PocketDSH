@@ -55,9 +55,19 @@ static void set_error(char *error, size_t size, const char *text) {
 /// Set while a shell thread is live so the exit hook can flip its flags.
 static pocket_shell *g_exiting_shell = NULL;
 
+/// pid of the emulated /bin/sh itself.
+///
+/// exit_hook fires for *every* exiting task, including children forked by shell
+/// commands. A persistent shell must only tear down its host thread when the
+/// shell itself exits — otherwise the first external command (`cat`, `ls`,
+/// `uname`, …) takes the whole session with it.
+static pid_t_ g_shell_pid = 0;
+
 static void pocket_exit_hook(struct task *task, int code) {
-    (void)task;
     (void)code;
+    if (task != NULL && g_shell_pid != 0 && task->pid != g_shell_pid) {
+        return;
+    }
     if (g_exiting_shell != NULL) {
         g_exiting_shell->running = 0;
         g_exiting_shell->exited = 1;
@@ -153,8 +163,10 @@ static void *shell_thread(void *argument) {
     }
 
     g_exiting_shell = shell;
+    g_shell_pid = current->pid;
     exit_hook = pocket_exit_hook;
     task_run_current();
+    g_shell_pid = 0;
     g_exiting_shell = NULL;
 
     shell->running = 0;

@@ -61,16 +61,16 @@ struct TierCSmokeView: View {
         output = text
         let commands = [
             "pwd",
-            "echo persistent-shell-alive",
+            "uname -m",                                    // external: forks a child
+            "echo alive-after-external",                   // proves the session survived it
             "echo tierc-write-ok > /workspace/.tierc-probe.txt",
-            "cat /workspace/.tierc-probe.txt",
-            "uname -m",
-            "ls -la /workspace"
+            "read v < /workspace/.tierc-probe.txt; echo got:$v",  // builtin read of the mount
+            "ls /workspace"                                // external again
         ]
 
         let began = Date()
         for (index, command) in commands.enumerated() {
-            let result = await Task.detached { session.run(command) }.value
+            let result = await Task.detached { session.run(command, timeout: 12) }.value
             let elapsed = String(format: "%.1fs", Date().timeIntervalSince(began))
             text += "[\(index + 1)/\(commands.count) +\(elapsed)] $ \(command)\n\(result)\n\n"
             output = text
