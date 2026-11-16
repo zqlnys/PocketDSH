@@ -70,6 +70,9 @@ static long g_proc_budget = -1;
 // Counters rather than per-call logging: a fprintf inside the wait path changes
 // the timing enough to hide the very bug being measured.
 static int g_wait_calls, g_wait_ok, g_wait_echild;
+// Counters rather than per-call logging: a fprintf inside the wait path changes
+// the timing enough to hide the very bug being measured.
+static int g_wait_calls, g_wait_ok, g_wait_echild;
 
 static int pump_children_for_tab(int tab);
 static void trace_flush(void);
@@ -714,6 +717,7 @@ static int pump_children_for_tab(int tab) {
 static long p_wait4(void *ctx, int pid, uint64_t status_ptr, int options) {
     (void)options;
     g_wait_calls++;
+    g_wait_calls++;
     proc_t *self = ctx;
     for (int i = 1; i < 16; i++) {
         proc_t *c = &procs[i];
@@ -747,12 +751,14 @@ static long p_wait4(void *ctx, int pid, uint64_t status_ptr, int options) {
             fprintf(stderr, "[wait] child=%d status=%d instr=%ld\n", c->pid, c->exit_status,
                     (long)c->m.instructions);
         g_wait_ok++;
+        g_wait_ok++;
         const int reaped = c->pid;
         fd_table_release(c->pc.fdtab);
         e2_memory_destroy(&c->m.mem);
         memset(c, 0, sizeof(*c));
         return reaped;
     }
+    g_wait_echild++;
     g_wait_echild++;
     return -10;   // ECHILD
 }
@@ -1757,6 +1763,9 @@ env_done:
     g_shadow_on = getenv("E2_TRACE_STACK") != NULL;
     const int status = run_proc(1);
     (void)status;
+    if (getenv("E2_TRACE_WAITSUM"))
+        fprintf(stderr, "[waitsum] calls=%d ok=%d echild=%d\n",
+                g_wait_calls, g_wait_ok, g_wait_echild);
     if (getenv("E2_TRACE_WAITSUM"))
         fprintf(stderr, "[waitsum] calls=%d ok=%d echild=%d\n",
                 g_wait_calls, g_wait_ok, g_wait_echild);
