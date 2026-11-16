@@ -1495,6 +1495,52 @@ static void test_scalar_immediates(void) {
         e2_memory_destroy(&m.mem);
     }
 
+    {
+        // Paired 64-bit floating-point store and load with a large offset, and
+        // the stack adjustment that makes room for it. If either the offset or
+        // the sp decrement is off by a slot, two frames overlap and a caller's
+        // local gets overwritten by its own callee.
+        e2_machine m;
+        e2_machine_init(&m, 0, 1 << 20);
+        const uint64_t code = 0x30000000ULL;
+        const uint64_t data = 0x31000000ULL;
+        e2_memory_map_at(&m.mem, code, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+        e2_memory_map_at(&m.mem, data, 0x1000, E2_PROT_READ | E2_PROT_WRITE);
+
+        // stp d8, d9, [x1, #208] then ldp back.
+        uint32_t stp = 0x6D0D2428u;
+        e2_memory_write(&m.mem, code, &stp, 4);
+        m.cpu.pc = code;
+        m.cpu.x[1] = data;
+        m.cpu.v[8][0] = 0x1111111111111111ULL;
+        m.cpu.v[9][0] = 0x2222222222222222ULL;
+        e2_step(&m);
+        uint64_t a = 0, b = 0;
+        e2_memory_read(&m.mem, data + 208, &a, 8);
+        e2_memory_read(&m.mem, data + 216, &b, 8);
+        CHECK(a == 0x1111111111111111ULL, "stp d8, d9 stores d8 at the offset");
+        CHECK(b == 0x2222222222222222ULL, "stp d8, d9 stores d9 sixteen bytes on");
+
+        uint32_t ldp = 0x6D4D2428u;
+        e2_memory_write(&m.mem, code, &ldp, 4);
+        m.cpu.pc = code;
+        m.cpu.x[1] = data;
+        m.cpu.v[8][0] = 0;
+        m.cpu.v[9][0] = 0;
+        e2_step(&m);
+        CHECK(m.cpu.v[8][0] == 0x1111111111111111ULL &&
+              m.cpu.v[9][0] == 0x2222222222222222ULL, "ldp d8, d9 reads both back");
+
+        // sub sp, sp, #224 must move exactly 224 bytes and leave the flags be.
+        uint32_t sub_sp = 0xD10383FFu;
+        e2_memory_write(&m.mem, code, &sub_sp, 4);
+        m.cpu.pc = code;
+        const uint64_t before = m.cpu.sp;
+        e2_step(&m);
+        CHECK(m.cpu.sp == before - 224, "sub sp, sp, #224 subtracts exactly 224");
+        e2_memory_destroy(&m.mem);
+    }
+
     // UMOV moves a vector element into a general register. musl's memset does
     // `mov x1, v0.d[0]` to materialise the replicated byte pattern, so a broken
     // UMOV silently turned every memset into a zero fill. It used to decode as
