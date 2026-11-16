@@ -1504,3 +1504,27 @@ ValueError: embedded null character
 `E2_TRACE_TSTATE=1` 在 `_PyErr_WriteUnraisableMsg` 处 dump thread state，
 自动解出类型名与异常消息。这是目前最有用的探针。
 
+### M2 的实际覆盖度（可复现）
+
+M2 的结论不能靠回忆，所以有了 `tools/m2-sweep.sh`：它跑 47 个 busybox applet，
+报告哪些活下来。
+
+```sh
+e2/tools/m2-sweep.sh /path/to/busybox [e2/tools/rune]
+```
+
+注意每个 applet 的 stdin 重定向自 `/dev/null` —— `sort`、`tr`、`wc` 会读 stdin，
+否则会把命令列表剩下的部分吃掉（第一次跑就踩了这个，只测了 23 条）。
+
+用一次扫描代替「应该没问题」的判断，直接带来一个修复：`seq` 在 7,454 条指令处
+停在未实现的指令上。顺着它补了五组指令：
+
+| 指令 | 说明 |
+| --- | --- |
+| `fmov d9, d8` | 浮点一源组原先没有通用处理器，只有 FRINT 用表匹配 |
+| `fmov v0.d[1], x3` / `fmov x3, v0.d[1]` | 128 位寄存器上半部分有独立的编码对 |
+| `adc` / `adcs` / `sbc` / `sbcs` | 与普通移位加减不同组：bits 28-24 = 11010 |
+| `fmadd` / `fmsub` / `fnmadd` / `fnmsub` | bit 21 控制减加数，bit 15 控制负乘积，且**融合**（乘积不先舍入） |
+
+`seq 3`、`seq 1 5`、`seq 10 -2 1` 现在都正确，最后一条还验证了负步长。
+
