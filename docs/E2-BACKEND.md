@@ -284,7 +284,25 @@ copyright notices.
 
 另外栈必须缩小：4 MB 起始于 `0x10000` 会和静态二进制的 `0x400000` 代码段重叠。
 
-`busybox ls` 目前停在一处未实现指令（`0x5ac00339`），是下一步。
+`busybox ls` 的进展与卡点：
+
+- `0x5ac00339` 已确认是 **`rbit w25, w25`**（整数 1-source 指令，不是 SIMD），整组 RBIT/REV/CLZ/CLS 已实现
+- `busybox echo hello` 可用
+- `busybox ls` 卡在 getopt32 报 `NO OPT 0xff`
+
+对 getopt32 的内部追踪（直接给 busybox 自己的代码加探针）：
+
+| 阶段 | 结果 |
+| --- | --- |
+| `applet_opts` 传入 | `"^Cadi1lgnsxAkFpRQctuSXrvLHhT:w:"` ✅ |
+| strlen + alloca + strcpy | 副本逐字节正确 ✅ |
+| 短选项构建循环 | 逐项写入 `C,a,d,i,1,l,g,n,...`，步长 40 ✅ |
+| `applet_long_options` | `"full-time\0\0\xff"` 等 ✅ |
+| **互补选项扫描** | **走的表在 `0x7f0ff2c0`，而构建写在 `0x7f0ff370`** ❌ |
+
+两个地址差 176 字节，而 176 **不是** 40（表项大小）的倍数——所以不是同一个数组的不同偏移。下一步要解释这个差。
+
+另一个纠正：被拒绝的字符是 **`0xff`**，不是空格——终端把它渲染成了不可见字符，导致前一轮在字符串里找一个根本不存在的空格。
 
 步长错位后，`ldr x4, [x28, #8]` 读到的是 `0x910003fda9bf7bfd`——两条指令编码的拼接（`stp x29,x30` + `mov x29,sp`），因为指针滑进了 `.text`。这就是污染来源。
 
