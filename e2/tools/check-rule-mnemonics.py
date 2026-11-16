@@ -43,6 +43,16 @@ RULES = [
     ("SHLL",            0x9F80FC00, 0x0F00A400),
     ("LD1/ST1 pair",    0xFF3FF000, 0x4C00A000),
     ("LD1/ST1 lane",    0xBF9FF400, 0x0D008400),
+    # Load/store families. Bit 26 is what separates the general and Advanced
+    # SIMD halves; leaving it out of a mask is exactly how `ldr q0, [x21, x2]`
+    # ended up executed as an integer load.
+    ("LD/ST uoff general", 0x3F000000, 0x39000000),
+    ("LD/ST uoff SIMD",    0x3F000000, 0x3D000000),
+    ("LD/ST unscaled general", 0x3F200000, 0x38000000),
+    ("LD/ST unscaled SIMD",    0x3F200000, 0x3C000000),
+    ("LD/ST reg offset general", 0x3F200C00, 0x38200800),
+    ("LD/ST reg offset SIMD",    0x3F200000, 0x3C200000),
+    ("LD/ST pair general", 0x3E000000, 0x28000000),
 ]
 
 # llvm reports "unknown" for words that are data rather than instructions; a
@@ -74,6 +84,24 @@ FAMILY = {
     "SHLL": {"shll", "sshll", "ushll", "sshll2", "ushll2", "shll2", "unknown"},
     "LD1/ST1 pair": {"ld1", "st1", "unknown"},
     "LD1/ST1 lane": {"ld1", "st1", "unknown"},
+    "LD/ST uoff general": {"ldr", "str", "ldrb", "strb", "ldrh", "strh",
+                           "ldrsb", "ldrsh", "ldrsw", "prfm"},
+    "LD/ST uoff SIMD": {"ldr", "str", "ldur", "stur", "prfm", "ld1", "st1"},
+    # Unscaled covers both the *ur aliases and the unprivileged *tr forms; llvm
+    # prints the shorter name when the offset happens to be zero.
+    "LD/ST unscaled general": {"ldur", "stur", "ldurb", "sturb", "ldurh", "sturh",
+                               "ldursb", "ldursh", "ldursw", "prfum",
+                               "ldtr", "ldtrb", "ldtrh", "ldtrsb", "ldtrsh",
+                               "ldtrsw", "sttr", "sttrb", "sttrh",
+                               "ldr", "str", "ldrb", "strb", "ldrh", "strh",
+                               "ldrsb", "ldrsh", "ldrsw"},
+    "LD/ST unscaled SIMD": {"ldur", "stur", "ldr", "str", "prfum"},
+    "LD/ST reg offset general": {"ldr", "str", "ldrb", "strb", "ldrh", "strh",
+                                 "ldrsb", "ldrsh", "ldrsw", "prfm"},
+    "LD/ST reg offset SIMD": {"ldr", "str", "prfm"},
+    # stgp shares the pair encoding space; without MTE it behaves as stp, which
+    # is what the handler does, so it is listed rather than reported.
+    "LD/ST pair general": {"ldp", "stp", "ldpsw", "ldnp", "stnp", "stgp"},
 }
 
 

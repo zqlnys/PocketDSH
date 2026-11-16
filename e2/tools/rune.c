@@ -825,6 +825,20 @@ static int run_proc(int idx) {
             prev_pc = p->m.cpu.pc;
             e2_memory_read(&p->m.mem, p->m.cpu.pc, &prev_insn, 4);
         }
+        if (getenv("E2_TRACE_ARGS") && p->m.cpu.pc == 0x1017c568) {
+            fprintf(stderr, "[code3] around 0x1017c568:\n");
+            for (uint64_t a = 0x1017c530; a < 0x1017c570; a += 16) {
+                uint32_t w[4] = {0,0,0,0};
+                e2_memory_read(&p->m.mem, a, w, 16);
+                fprintf(stderr, "  0x%llx: %08x %08x %08x %08x\n",
+                        (unsigned long long)a, w[0], w[1], w[2], w[3]);
+            }
+            static int na = 0;
+            if (++na < 6)
+                fprintf(stderr, "[args] x0=0x%llx x1=0x%llx x2=0x%llx x3=0x%llx\n",
+                        (unsigned long long)p->m.cpu.x[0], (unsigned long long)p->m.cpu.x[1],
+                        (unsigned long long)p->m.cpu.x[2], (unsigned long long)p->m.cpu.x[3]);
+        }
         const uint64_t pre_pc = p->m.cpu.pc;
         // Shadow call stack. Chasing a bad argument by re-running with a probe
         // one frame up, over and over, was the slowest part of the last few
