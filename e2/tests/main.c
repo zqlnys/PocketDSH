@@ -750,6 +750,7 @@ static void test_reject_wrong_machine(void) {
 }
 
 static void test_shll(void);
+static void test_scalar_immediates(void);
 
 int main(void) {
     printf("== e2 interpreter core tests ==\n");
@@ -776,6 +777,7 @@ int main(void) {
     test_reject_wrong_machine();
 
     test_shll();
+    test_scalar_immediates();
 
     printf("\n%d checks, %d failure(s)\n", checks, failures);
     return failures == 0 ? 0 : 1;
@@ -849,4 +851,61 @@ static void test_shll(void) {
         printf("    got: %.80s\n", captured);
     }
     e2_memory_destroy(&m.mem);
+}
+
+// Executes a single instruction and returns the resulting state. Guest programs
+// are the wrong tool for checking one encoding: an earlier attempt to verify
+// FMOV immediate through a compiled program reported wrong values while the
+// interpreter was in fact correct. Driving e2_step directly has no codegen in
+// the way.
+static e2_status run_single_insn(uint32_t insn, e2_machine *m, uint64_t *v0_out) {
+    e2_machine_init(m, 0, 1 << 20);
+    const uint64_t at = 0x30000000ULL;
+    if (e2_memory_map_at(&m->mem, at, 0x1000,
+                         E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC) != 0) {
+        return E2_FAULT;
+    }
+    e2_memory_write(&m->mem, at, &insn, 4);
+    m->cpu.pc = at;
+    e2_status st = e2_step(m);
+    if (v0_out != NULL) *v0_out = m->cpu.v[0][0];
+    return st;
+}
+
+static void test_scalar_immediates(void) {
+    static const struct { uint32_t insn; uint64_t want; const char *what; } cases[] = {
+        {0x1E2C1000u, 0x000000003F000000ULL, "fmov s0, #0.5"},
+        {0x1E2E1000u, 0x000000003F800000ULL, "fmov s0, #1.0"},
+        {0x1E201000u, 0x0000000040000000ULL, "fmov s0, #2.0"},
+        {0x1E3C1000u, 0x00000000BF000000ULL, "fmov s0, #-0.5"},
+    };
+    for (unsigned i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        e2_machine m;
+        uint64_t got = 0;
+        const e2_status st = run_single_insn(cases[i].insn, &m, &got);
+        char label[96];
+        snprintf(label, sizeof(label), "%s expands to the right bit pattern", cases[i].what);
+        CHECK(st == E2_OK && got == cases[i].want, "%s", label);
+        if (st != E2_OK || got != cases[i].want) {
+            printf("    got 0x%016llx want 0x%016llx\n",
+                   (unsigned long long)got, (unsigned long long)cases[i].want);
+        }
+        e2_memory_destroy(&m.mem);
+    }
+
+    // scvtf/ucvtf convert an integer in x0 to a float in s0.
+    {
+        e2_machine m;
+        e2_machine_init(&m, 0, 1 << 20);
+        const uint64_t at = 0x30000000ULL;
+        e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+        const uint32_t insn = 0x1E220001u;   // scvtf s1, w0
+        e2_memory_write(&m.mem, at, &insn, 4);
+        m.cpu.pc = at;
+        m.cpu.x[0] = 7;
+        const e2_status st = e2_step(&m);
+        CHECK(st == E2_OK && (m.cpu.v[1][0] & 0xFFFFFFFFULL) == 0x40E00000ULL,
+              "scvtf converts 7 to 7.0f");
+        e2_memory_destroy(&m.mem);
+    }
 }

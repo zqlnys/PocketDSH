@@ -627,6 +627,93 @@ e2_status e2_step(e2_machine *machine) {
         return E2_OK;
     }
 
+    // --- Scalar floating point compare: FCMP / FCMPE ---
+    // AArch64 sets NZCV in a specific way for unordered comparisons, which is
+    // how C's <, <=, == on floats end up branching.
+    if ((insn & 0xFF207C00u) == 0x1E202000u) {
+        const unsigned ftype = BITS(insn, 23, 22);
+        if (ftype == 0 || ftype == 1) {
+            const bool dbl = ftype == 1;
+            const unsigned rm = BITS(insn, 20, 16);
+            const unsigned rn2 = BITS(insn, 9, 5);
+            double a, b;
+            if (dbl) {
+                a = cpu->v[rn2][0] == 0 ? 0.0 : 0.0;
+                memcpy(&a, &cpu->v[rn2][0], 8);
+                if (rm == 0) { b = 0.0; } else { memcpy(&b, &cpu->v[rm][0], 8); }
+            } else {
+                uint32_t ba = (uint32_t)cpu->v[rn2][0];
+                float fa; memcpy(&fa, &ba, 4);
+                a = (double)fa;
+                if (rm == 0) { b = 0.0; }
+                else { uint32_t bb = (uint32_t)cpu->v[rm][0]; float fb; memcpy(&fb, &bb, 4); b = (double)fb; }
+            }
+            if (a != a || b != b) {          // unordered
+                cpu->flags.n = false; cpu->flags.z = false;
+                cpu->flags.c = true;  cpu->flags.v = true;
+            } else if (a == b) {
+                cpu->flags.n = false; cpu->flags.z = true;
+                cpu->flags.c = true;  cpu->flags.v = false;
+            } else if (a < b) {
+                cpu->flags.n = true;  cpu->flags.z = false;
+                cpu->flags.c = false; cpu->flags.v = false;
+            } else {
+                cpu->flags.n = false; cpu->flags.z = false;
+                cpu->flags.c = true;  cpu->flags.v = false;
+            }
+            cpu->pc = next_pc;
+            machine->instructions++;
+            return E2_OK;
+        }
+    }
+
+    // --- Scalar floating point, two sources: FMUL/FDIV/FADD/FSUB/FMAX/FMIN ---
+    // Python's number formatting does its arithmetic through these. Host float
+    // and double arithmetic follows the same IEEE rules including NaN and
+    // signed zero, so the operands are converted and the result stored back.
+    if ((insn & 0xFF200C00u) == 0x1E200800u) {
+        const unsigned ftype = BITS(insn, 23, 22);
+        const unsigned opcode = BITS(insn, 15, 12);
+        const unsigned rm = BITS(insn, 20, 16);
+        const unsigned rn2 = BITS(insn, 9, 5);
+        if (ftype == 0 || ftype == 1) {
+            const bool dbl = ftype == 1;
+            #define E2_FP_IN(fr)                                                     \
+                (dbl ? ({ uint64_t _b = (fr)[0]; double _d; memcpy(&_d, &_b, 8); _d; })  \
+                     : ({ uint32_t _b = (uint32_t)(fr)[0]; float _f; memcpy(&_f, &_b, 4); \
+                          (double)_f; }))
+            const double a = E2_FP_IN(cpu->v[rn2]);
+            const double b = E2_FP_IN(cpu->v[rm]);
+            double r;
+            switch (opcode) {
+                case 0: r = a * b; break;                 // fmul
+                case 1: r = a / b; break;                 // fdiv
+                case 2: r = a + b; break;                 // fadd
+                case 3: r = a - b; break;                 // fsub
+                case 4: case 6: r = (a != a) ? b : (b != b) ? a : (a > b ? a : b); break;
+                case 5: case 7: r = (a != a) ? b : (b != b) ? a : (a < b ? a : b); break;
+                case 8: r = -(a * b); break;              // fnmul
+                default:
+                    machine->ctx.reason = "unimplemented FP 2-source opcode";
+                    return E2_UNIMPL;
+            }
+            #undef E2_FP_IN
+            if (dbl) {
+                uint64_t bits; memcpy(&bits, &r, 8);
+                cpu->v[rd][0] = bits;
+                cpu->v[rd][1] = 0;
+            } else {
+                float f = (float)r;
+                uint32_t bits; memcpy(&bits, &f, 4);
+                cpu->v[rd][0] = bits;
+                cpu->v[rd][1] = 0;
+            }
+            cpu->pc = next_pc;
+            machine->instructions++;
+            return E2_OK;
+        }
+    }
+
     // --- Integer to scalar floating point: SCVTF / UCVTF ---
     // Python's float formatting converts integers this way. The host cast is
     // IEEE round-to-nearest-even, which is the architecturally default mode.
