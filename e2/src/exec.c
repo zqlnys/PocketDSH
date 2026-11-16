@@ -697,6 +697,42 @@ e2_status e2_step(e2_machine *machine) {
         return E2_OK;
     }
 
+    // --- SIMD: LD1 / ST1 with two structure registers ---
+    // memcpy's wide path moves 32 bytes per iteration with this form, so the
+    // whole of strcpy/memcpy shows up here. Bits 14-13 = 01 selects two
+    // registers, and Q chooses 16- or 8-byte elements.
+    if ((insn & 0xFF3FF000u) == 0x4C00A000u) {
+        const bool is_load = BIT(insn, 22) != 0;
+        const bool q = BIT(insn, 30) != 0;
+        const unsigned rn2 = BITS(insn, 9, 5);
+        const unsigned base_v = BITS(insn, 4, 0);
+        const uint64_t addr = e2_read_sp(cpu, rn2);
+        const unsigned bytes = q ? 16u : 8u;
+        for (unsigned k = 0; k < 2; k++) {
+            const unsigned vreg = (base_v + k) & 31u;
+            const uint64_t at = addr + k * bytes;
+            if (is_load) {
+                uint64_t lo = 0, hi = 0;
+                if (e2_memory_read(&machine->mem, at, &lo, 8) != 0 ||
+                    (bytes == 16 && e2_memory_read(&machine->mem, at + 8, &hi, 8) != 0)) {
+                    machine->ctx.reason = "ld1 outside mapped memory";
+                    return E2_FAULT;
+                }
+                cpu->v[vreg][0] = lo;
+                cpu->v[vreg][1] = bytes == 16 ? hi : 0;
+            } else {
+                if (e2_memory_write(&machine->mem, at, &cpu->v[vreg][0], 8) != 0 ||
+                    (bytes == 16 && e2_memory_write(&machine->mem, at + 8, &cpu->v[vreg][1], 8) != 0)) {
+                    machine->ctx.reason = "st1 outside mapped memory";
+                    return E2_FAULT;
+                }
+            }
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     // --- SIMD: MOVI (immediate) ---
     // libc clears vector registers with `movi vD.16b, #0` before using them, so
     // this appears before any vector arithmetic.
