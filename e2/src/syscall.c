@@ -94,6 +94,16 @@ static long sys_writev(e2_machine *m, e2_syscall_env *env, int fd, uint64_t iov_
 }
 
 e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
+    // One line per syscall, opt-in. Comparing this against qemu's -strace is the
+    // fastest way to see which operation a program takes and where the two
+    // implementations diverge.
+    if (getenv("E2_TRACE_SYS") != NULL) {
+        fprintf(stderr, "[sys] %llu(0x%llx, 0x%llx, 0x%llx, 0x%llx, 0x%llx, 0x%llx)\n",
+                (unsigned long long)m->cpu.x[8],
+                (unsigned long long)m->cpu.x[0], (unsigned long long)m->cpu.x[1],
+                (unsigned long long)m->cpu.x[2], (unsigned long long)m->cpu.x[3],
+                (unsigned long long)m->cpu.x[4], (unsigned long long)m->cpu.x[5]);
+    }
     const uint64_t number = m->cpu.x[8];
     const uint64_t a0 = m->cpu.x[0];
     const uint64_t a1 = m->cpu.x[1];
