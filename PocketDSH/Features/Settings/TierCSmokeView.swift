@@ -29,16 +29,15 @@ struct TierCSmokeView: View {
         }
     }
 
-    /// Verification has three layers, from weakest to strongest:
+    /// Verification layers, weakest to strongest:
     ///
-    /// 1. The shell starts and answers several commands in a row — this is what
-    ///    the old one-shot bridge could not do (its fixed capture window dropped
-    ///    the tail, and it needed a fresh kernel per command).
-    /// 2. Command boundaries come from a sentinel the shell echoes itself, so the
-    ///    last command's output is captured rather than guessed at.
+    /// 1. Several commands run back to back through the same session the agent
+    ///    uses — not a private probe shell.
+    /// 2. An external command is placed early: if the child-exit regression comes
+    ///    back, the session dies there and later steps report it.
     /// 3. The guest writes into /workspace and the host reads the same path back
-    ///    through FileManager. realfs shares inodes, so a matching readback
-    ///    proves the mount is a live two-way share.
+    ///    through FileManager; realfs shares inodes, so a matching readback proves
+    ///    the mount is a live two-way share.
     private func runSmokeTest() async {
         guard let workspaceURL = appState.activeSession?.rootURL else {
             let result = await appState.linuxRuntime.run(command: "uname -a; cat /etc/alpine-release")
@@ -49,36 +48,28 @@ struct TierCSmokeView: View {
         let probeURL = workspaceURL.appendingPathComponent(".tierc-probe.txt")
         try? FileManager.default.removeItem(at: probeURL)
 
-        let (session, error) = appState.linuxRuntime.makePersistentSession(workspace: workspaceURL)
-        guard let session else {
-            output = "Persistent shell failed to start: \(error)"
-            return
-        }
-
-        // Update on every command so a screenshot taken mid-run still shows
-        // progress instead of the initial placeholder.
-        var text = "Persistent shell started.\n\n"
-        output = text
         let commands = [
             "pwd",
-            "uname -m",                                    // external: forks a child
-            "echo alive-after-external",                   // proves the session survived it
+            "uname -m",                                             // external: forks a child
+            "echo alive-after-external",                            // session survived it?
             "echo tierc-write-ok > /workspace/.tierc-probe.txt",
-            "read v < /workspace/.tierc-probe.txt; echo got:$v",  // builtin read of the mount
-            "ls /workspace"                                // external again
+            "read v < /workspace/.tierc-probe.txt; echo got:$v",    // builtin read of the mount
+            "ls /workspace"                                         // external again
         ]
 
+        var text = "Running \(commands.count) commands through the shared session.\n\n"
+        output = text
         let began = Date()
+
         for (index, command) in commands.enumerated() {
-            let result = await Task.detached { session.run(command, timeout: 12) }.value
+            let result = await appState.linuxRuntime.run(command: command, workspace: workspaceURL)
             let elapsed = String(format: "%.1fs", Date().timeIntervalSince(began))
-            text += "[\(index + 1)/\(commands.count) +\(elapsed)] $ \(command)\n\(result)\n\n"
+            text += "[\(index + 1)/\(commands.count) +\(elapsed)] $ \(command)\n\(result.content)\n\n"
             output = text
         }
 
-        text += "still running: \(session.isRunning ? "yes" : "no")\n"
+        text += "session active: \(appState.linuxRuntime.isSessionActive ? "yes" : "no")\n"
         output = text
-        await Task.detached { session.stop() }.value
 
         if let written = try? String(contentsOf: probeURL, encoding: .utf8) {
             let value = written.trimmingCharacters(in: .whitespacesAndNewlines)

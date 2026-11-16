@@ -320,7 +320,7 @@ struct SettingsView: View {
                 Banner(
                     icon: "exclamationmark.triangle",
                     title: "Tier C is experimental",
-                    message: "The iSH Alpine backend is linked, but run_linux is a single-command experimental path. Tier A remains the default runtime.",
+                    message: "The iSH Alpine backend runs a persistent shell, but Tier C is still experimental. Tier A remains the default runtime.",
                     tint: PocketTheme.amber
                 )
             }
@@ -336,7 +336,7 @@ struct SettingsView: View {
                 StatusPill(text: "Linked", tint: PocketTheme.amber)
             }
 
-            Text("iSH Alpine is linked into this build. run_linux can execute one command per app launch in the Alpine rootfs. It cannot see this project's files yet, and it is not the default runtime.")
+            Text("iSH Alpine runs a persistent shell inside this app. run_linux executes in that shell, and the active project is mounted read-write at /workspace, so guest commands see the same files the Swift tools do. Tier C is still experimental and is not the default runtime.")
                 .font(.caption)
                 .foregroundStyle(PocketTheme.secondaryText)
 

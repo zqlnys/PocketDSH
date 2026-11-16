@@ -3,33 +3,118 @@ import PocketDSHCore
 
 /// Experimental Tier C command runner.
 ///
-/// The embedded iSH shell currently stays alive after producing output, so this
-/// runner deliberately supports one command per app launch. That limitation is
-/// reported to the user instead of being hidden.
+/// Commands run through one long-lived emulated `/bin/sh`. The first call pays
+/// the emulated kernel startup; every later call reuses the same session, which
+/// is what makes a sequence of commands cost ~0.1s each instead of one to three
+/// seconds per command.
+///
+/// A one-shot bridge remains as a fallback: if the session cannot be created the
+/// runner still executes the command, just slower.
 @MainActor
 final class LinuxRuntime {
     private var busy = false
     private var rootfsURL: URL?
     private var prepared = false
 
+    private var session: PersistentShellSession?
+    private var sessionWorkspace: URL?
+    private var lastSessionError = ""
+
+    /// True when a persistent session is alive and reusable.
+    var isSessionActive: Bool {
+        session?.isRunning ?? false
+    }
+
+    /// Reason the last session start failed, for display in Settings.
+    var sessionError: String { lastSessionError }
+
     /// Runs one command. When `workspace` is provided, the directory is mounted
     /// read-write at `/workspace` inside the guest through iSH's realfs backend,
     /// so the guest sees the real project files rather than a metadata copy.
     func run(command: String, workspace: URL? = nil) async -> ToolExecutionResult {
         guard !busy else {
-            return .failure("Tier C shell is busy. One Linux command is supported per app launch in this experimental build.")
+            return .failure("Tier C shell is busy. Wait for the running command to finish.")
         }
+
+        busy = true
+        defer { busy = false }
+
+        if let active = await ensureSession(workspace: workspace) {
+            let result = await Task.detached { active.run(command, timeout: 30) }.value
+            if result.hasPrefix("<shell error") {
+                // The session died mid-command; drop it so the next call rebuilds.
+                await discardSession()
+                return .failure("Tier C session ended while running the command.\n\(result)")
+            }
+            return .success(result.isEmpty ? "(no output)" : result)
+        }
+
+        // Session unavailable — fall back to the slower one-shot bridge.
+        let fallback = await runOneShot(command: command, workspace: workspace)
+        if !lastSessionError.isEmpty {
+            return fallback.withNote("Persistent session unavailable (\(lastSessionError)); ran once.")
+        }
+        return fallback
+    }
+
+    /// Stops and forgets the session. Called when the workspace changes or when
+    /// the user asks Tier C to release its resources.
+    func discardSession() async {
+        guard let existing = session else { return }
+        session = nil
+        sessionWorkspace = nil
+        await Task.detached { existing.stop() }.value
+    }
+
+    // MARK: - Session lifecycle
+
+    private func ensureSession(workspace: URL?) async -> PersistentShellSession? {
+        if let session, session.isRunning, sessionWorkspace == workspace {
+            return session
+        }
+
+        if session != nil {
+            await discardSession()
+        }
+
+        guard let root = prepareRootfs() else {
+            lastSessionError = "rootfs not available in this build"
+            return nil
+        }
+
+        var error = ""
+        guard let created = PersistentShellSession(rootfs: root, workspace: workspace, error: &error) else {
+            lastSessionError = error
+            return nil
+        }
+
+        session = created
+        sessionWorkspace = workspace
+        lastSessionError = ""
+
+        // Give the emulated kernel a moment to finish exec'ing /bin/sh before the
+        // first command is piped in, so the first write is not dropped.
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        if !created.isRunning {
+            lastSessionError = "shell exited during startup"
+            await discardSession()
+            return nil
+        }
+        return created
+    }
+
+    // MARK: - One-shot fallback
+
+    private func runOneShot(command: String, workspace: URL?) async -> ToolExecutionResult {
         guard let root = prepareRootfs() else {
             return .failure("Tier C rootfs is not available in this build.")
         }
 
-        busy = true
         let commandToRun = command
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("pocketdsh-linux-\(UUID().uuidString).txt")
         let rootPath = root.path
         let outputPath = outputURL.path
-        // Empty string means "do not mount anything"; the C side checks for it.
         let workspacePath = workspace?.path ?? ""
 
         Task.detached(priority: .userInitiated) {
@@ -44,27 +129,14 @@ final class LinuxRuntime {
             }
         }
 
-        // iSH writes output before its shell task exits; observe a bounded window
-        // instead of blocking the UI on the persistent shell task.
         try? await Task.sleep(nanoseconds: 5_000_000_000)
         let raw = (try? String(contentsOf: outputURL, encoding: .utf8)) ?? ""
         let output = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         return .success(
             output.isEmpty
-                ? "Linux command started; no output was captured in the observation window. Tier C shell remains experimental."
-                : "Linux output (Tier C, experimental):\n\(output)"
+                ? "Linux command started; no output was captured in the observation window."
+                : "Linux output (Tier C, one-shot):\n\(output)"
         )
-    }
-
-    /// Opens a long-lived shell on the same prepared rootfs. The caller owns the
-    /// session and must call `stop()`; emulated work blocks, so call off-main.
-    func makePersistentSession(workspace: URL?) -> (session: PersistentShellSession?, error: String) {
-        guard let root = prepareRootfs() else {
-            return (nil, "Tier C rootfs is not available in this build.")
-        }
-        var error = ""
-        let session = PersistentShellSession(rootfs: root, workspace: workspace, error: &error)
-        return (session, error)
     }
 
     private func prepareRootfs() -> URL? {
@@ -89,5 +161,11 @@ final class LinuxRuntime {
         prepared = true
         rootfsURL = root
         return root
+    }
+}
+
+private extension ToolExecutionResult {
+    func withNote(_ note: String) -> ToolExecutionResult {
+        .success(content + "\n\nNote: \(note)")
     }
 }

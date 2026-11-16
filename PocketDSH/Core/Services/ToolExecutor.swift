@@ -218,7 +218,9 @@ final class ToolExecutor {
         }
         // The active project root is mounted at /workspace via iSH realfs, so a
         // guest command sees the same files the Swift tools operate on.
-        return await linuxRuntime.run(command: command, workspace: workspace.root)
+        let result = await linuxRuntime.run(command: command, workspace: workspace.root)
+        guard !result.isError else { return result }
+        return .success("Linux output (Tier C):\n\(result.content)")
     }
     private func scheduleAlert(_ arguments: [String: JSONValue]) async throws -> ToolExecutionResult {
         guard let title = arguments["title"]?.stringValue else {
