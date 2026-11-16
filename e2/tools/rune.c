@@ -335,6 +335,8 @@ typedef struct {
 } proc_t;
 static proc_t procs[16];
 static int g_next_pid = 2;
+// Shared with debug builds of the memory layer that need the faulting pc.
+uint64_t g_dbg_pc;
 static const char *g_self_path = NULL;
 
 static int proc_slot(void) {
@@ -501,6 +503,7 @@ static int run_proc(int idx) {
     long syscalls_seen = 0;
     long guard = 0;
     while (p->alive) {
+        g_dbg_pc = p->m.cpu.pc;
         hist[hist_at].pc = p->m.cpu.pc;
         // Read the word at pc rather than ctx.instruction: ctx carries the
         // instruction of the previous step, which put every history entry one
@@ -518,8 +521,106 @@ static int run_proc(int idx) {
         hist[hist_at].x23 = p->m.cpu.x[23];
         hist_at = (hist_at + 1) % 256;
         if (hist_n < 256) hist_n++;
+        if (getenv("E2_TRACE_TRACE") &&
+            p->m.cpu.pc >= 0x10161070 && p->m.cpu.pc < 0x101610f0) {
+            static long nt = 0;
+            if (nt < 80) {
+                fprintf(stderr, "  T %ld pc=0x%llx x21=%llu x26=0x%llx w24=%llu\n", nt,
+                        (unsigned long long)p->m.cpu.pc,
+                        (unsigned long long)p->m.cpu.x[21],
+                        (unsigned long long)p->m.cpu.x[26],
+                        (unsigned long long)(uint32_t)p->m.cpu.x[24]);
+                nt++;
+            }
+        }
+        if (getenv("E2_TRACE_REGIONS") && p->m.cpu.pc == 0x10161074) {
+            static int nr = 0;
+            if (nr == 0) {
+                fprintf(stderr, "[regions] count=%u\n", p->m.mem.count);
+                for (unsigned k = 0; k < p->m.mem.count; k++)
+                    fprintf(stderr, "   [%u] base=0x%llx size=0x%llx prot=%d\n", k,
+                            (unsigned long long)p->m.mem.regions[k].base,
+                            (unsigned long long)p->m.mem.regions[k].size,
+                            p->m.mem.regions[k].prot);
+                nr++;
+            }
+        }
+        if (getenv("E2_TRACE_SLOTS") && p->m.cpu.pc == 0x10161074) {
+            static unsigned visits = 0;
+            visits++;
+            if (visits == 200) {
+                unsigned char k[16] = {0};
+                const uint64_t base = p->m.cpu.x[25];
+                e2_memory_read(&p->m.mem, base, k, 8);
+                const uint64_t t = p->m.cpu.x[19] - 32;
+                uint64_t freev = 0, cnt = 0, lg = 0;
+                e2_memory_read(&p->m.mem, t + 16, &freev, 8);
+                e2_memory_read(&p->m.mem, t + 24, &cnt, 8);
+                e2_memory_read(&p->m.mem, t + 8, &lg, 1);
+                fprintf(stderr, "[loop-tbl] base=0x%llx logsize=%llu free=%lld count=%lld x21=%llu x26=0x%llx bytes:",
+                        (unsigned long long)base, (unsigned long long)(lg & 0xFF),
+                        (long long)freev, (long long)cnt,
+                        (unsigned long long)p->m.cpu.x[21],
+                        (unsigned long long)p->m.cpu.x[26]);
+                for (int k2 = 0; k2 < 8; k2++) fprintf(stderr, " %02x", k[k2]);
+                fprintf(stderr, "\n");
+            }
+        }
+        if (getenv("E2_TRACE_TBL") && p->m.cpu.pc == 0x101634dc) {
+            static int nt2 = 0;
+            if (nt2 < 20) {
+                uint64_t freev = 0, cnt = 0, sz8 = 0;
+                const uint64_t t = p->m.cpu.x[19];
+                e2_memory_read(&p->m.mem, t + 16, &freev, 8);
+                e2_memory_read(&p->m.mem, t + 24, &cnt, 8);
+                e2_memory_read(&p->m.mem, t + 8, &sz8, 1);
+                unsigned char kb[8] = {0};
+                e2_memory_read(&p->m.mem, p->m.cpu.x[19] + 32, kb, 8);
+                fprintf(stderr, "[tbl] kindbytes:");
+                for (int k3 = 0; k3 < 8; k3++) fprintf(stderr, " %02x", kb[k3]);
+                fprintf(stderr, "\n");
+                fprintf(stderr, "[tbl] table=0x%llx logsize=%llu free=%lld count=%lld\n",
+                        (unsigned long long)t, (unsigned long long)(sz8 & 0xFF),
+                        (long long)freev, (long long)cnt);
+                nt2++;
+            }
+        }
+        if (getenv("E2_TRACE_PROBE") && p->m.cpu.pc == 0x101634dc) {
+            fprintf(stderr, "[code2] 0x101634b0..0x101634F0:\n");
+            for (uint64_t a = 0x101634b0; a < 0x101634F0; a += 16) {
+                uint32_t w[4] = {0,0,0,0};
+                e2_memory_read(&p->m.mem, a, w, 16);
+                fprintf(stderr, "  0x%llx: %08x %08x %08x %08x\n",
+                        (unsigned long long)a, w[0], w[1], w[2], w[3]);
+            }
+            fprintf(stderr, "  x0=0x%llx x1=0x%llx x19=0x%llx\n",
+                    (unsigned long long)p->m.cpu.x[0], (unsigned long long)p->m.cpu.x[1],
+                    (unsigned long long)p->m.cpu.x[19]);
+        }
+        if (getenv("E2_TRACE_PROBE") &&
+            (p->m.cpu.pc == 0x10161074 || p->m.cpu.pc == 0x101610b4) &&
+            p->m.cpu.x[21] == 0) {
+            static int nz = 0;
+            if (nz < 8) {
+                unsigned char c = 0;
+                e2_memory_read(&p->m.mem, p->m.cpu.x[25], &c, 1);
+                fprintf(stderr, "[slot0] pc=0x%llx x25=0x%llx byte=0x%02x mask=0x%llx\n",
+                        (unsigned long long)p->m.cpu.pc, (unsigned long long)p->m.cpu.x[25],
+                        c, (unsigned long long)p->m.cpu.x[27]);
+                nz++;
+            }
+        }
         if (getenv("E2_TRACE_PROBE") && p->m.cpu.pc == 0x10161074) {
             static int np = 0;
+            if (np == 40) {
+                fprintf(stderr, "[code] 0x10161070..0x101610F0:\n");
+                for (uint64_t a = 0x10161070; a < 0x101610F0; a += 16) {
+                    uint32_t w[4] = {0,0,0,0};
+                    e2_memory_read(&p->m.mem, a, w, 16);
+                    fprintf(stderr, "  0x%llx: %08x %08x %08x %08x\n",
+                            (unsigned long long)a, w[0], w[1], w[2], w[3]);
+                }
+            }
             if (np == 1) {
                 // The probe walks this table until a byte has its sign bit set.
                 // If none does, it can never stop.
@@ -535,7 +636,7 @@ static int run_proc(int idx) {
                     fprintf(stderr, " %d:0x%llx", k, (unsigned long long)vals[k]);
                 fprintf(stderr, "\n");
             }
-            if (np < 10) {
+            if (np < 40) {
                 fprintf(stderr, "[probe] x21=0x%llx x26=0x%llx mask=0x%llx byte=0x%02x\n",
                         (unsigned long long)p->m.cpu.x[21],
                         (unsigned long long)p->m.cpu.x[26],
@@ -593,6 +694,17 @@ static int run_proc(int idx) {
                         (unsigned long long)pn, (unsigned long long)p->m.cpu.x[0],
                         (unsigned long long)p->m.cpu.x[1], (unsigned long long)p->m.cpu.x[2]);
             syscalls_seen++;
+            if (getenv("E2_TRACE_MAP") && (p->m.cpu.x[8] == 215 || p->m.cpu.x[8] == 222)) {
+                const uint64_t a0 = p->m.cpu.x[0], a1 = p->m.cpu.x[1];
+                if (p->m.cpu.x[8] == 215) {
+                    fprintf(stderr, "[munmap] 0x%llx len=0x%llx\n",
+                            (unsigned long long)a0, (unsigned long long)a1);
+                } else {
+                    fprintf(stderr, "[mmap] hint=0x%llx len=0x%llx prot=%llu\n",
+                            (unsigned long long)a0, (unsigned long long)a1,
+                            (unsigned long long)p->m.cpu.x[2]);
+                }
+            }
             st = e2_service_syscall(&p->m, &env);
             const long long a0_before = (long long)p->m.cpu.x[0];
             (void)a0_before;
