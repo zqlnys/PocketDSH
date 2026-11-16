@@ -1272,6 +1272,127 @@ static void test_scalar_immediates(void) {
         e2_memory_destroy(&m.mem);
     }
 
+    {
+        // The conditional-select family. A clobbered destination or a mixed-up
+        // "condition true" branch here would silently corrupt a register and
+        // show up much later as a wrong value - the shape of every unexplained
+        // value bug found so far.
+        static const struct {
+            uint32_t insn; uint64_t a, b; bool z; uint64_t want; const char *what;
+        } cs[] = {
+            {0x9A820020u, 0x11, 0x22, true,  0x11, "csel picks Rn when the condition holds"},
+            {0x9A820020u, 0x11, 0x22, false, 0x22, "csel picks Rm otherwise"},
+            {0x9A820420u, 0x11, 0x22, true,  0x11, "csinc picks Rn when the condition holds"},
+            {0x9A820420u, 0x11, 0x22, false, 0x23, "csinc adds one to Rm otherwise"},
+            {0xDA820020u, 0x11, 0x22, true,  0x11, "csinv picks Rn"},
+            {0xDA820420u, 0x11, 0x22, true,  0x11, "csneg picks Rn when the condition holds"},
+            {0xDA9F13E0u, 0, 0, true, ~0ULL, "csetm sets all ones when true"},
+            {0xDA9F13E0u, 0, 0, false, 0, "csetm sets zero otherwise"},
+        };
+        for (unsigned i = 0; i < sizeof(cs) / sizeof(cs[0]); i++) {
+            e2_machine m;
+            e2_machine_init(&m, 0, 1 << 20);
+            const uint64_t at = 0x30000000ULL;
+            e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+            e2_memory_write(&m.mem, at, &cs[i].insn, 4);
+            m.cpu.pc = at;
+            m.cpu.x[1] = cs[i].a;
+            m.cpu.x[2] = cs[i].b;
+            m.cpu.flags.z = cs[i].z;
+            m.cpu.flags.c = false;
+            m.cpu.flags.n = false;
+            m.cpu.flags.v = false;
+            e2_step(&m);
+            CHECK(m.cpu.x[0] == cs[i].want, "%s", cs[i].what);
+            e2_memory_destroy(&m.mem);
+        }
+    }
+
+    {
+        // Bitfield extraction and the bit-manipulation one-sources. A regex DFA
+        // pulls state indices out of packed tables with these, so a wrong width
+        // or offset yields a plausible-looking but wrong index - which is
+        // exactly the class of failure this engine shows.
+        static const struct {
+            uint32_t insn; uint64_t in; uint64_t want; const char *what;
+        } bf[] = {
+            {0x53042C20u, 0x0000AB00ULL, 0x000000B0ULL, "ubfx w0, w1, #4, #8"},
+            {0x13042C20u, 0x0000AB00ULL, 0xFFFFFFB0ULL, "sbfx sign extends the extracted field"},
+            {0x53042C20u, 0x0000F300ULL, 0x00000030ULL, "ubfx takes only the requested width"},
+            {0x531C1C20u, 0x000000ABULL, 0x00000AB0ULL, "ubfiz w0, w1, #4, #8"},
+            {0x5AC01020u, 0x00000001ULL, 0x0000001FULL, "clz w0, w1"},
+            {0x5AC00020u, 0x00000002ULL, 0x40000000ULL, "rbit w0, w1"},
+            {0x5AC00820u, 0x11223344ULL, 0x44332211ULL, "rev w0, w1"},
+            {0x5AC00420u, 0x11223344ULL, 0x22114433ULL, "rev16 w0, w1"},
+            {0x13001C20u, 0x000000FFULL, 0xFFFFFFFFULL, "sxtb w0, w1 sign extends"},
+            {0x13001C20u, 0x0000007FULL, 0x0000007FULL, "sxtb keeps a positive byte"},
+            {0x53003C62u, 0xFFFFFFFFFFFF1234ULL, 0x0000000000001234ULL, "uxth w2, w3"}, 
+        };
+        for (unsigned i = 0; i < sizeof(bf) / sizeof(bf[0]); i++) {
+            e2_machine m;
+            e2_machine_init(&m, 0, 1 << 20);
+            const uint64_t at = 0x30000000ULL;
+            e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+            e2_memory_write(&m.mem, at, &bf[i].insn, 4);
+            m.cpu.pc = at;
+            m.cpu.x[1] = bf[i].in;
+            m.cpu.x[3] = bf[i].in;
+            e2_step(&m);
+            const uint64_t got = (bf[i].insn == 0x53003C62u) ? m.cpu.x[2] : m.cpu.x[0];
+            CHECK(got == bf[i].want, "%s", bf[i].what);
+            e2_memory_destroy(&m.mem);
+        }
+    }
+
+    {
+        // Addressing modes and extended-register arithmetic. A regex matcher
+        // walks tables with indexed loads and sign-extends the index, so a wrong
+        // extend mode or a pre/post-index slip reads the right table at the
+        // wrong entry.
+        e2_machine m;
+        e2_machine_init(&m, 0, 1 << 20);
+        const uint64_t code = 0x30000000ULL;
+        const uint64_t data = 0x31000000ULL;
+        e2_memory_map_at(&m.mem, code, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+        e2_memory_map_at(&m.mem, data, 0x2000, E2_PROT_READ | E2_PROT_WRITE);
+        uint32_t word = 0x11223344u;
+        for (uint64_t off = 0; off < 0x40; off += 4) {
+            e2_memory_write(&m.mem, data + off, &word, 4);
+        }
+
+        struct { uint32_t insn; uint64_t want; const char *what; } cases[] = {
+            {0x8B22C020u, 0x30FFFE10ULL, "add x0, x1, w2, sxtw sign extends"},
+            {0x8B220020u, 0x31000014ULL, "add x0, x1, w2, uxtb zero extends"},
+            {0xB8627820u, 0x11223344u, "ldr w0, [x1, x2, lsl #2]"},
+            {0xB8A27820u, 0x0000000011223344ULL, "ldrsw x0, [x1, x2, lsl #2]"},
+            {0x78626820u, 0x00003344u, "ldrh w0, [x1, x2]"},
+            {0xF8408420u, 0x1122334411223344ULL, "ldr x0, [x1], #8 is post-indexed"},
+            {0xF8408C20u, 0x1122334411223344ULL, "ldr x0, [x1, #8]! is pre-indexed"},
+            {0x72AACF00u, 0x56781234u, "movk replaces the high half only"},
+            {0x10000080u, code + 16, "adr x0, +16"},
+        };
+        for (unsigned i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+            e2_memory_write(&m.mem, code, &cases[i].insn, 4);
+            m.cpu.pc = code;
+            m.cpu.x[0] = 0;
+            m.cpu.x[1] = data + 0x10;
+            m.cpu.x[2] = 4;          // sxtw/uxtb source, and a table index
+            // sxtw wants a negative value to prove the sign is kept.
+            m.cpu.x[2] = (cases[i].insn == 0x8B22C020u) ? 0xFFFFFFFFFFFFFE00ULL : 4;
+            m.cpu.x[0] = (cases[i].insn == 0x72AACF00u) ? 0x00001234u : 0;
+            e2_step(&m);
+            CHECK(m.cpu.x[0] == cases[i].want, "%s", cases[i].what);
+        }
+        // Post-index must have advanced the base by 8 and pre-index must have
+        // applied the offset before the load; both are easy to get backwards.
+        e2_memory_write(&m.mem, code, &cases[5].insn, 4);
+        m.cpu.pc = code;
+        m.cpu.x[1] = data + 0x10;
+        e2_step(&m);
+        CHECK(m.cpu.x[1] == data + 0x18, "post-index advances the base after the load");
+        e2_memory_destroy(&m.mem);
+    }
+
     // UMOV moves a vector element into a general register. musl's memset does
     // `mov x1, v0.d[0]` to materialise the replicated byte pattern, so a broken
     // UMOV silently turned every memset into a zero fill. It used to decode as
