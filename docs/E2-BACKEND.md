@@ -4464,5 +4464,6 @@ awk 'BEGIN{count=0; items[1]=1; for(k in items) if(items[k]) {count=items[k]; pi
 LONGVAR=<100 个 a>; echo ${#LONGVAR}
 ```
 
-**M3 从 96 扩到 98，全部通过。**
+**M3 现在是 100 条，全部通过，且没有 `|| true` 之类的豁免。**
+
 
