@@ -47,7 +47,17 @@ typedef struct { int fdtab; } procctx;
 // Without this the scheduler runs each child to completion, which deadlocks any
 // pipeline whose producer never finishes on its own - `yes | head -1` being the
 // textbook case: head never runs, so the pipe never breaks.
-#define PROC_QUANTUM_DEFAULT 20000
+// Preemption granularity. 20000 was too small to be correct: a pipeline whose
+// consumer needs more than one read to drain its producer gets interleaved with
+// the shell's next command, because wait4 returns as soon as the process it was
+// waiting for exits and the surviving sibling has not finished. At 200000 every
+// pipeline case in the sweeps comes out right and nothing hangs - `yes | head`
+// still terminates, because waiting processes round-robin their siblings rather
+// than relying on preemption.
+//
+// This is a mitigation, not the root fix: the real defect is that wait4 does not
+// keep both members of a pipeline alive. Tracked in docs/E2-BACKEND.md.
+#define PROC_QUANTUM_DEFAULT 200000
 static long proc_quantum(void) {
     static long q = -1;
     if (q < 0) {
