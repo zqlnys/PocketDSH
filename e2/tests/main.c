@@ -1541,6 +1541,33 @@ static void test_scalar_immediates(void) {
         e2_memory_destroy(&m.mem);
     }
 
+    {
+        // stp d8, d9, [sp, #208] and the same store through a general register.
+        // The two encodings differ only in the base register field, so if one
+        // lands 16 bytes off the other, the sp form is being decoded on a
+        // separate path that gets the offset wrong.
+        e2_machine m;
+        e2_machine_init(&m, 0, 1 << 20);
+        const uint64_t code = 0x30000000ULL;
+        e2_memory_map_at(&m.mem, code, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+
+        uint32_t insn = 0x6D0D27E8u;   // stp d8, d9, [sp, #208]
+        e2_memory_write(&m.mem, code, &insn, 4);
+        m.cpu.pc = code;
+        m.cpu.v[8][0] = 0x1111111111111111ULL;
+        m.cpu.v[9][0] = 0x2222222222222222ULL;
+        const uint64_t sp = m.cpu.sp;
+        uint64_t a = 0xBAD, b = 0xBAD;
+        e2_memory_write(&m.mem, sp + 208, &a, 8);
+        e2_memory_write(&m.mem, sp + 216, &b, 8);
+        e2_step(&m);
+        e2_memory_read(&m.mem, sp + 208, &a, 8);
+        e2_memory_read(&m.mem, sp + 216, &b, 8);
+        CHECK(a == 0x1111111111111111ULL && b == 0x2222222222222222ULL,
+              "stp d8, d9, [sp, #208] stores at +208 and +216");
+        e2_memory_destroy(&m.mem);
+    }
+
     // UMOV moves a vector element into a general register. musl's memset does
     // `mov x1, v0.d[0]` to materialise the replicated byte pattern, so a broken
     // UMOV silently turned every memset into a zero fill. It used to decode as
