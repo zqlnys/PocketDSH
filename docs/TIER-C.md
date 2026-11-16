@@ -101,14 +101,28 @@ Linux pocketdsh 4.20.69-ish SUPER AWESOME ... i686 Linux
 
 持久 shell 原型（run `43731872117`）未稳定启动，已回退到已验证的一次性 probe；shell 生命周期仍是下一个阻塞点。
 
+## 项目工作区
+
+Tier C 无法用 fakefs 看到宿主项目文件：fakefs（`fs/fake.h` 标记 `ISH_INTERNAL`）把 inode 登记在 sqlite 元数据库里，裸拷进目录的文件不在库中。
+
+改为用 `realfs` 直通挂载当前项目根：
+
+```c
+do_mount(&realfs, host_workspace_path, "/workspace", "", 0);
+```
+
+宿主与 guest 共享同一批 inode。实现细节、验证方法与风险见 [WORKSPACE-MOUNT.md](WORKSPACE-MOUNT.md)。
+
+状态：实现已提交（`11a1fe9`），CI 与模拟器实测待验证；未通过前不要声称 Tier C 支持项目文件。
+
 ## 尚未完成
 
-- 把 iSH 静态库链接进 PocketDSH App；
-- 打包 Alpine fakefs rootfs；
-- 写 C/Swift 桥接，调用 `xX_main_Xx` + `task_run_current`；
-- 捕获 stdout/stderr、超时、停止、后台限制；
-- 申请 App 体积/内存预算；
-- 与 Agent 工具循环对接；
+- ~~把 iSH 静态库链接进 PocketDSH App~~ 已完成（Build 32 起，主 App 内 Tier C smoke 通过）；
+- ~~打包 Alpine fakefs rootfs~~ 已完成；
+- ~~写 C/Swift 桥接，调用 `xX_main_Xx` + `task_run_current`~~ 已完成；
+- `/workspace` 挂载的模拟器实测；
+- 捕获 stdout/stderr、超时、停止、后台限制（现为固定 5 秒观察窗口）；
+- 与 Agent 工具循环的持久对接（现为单命令）；
 - 真机验证。
 
 ## 集成方案
@@ -116,12 +130,13 @@ Linux pocketdsh 4.20.69-ish SUPER AWESOME ... i686 Linux
 1. 固定 iSH commit（已验证 `ce96e698f1820b9d8db47e87c501ecb89119d7ce`）。
 2. 在 CI 构建 `libish.a`、`libish_emu.a`、`libfakefs.a` 和头文件。
 3. 将 Alpine fakefs rootfs 作为资源打包，首次启动复制到 Application Support。
-4. 增加 C bridge：
-   - `pocket_ish_run(root, argv, timeout)`
+4. C bridge：
+   - `pocket_ish_run(rootfs, workspace, command, output_path)`；
+   - 初始化阶段 `do_mount(&realfs, workspace, "/workspace", "", 0)`；
    - 重定向 stdin/stdout/stderr；
    - 设置 `exit_hook`，避免顶层 `exit()` 终止 App；
-   - 在专用串行队列运行，不阻塞 UI。
-5. Swift 侧 `LinuxRuntime` actor 串行化命令，暴露 `run_command` 工具。
+   - 在专用 pthread 运行，不阻塞 UI。
+5. Swift 侧 `LinuxRuntime` 串行化命令，暴露 `run_linux` 工具。
 6. Tier C 选择只有在 bridge 成功初始化后才启用；否则明确回退 Tier A。
 
 ## 限制
