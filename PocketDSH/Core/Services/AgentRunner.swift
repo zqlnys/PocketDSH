@@ -152,7 +152,11 @@ final class AgentRunner: ObservableObject {
         let maxSteps = settings.maxSteps
 
         do {
-            for step in 1...maxSteps {
+            // `1...0` traps at runtime, and maxSteps is a settable published
+            // property: the initialiser and the stepper both clamp it today,
+            // but a closed range over a value the view can write is a crash
+            // waiting for the first caller that does not.
+            for step in 1...max(1, maxSteps) {
                 try Task.checkCancellation()
                 currentStep = step
                 phase = .thinking(step)
