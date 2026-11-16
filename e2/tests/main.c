@@ -90,7 +90,7 @@ static int test_file_stat(void *ctx, int fd, void *buf, size_t buflen) {
     (void)ctx; (void)fd; (void)buf; (void)buflen;
     return -9;  // EBADF
 }
-static long long test_clock_ns(void *ctx) { (void)ctx; return 0; }
+static long long test_clock_ns(void *ctx, int clock_id) { (void)ctx; (void)clock_id; return 0; }
 
 static const e2_file_ops test_files = {
     .open = test_file_open,

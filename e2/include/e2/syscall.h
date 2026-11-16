@@ -66,7 +66,7 @@ typedef struct {
     /// errno. Uses the host's own cursor for that directory.
     long (*readdir)(void *ctx, int fd, void *buf, size_t buf_size);
     /// Current wall clock in nanoseconds since the epoch.
-    long long (*clock_ns)(void *ctx);
+    long long (*clock_ns)(void *ctx, int clock_id);
     /// Creates a pipe and writes its two guest fds into `fds`. Returns 0 or a
     /// negative errno. Optional: shells need it for pipelines.
     int (*pipe)(void *ctx, int fds[2]);

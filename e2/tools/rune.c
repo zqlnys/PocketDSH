@@ -224,9 +224,15 @@ static long fs_readdir(void *c, int h, void *buf, size_t buf_size) {
     memcpy(out + 19, e->d_name, name_len);
     return (long)reclen;
 }
-static long long fs_clock(void *c) {
-    (void)c; struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ts.tv_sec * 1000000000LL + ts.tv_nsec;
+static long long fs_clock(void *c, int clock_id) {
+    (void)c;
+    struct timespec ts;
+    // CLOCK_REALTIME is 0 and CLOCK_MONOTONIC is 1, the same numbering the guest
+    // uses, so the id passes straight through.
+    if (clock_gettime((clockid_t)clock_id, &ts) != 0) {
+        clock_gettime(CLOCK_REALTIME, &ts);
+    }
+    return (long long)ts.tv_sec * 1000000000LL + ts.tv_nsec;
 }
 static int fs_pipe(void *c, int fds[2]) {
     const int tab = ((const procctx *)c)->fdtab;

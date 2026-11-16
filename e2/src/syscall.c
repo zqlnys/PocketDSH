@@ -550,7 +550,11 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
         }
         case E2_SYS_clock_gettime: {
             // guest passes a struct timespec.
-            const long long now = (files && files->clock_ns) ? files->clock_ns(env->ctx) : 0;
+            // a0 is the clock id: 0 realtime, 1 monotonic, and so on. Serving
+            // the monotonic clock for every request put date at 1970.
+            const long long now = (files && files->clock_ns)
+                                      ? files->clock_ns(env->ctx, (int)a0)
+                                      : 0;
             struct { int64_t sec; int64_t nsec; } ts = { now / 1000000000LL, now % 1000000000LL };
             uint8_t *dst = e2_memory_host_ptr(&m->mem, a1, sizeof(ts), E2_PROT_WRITE);
             if (dst == NULL) {

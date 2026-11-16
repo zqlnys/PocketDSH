@@ -42,6 +42,9 @@ while IFS= read -r cmd; do
         pass=$((pass + 1))
     fi
 done <<'EOF'
+date +%Y
+date -u +%H
+find /tmp/m2tree -name f1
 find /tmp/m2tree | sort
 ls -R /tmp/m2tree
 find /tmp/m2tree -type f
