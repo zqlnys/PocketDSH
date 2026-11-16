@@ -427,7 +427,10 @@ static int p_execve(void *ctx, e2_machine *m, const char *path, uint64_t argv,
     // resolve the real path first and fall back to the running binary only if
     // it is missing.
     char host[2048]; host_path(host, sizeof(host), path);
-    if (access(host, R_OK) != 0 && g_self_path != NULL) {
+    // Prefer the image we are already running: it is the one whose behaviour the
+    // backend has been verified against, and mixing in a dynamically linked
+    // applet makes child failures harder to attribute.
+    if (g_self_path != NULL && strcmp(g_self_path, host) != 0) {
         if (nargs == 0) {
             const char *base = strrchr(path, '/');
             snprintf(args[0], sizeof(args[0]), "%s", base ? base + 1 : path);

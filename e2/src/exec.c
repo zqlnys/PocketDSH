@@ -1673,6 +1673,11 @@ e2_status e2_step(e2_machine *machine) {
             // has to go through the same helper as the other load forms. This
             // path used to store the raw bytes, which turned a 0xFF byte into
             // 0xFF instead of -1 - the wrong index every time one was used.
+            if (opc == 3 && size_code == 3) {   // PRFM: prefetch, no register write
+                cpu->pc = next_pc;
+                machine->instructions++;
+                return E2_OK;
+            }
             value = apply_load_opc(value, opc, bytes, size_code == 3);
             const bool dest64 = (opc == 2) || (size_code == 3);
             write_reg(cpu, rd, value, dest64);
