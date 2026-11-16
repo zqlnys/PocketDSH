@@ -86,7 +86,7 @@ int e2_memory_map_any(e2_memory *mem, size_t size, int prot, uint64_t *base_out)
     }
     const size_t rounded = page_round(size);
     // Walk upward from just above the lowest mapped region, skipping collisions.
-    uint64_t candidate = 0x10000;
+    uint64_t candidate = 0x10000000ULL;
     for (int attempt = 0; attempt < E2_MAX_REGIONS * 4; attempt++) {
         bool clash = false;
         uint64_t next = candidate;
