@@ -678,7 +678,32 @@ p = enframe(g, idx, UNIT*size_classes[j]-IB, ctx.mmap_counter);
 
 也就是说：外层 group 分配给第二个嵌套 group 的 slot 起点，比第一个 nested group 需要的空间还小——**这正是重叠的机制**。
 
-下一轮：查 `size_to_class(448)` 的实际返回值，以及外层 group 的 `size_classes[j]`——看这个 class 值是算错还是被截断。
+**按源码手算 `size_to_class(448)`：**
+
+```c
+n = (448 + IB - 1) >> 4 = 451 >> 4 = 28;
+if (n < 10) return n;          // 不成立
+n++;                            // 29
+int i = (28 - a_clz_32(29)) * 4 + 8;   // clz32(29)=27 → i = 12
+if (n > size_classes[i+1]) i += 2;     // 29 > size_classes[13]=20 → i = 14
+if (n > size_classes[i]) i++;          // 29 > size_classes[14]=25 → i = 15
+return 15;                              // stride = 31*16 = 496
+```
+
+**正确结果应当是 class 15 → stride 496 字节。**
+
+**但实测两个嵌套 group 只隔 400 字节**，而 `400 = 25×16` 正是 **`size_classes[14]`**。
+
+也就是说：外层在给嵌套 group 选 slot 时用了 **class 14（400 字节）**，而实际需要 **448 字节**——400 < 448，溢出 48 字节，正好压在下一个嵌套 group 的头部。
+
+`clz` 本身已经在前面单独验证过（各种输入全对），所以嫌疑落在 `size_to_class` 里那两条比较：
+
+```c
+if (n > size_classes[i+1]) i += 2;
+if (n > size_classes[i]) i++;
+```
+
+`n` 与 `size_classes[]` 都是 `size_t` / `uint16_t`，比较走无符号语义。下一轮直接把 `n`、`i`、比较结果打出来，确认是哪一步没进位。
 
 另一个纠正：被拒绝的字符是 **`0xff`**，不是空格——终端把它渲染成了不可见字符，导致前一轮在字符串里找一个根本不存在的空格。
 
