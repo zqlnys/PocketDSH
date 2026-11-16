@@ -981,6 +981,85 @@ static void test_scalar_immediates(void) {
     }
 
 
+    // Five instruction groups found by running busybox applets rather than by
+    // reading anything: `seq` needs every one of them.
+    {
+        // fmov d9, d8 - a plain register-to-register move in the FP one-source
+        // group, which had no general handler before this.
+        e2_machine m;
+        e2_machine_init(&m, 0, 1 << 20);
+        const uint64_t at = 0x30000000ULL;
+        e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+        uint32_t insn = 0x1E604109u;
+        e2_memory_write(&m.mem, at, &insn, 4);
+        m.cpu.pc = at;
+        m.cpu.v[8][0] = 0x400921FB54442D18ULL;
+        e2_step(&m);
+        CHECK(m.cpu.v[9][0] == 0x400921FB54442D18ULL, "fmov d9, d8 copies the register");
+        e2_memory_destroy(&m.mem);
+    }
+    {
+        // fmov v0.d[1], x3 then back: the upper half of a 128-bit register has
+        // its own pair of encodings, distinct from the plain D form.
+        e2_machine m;
+        e2_machine_init(&m, 0, 1 << 20);
+        const uint64_t at = 0x30000000ULL;
+        e2_memory_map_at(&m.mem, at, 0x2000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+        uint32_t a = 0x9EAF0060u, b = 0x9EAE0003u;
+        e2_memory_write(&m.mem, at, &a, 4);
+        e2_memory_write(&m.mem, at + 4, &b, 4);
+        m.cpu.pc = at;
+        m.cpu.x[3] = 0xDEADBEEFCAFEF00DULL;
+        m.cpu.v[0][1] = 0;
+        e2_step(&m);
+        CHECK(m.cpu.v[0][1] == 0xDEADBEEFCAFEF00DULL, "fmov v0.d[1], x3 writes the upper half");
+        m.cpu.x[3] = 0;
+        e2_step(&m);
+        CHECK(m.cpu.x[3] == 0xDEADBEEFCAFEF00DULL, "fmov x3, v0.d[1] reads it back");
+        e2_memory_destroy(&m.mem);
+    }
+    {
+        // adc x6, x10, x8 - the carry group, which has its own prefix.
+        e2_machine m;
+        e2_machine_init(&m, 0, 1 << 20);
+        const uint64_t at = 0x30000000ULL;
+        e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+        uint32_t insn = 0x9A080146u;
+        e2_memory_write(&m.mem, at, &insn, 4);
+        m.cpu.pc = at;
+        m.cpu.x[10] = 5;
+        m.cpu.x[8] = 7;
+        m.cpu.flags.c = true;
+        e2_step(&m);
+        CHECK(m.cpu.x[6] == 13, "adc includes the carry in");
+        m.cpu.x[10] = 5;
+        m.cpu.x[8] = 7;
+        m.cpu.flags.c = false;
+        m.cpu.pc = at;
+        e2_step(&m);
+        CHECK(m.cpu.x[6] == 12, "adc without carry");
+        e2_memory_destroy(&m.mem);
+    }
+    {
+        // fmadd d0, d1, d8, d9 - fused, so the product is not rounded first.
+        e2_machine m;
+        e2_machine_init(&m, 0, 1 << 20);
+        const uint64_t at = 0x30000000ULL;
+        e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+        uint32_t insn = 0x1F482420u;
+        e2_memory_write(&m.mem, at, &insn, 4);
+        m.cpu.pc = at;
+        double a = 3.0, b = 4.0, add = 5.0;
+        memcpy(&m.cpu.v[1][0], &a, 8);
+        memcpy(&m.cpu.v[8][0], &b, 8);
+        memcpy(&m.cpu.v[9][0], &add, 8);
+        e2_step(&m);
+        double got;
+        memcpy(&got, &m.cpu.v[0][0], 8);
+        CHECK(got == 17.0, "fmadd computes a*b+add");
+        e2_memory_destroy(&m.mem);
+    }
+
     // UMOV moves a vector element into a general register. musl's memset does
     // `mov x1, v0.d[0]` to materialise the replicated byte pattern, so a broken
     // UMOV silently turned every memset into a zero fill. It used to decode as

@@ -855,20 +855,71 @@ e2_status e2_step(e2_machine *machine) {
     // Python's number formatting does its arithmetic through these. Host float
     // and double arithmetic follows the same IEEE rules including NaN and
     // signed zero, so the operands are converted and the result stored back.
-    // --- FRINT*: round a floating-point value to an integral one ---
-    // Python reaches these while formatting floats. The seven operations share
-    // one encoding, so they are matched against a table of complete keys rather
-    // than by masking out the opcode field and hoping.
+    // --- Floating-point, three sources: FMADD / FMSUB / FNMADD / FNMSUB ---
+    // One group, selected by two bits: bit 21 subtracts the addend and bit 15
+    // negates the product. The multiply and the add are fused, so the product is
+    // not rounded before the addition - that is the whole point of using these.
+    if ((insn & 0xFF800000u) == 0x1F000000u) {
+        const bool single = (BITS(insn, 23, 22) == 0);
+        const bool negate_product = BIT(insn, 15) != 0;
+        const bool subtract = BIT(insn, 21) != 0;
+        const unsigned rm = BITS(insn, 20, 16);
+        const unsigned ra = BITS(insn, 14, 10);
+        const unsigned rn2 = BITS(insn, 9, 5);
+        const unsigned rd2 = BITS(insn, 4, 0);
+        if (single) {
+            float a, b, add;
+            const uint32_t araw = (uint32_t)cpu->v[rn2][0];
+            const uint32_t braw = (uint32_t)cpu->v[rm][0];
+            const uint32_t craw = (uint32_t)cpu->v[ra][0];
+            memcpy(&a, &araw, 4);
+            memcpy(&b, &braw, 4);
+            memcpy(&add, &craw, 4);
+            if (negate_product) a = -a;
+            if (subtract) add = -add;
+            const float result = fmaf(a, b, add);
+            uint32_t bits;
+            memcpy(&bits, &result, 4);
+            cpu->v[rd2][0] = (cpu->v[rd2][0] & ~0xFFFFFFFFULL) | bits;
+        } else {
+            double a, b, add;
+            memcpy(&a, &cpu->v[rn2][0], 8);
+            memcpy(&b, &cpu->v[rm][0], 8);
+            memcpy(&add, &cpu->v[ra][0], 8);
+            if (negate_product) a = -a;
+            if (subtract) add = -add;
+            const double result = fma(a, b, add);
+            memcpy(&cpu->v[rd2][0], &result, 8);
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
+    // --- Floating-point, one source ---
+    // Move, negate, absolute value, square root, format conversion and the
+    // seven rounding modes all share one encoding. They are matched against a
+    // table of complete keys rather than by masking out an opcode field: doing
+    // that wrong once made `ldr q0, [x21, x2]` run as an integer load.
     {
         const uint32_t key = insn & 0xFF3FFC00u;
+        enum { OP_FRINTN, OP_FRINTP, OP_FRINTM, OP_FRINTZ, OP_FRINTA,
+               OP_FRINTX, OP_FRINTI, OP_FMOV, OP_FABS, OP_FNEG, OP_FSQRT,
+               OP_FCVT_NARROW, OP_FCVT_WIDEN };
         static const struct { uint32_t key; int op; } fops[] = {
-            {0x1E244000u, 0},  // frintn: to nearest, ties to even
-            {0x1E24C000u, 1},  // frintp: toward +inf
-            {0x1E254000u, 2},  // frintm: toward -inf
-            {0x1E25C000u, 3},  // frintz: toward zero
-            {0x1E264000u, 4},  // frinta: to nearest, ties away from zero
-            {0x1E274000u, 5},  // frintx: like frintn, reports inexact
-            {0x1E27C000u, 6},  // frinti: like frintz, reports inexact
+            {0x1E244000u, OP_FRINTN},   // to nearest, ties to even
+            {0x1E24C000u, OP_FRINTP},   // toward +inf
+            {0x1E254000u, OP_FRINTM},   // toward -inf
+            {0x1E25C000u, OP_FRINTZ},   // toward zero
+            {0x1E264000u, OP_FRINTA},   // to nearest, ties away from zero
+            {0x1E274000u, OP_FRINTX},   // like frintn, reports inexact
+            {0x1E27C000u, OP_FRINTI},   // like frintz, reports inexact
+            {0x1E204000u, OP_FMOV},     // register to register
+            {0x1E20C000u, OP_FABS},
+            {0x1E214000u, OP_FNEG},
+            {0x1E21C000u, OP_FSQRT},
+            {0x1E224000u, OP_FCVT_NARROW},  // s <- d
+            {0x1E22C000u, OP_FCVT_WIDEN},   // d <- s
         };
         for (unsigned fi = 0; fi < sizeof(fops) / sizeof(fops[0]); fi++) {
             if (fops[fi].key != key) {
@@ -887,14 +938,40 @@ e2_status e2_step(e2_machine *machine) {
             } else {
                 memcpy(&d, &cpu->v[rn2][0], 8);
             }
+            uint64_t raw_src = cpu->v[rn2][0];
             switch (fops[fi].op) {
-                case 0: d = rint(d); break;
-                case 1: d = ceil(d); break;
-                case 2: d = floor(d); break;
-                case 3: d = trunc(d); break;
-                case 4: d = round(d); break;
-                case 5: d = rint(d); break;
-                default: d = trunc(d); break;
+                case OP_FRINTN: d = rint(d); break;
+                case OP_FRINTP: d = ceil(d); break;
+                case OP_FRINTM: d = floor(d); break;
+                case OP_FRINTZ: d = trunc(d); break;
+                case OP_FRINTA: d = round(d); break;
+                case OP_FRINTX: d = rint(d); break;
+                case OP_FRINTI: d = trunc(d); break;
+                // Move, negate and absolute value are exact bit operations on
+                // the sign, so they never round and never touch the payload.
+                case OP_FMOV: d = single ? (double)(uint32_t)raw_src
+                                        : ({ double t; memcpy(&t, &raw_src, 8); t; });
+                              break;
+                case OP_FABS:
+                    if (single) {
+                        d = (double)(uint32_t)(raw_src & 0x7FFFFFFFu);
+                    } else {
+                        uint64_t t = raw_src & 0x7FFFFFFFFFFFFFFFULL;
+                        memcpy(&d, &t, 8);
+                    }
+                    break;
+                case OP_FNEG:
+                    if (single) {
+                        d = (double)(uint32_t)(raw_src ^ 0x80000000u);
+                    } else {
+                        uint64_t t = raw_src ^ 0x8000000000000000ULL;
+                        memcpy(&d, &t, 8);
+                    }
+                    break;
+                case OP_FSQRT: d = sqrt(single ? fabs(d) : d); break;
+                case OP_FCVT_NARROW: d = (double)(float)d; break;   // s <- d
+                case OP_FCVT_WIDEN: d = d; break;                   // d <- s
+                default: break;
             }
             if (single) {
                 const float f = (float)d;
@@ -1086,6 +1163,19 @@ e2_status e2_step(e2_machine *machine) {
     if ((insn & 0xFFFFFC00u) == 0x9E660000u) {      // fmov Xd, Dn
         const unsigned rn2 = BITS(insn, 9, 5);
         write_reg(cpu, rd, cpu->v[rn2][0], true);
+        cpu->pc = next_pc; machine->instructions++; return E2_OK;
+    }
+    // The upper half of a 128-bit register has its own pair of encodings; the
+    // lower half is the plain D form above. `seq` reaches these while laying out
+    // its output buffer.
+    if ((insn & 0xFFFFFC00u) == 0x9EAF0000u) {      // fmov Vd.D[1], Xn
+        const unsigned rn2 = BITS(insn, 9, 5);
+        cpu->v[rd][1] = e2_read_xzr(cpu, rn2);
+        cpu->pc = next_pc; machine->instructions++; return E2_OK;
+    }
+    if ((insn & 0xFFFFFC00u) == 0x9EAE0000u) {      // fmov Xd, Vn.D[1]
+        const unsigned rn2 = BITS(insn, 9, 5);
+        write_reg(cpu, rd, cpu->v[rn2][1], true);
         cpu->pc = next_pc; machine->instructions++; return E2_OK;
     }
 
@@ -1495,6 +1585,41 @@ e2_status e2_step(e2_machine *machine) {
             }
         }
         write_reg(cpu, rd, result & mask, is64);
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
+    // --- Add/subtract with carry ---
+    // A separate encoding group from the ordinary shifted forms: bits 28-24 are
+    // 11010 and the opcode field is zero. Compilers emit these for multi-word
+    // arithmetic, and `seq` reaches them after the vector paths are in place.
+    if ((insn & 0x1FE0FC00u) == 0x1A000000u) {
+        const bool is64 = BIT(insn, 31) != 0;
+        const bool is_sub = BIT(insn, 30) != 0;
+        const bool set_flags = BIT(insn, 29) != 0;
+        const unsigned rm = BITS(insn, 20, 16);
+        const unsigned rn2 = BITS(insn, 9, 5);
+        const uint64_t mask = is64 ? ~0ULL : 0xFFFFFFFFULL;
+        const uint64_t a = e2_read_xzr(cpu, rn2) & mask;
+        const uint64_t b = e2_read_xzr(cpu, rm) & mask;
+        const uint64_t carry = cpu->flags.c ? 1u : 0u;
+        uint64_t result;
+        if (is_sub) {
+            const uint64_t borrow = carry ^ 1u;
+            result = (a - b - borrow) & mask;
+        } else {
+            result = (a + b + carry) & mask;
+        }
+        write_reg(cpu, rd, result, is64);
+        if (set_flags) {
+            // The flag rules need the true operands including the carry, so the
+            // addition is recomputed against b+carry and the subtraction
+            // against a borrow, rather than reusing a and b unchanged.
+            const uint64_t b_eff = is_sub ? ((b + (carry ^ 1u)) & mask)
+                                          : ((b + carry) & mask);
+            set_flags_addsub(cpu, a, b_eff, result, is_sub, is64 ? 64 : 32);
+        }
         cpu->pc = next_pc;
         machine->instructions++;
         return E2_OK;
