@@ -1,26 +1,45 @@
 import SwiftUI
 
+/// Card surface used for grouped content.
+///
+/// `radius: 0` on the shadow used to draw nothing at all, so cards were held
+/// apart from the canvas by a hairline and nothing else. The shadow below is
+/// deliberately soft - it should register as weight, not as a drop shadow.
 struct PocketCardModifier: ViewModifier {
     var padding: CGFloat
+    var raised: Bool
+
+    private var radius: CGFloat { raised ? PocketRadius.xl : PocketRadius.lg }
+    private var shadowColor: Color {
+        raised ? PocketTheme.raisedShadowColor : PocketTheme.cardShadowColor
+    }
+    private var shadowRadius: CGFloat {
+        raised ? PocketTheme.raisedShadowRadius : PocketTheme.cardShadowRadius
+    }
+    private var shadowY: CGFloat {
+        raised ? PocketTheme.raisedShadowY : PocketTheme.cardShadowY
+    }
 
     func body(content: Content) -> some View {
         content
             .padding(padding)
             .background {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
                     .fill(PocketTheme.surface)
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(PocketTheme.stroke.opacity(0.7), lineWidth: 1)
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .stroke(PocketTheme.cardStroke, lineWidth: 1)
             }
-            .shadow(color: PocketTheme.cardShadow, radius: 0, x: 0, y: 0)
+            .shadow(color: shadowColor, radius: shadowRadius, x: 0, y: shadowY)
     }
 }
 
 extension View {
-    func pocketCard(padding: CGFloat = 18) -> some View {
-        modifier(PocketCardModifier(padding: padding))
+    /// Groups related content on the canvas. `raised` lifts the card further,
+    /// for the one card on a screen that carries the primary action.
+    func pocketCard(padding: CGFloat = PocketSpacing.lg, raised: Bool = false) -> some View {
+        modifier(PocketCardModifier(padding: padding, raised: raised))
     }
 }
 
@@ -38,11 +57,15 @@ struct PrimaryButtonStyle: ButtonStyle {
         configuration.label
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(.white)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 12)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(PocketTheme.accent))
+            .padding(.horizontal, PocketSpacing.lg)
+            .padding(.vertical, PocketSpacing.md)
+            .background(
+                RoundedRectangle(cornerRadius: PocketRadius.md, style: .continuous)
+                    .fill(PocketTheme.accent)
+            )
             .opacity(configuration.isPressed ? 0.82 : 1)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.snappy(duration: 0.18), value: configuration.isPressed)
     }
 }
 
@@ -51,22 +74,45 @@ struct SecondaryButtonStyle: ButtonStyle {
         configuration.label
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(PocketTheme.primaryText)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 12)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(PocketTheme.elevatedSurface))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(PocketTheme.stroke, lineWidth: 1))
+            .padding(.horizontal, PocketSpacing.lg)
+            .padding(.vertical, PocketSpacing.md)
+            .background(
+                RoundedRectangle(cornerRadius: PocketRadius.md, style: .continuous)
+                    .fill(PocketTheme.elevatedSurface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: PocketRadius.md, style: .continuous)
+                    .stroke(PocketTheme.stroke, lineWidth: 1)
+            )
             .opacity(configuration.isPressed ? 0.82 : 1)
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.snappy(duration: 0.18), value: configuration.isPressed)
     }
 }
 
+/// Small uppercase label above a group of content.
+///
+/// Uppercasing and letterspacing are Latin typographic devices: Chinese has no
+/// case, and tracking pushes its characters apart into something that reads as
+/// broken rather than airy. Both are toned down when the interface is Chinese.
 struct SectionLabel: View {
     let title: String
 
+    // Kept as computed properties rather than locals inside `body`, so the
+    // view builder sees plain expressions and the optional case is unambiguous.
+    private var letterspacing: CGFloat {
+        PocketTheme.isChineseInterface ? 0.2 : 1.0
+    }
+
+    private var casing: Text.Case? {
+        PocketTheme.isChineseInterface ? nil : Text.Case.uppercase
+    }
+
     var body: some View {
         Text(NSLocalizedString(title, comment: ""))
-            .font(.caption.weight(.bold))
-            .tracking(1.1)
-            .textCase(.uppercase)
+            .font(.caption.weight(.semibold))
+            .tracking(letterspacing)
+            .textCase(casing)
             .foregroundStyle(PocketTheme.secondaryText)
     }
 }
@@ -75,15 +121,26 @@ struct StatusPill: View {
     let text: String
     var tint: Color = PocketTheme.accent
 
+    private var letterspacing: CGFloat {
+        PocketTheme.isChineseInterface ? 0 : 0.5
+    }
+
+    private var casing: Text.Case? {
+        PocketTheme.isChineseInterface ? nil : Text.Case.uppercase
+    }
+
     var body: some View {
         Text(NSLocalizedString(text, comment: ""))
-            .font(.caption2.weight(.bold))
-            .textCase(.uppercase)
-            .tracking(0.6)
+            .font(.caption2.weight(.semibold))
+            .tracking(letterspacing)
+            .textCase(casing)
             .foregroundStyle(tint)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(tint.opacity(0.12)))
+            .padding(.horizontal, PocketSpacing.sm)
+            .padding(.vertical, PocketSpacing.xs)
+            .background(
+                RoundedRectangle(cornerRadius: PocketRadius.xs, style: .continuous)
+                    .fill(tint.opacity(0.12))
+            )
     }
 }
 
@@ -98,7 +155,7 @@ struct IconTile: View {
             .foregroundStyle(tint)
             .frame(width: size, height: size)
             .background {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
                     .fill(tint.opacity(0.10))
             }
     }
@@ -112,7 +169,7 @@ struct EmptyState: View {
     var action: (() -> Void)? = nil
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: PocketSpacing.md) {
             IconTile(systemName: icon, tint: PocketTheme.accent, size: 58)
             Text(NSLocalizedString(title, comment: ""))
                 .font(.headline)
@@ -121,14 +178,15 @@ struct EmptyState: View {
                 .font(.subheadline)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(PocketTheme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
                     .buttonStyle(PrimaryButtonStyle())
-                    .padding(.top, 2)
+                    .padding(.top, PocketSpacing.xxs)
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 30)
+        .padding(.vertical, PocketSpacing.xxl)
     }
 }
 
@@ -139,28 +197,29 @@ struct Banner: View {
     var tint: Color = PocketTheme.amber
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: PocketSpacing.md) {
             Image(systemName: icon)
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(tint)
                 .padding(.top, 1)
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: PocketSpacing.xxs) {
                 Text(NSLocalizedString(title, comment: ""))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(PocketTheme.primaryText)
                 Text(NSLocalizedString(message, comment: ""))
                     .font(.caption)
                     .foregroundStyle(PocketTheme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
         }
-        .padding(14)
+        .padding(PocketSpacing.md)
         .background {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: PocketRadius.md, style: .continuous)
                 .fill(tint.opacity(0.07))
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: PocketRadius.md, style: .continuous)
                 .stroke(tint.opacity(0.18), lineWidth: 1)
         }
     }

@@ -25,14 +25,14 @@ struct ProjectsView: View {
                         intro
                         actionRow
                         Divider()
-                            .overlay(PocketTheme.stroke)
-                            .padding(.vertical, 24)
+                            .overlay(PocketTheme.stroke.opacity(0.8))
+                            .padding(.vertical, PocketSpacing.xl)
                         projectList
                         footer
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.top, 12)
-                    .padding(.bottom, 32)
+                    .padding(.horizontal, PocketSpacing.xl)
+                    .padding(.top, PocketSpacing.md)
+                    .padding(.bottom, PocketSpacing.xxl)
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
@@ -116,22 +116,25 @@ struct ProjectsView: View {
     }
 
     private var intro: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: PocketSpacing.sm) {
+            // A 42pt serif flatters a Latin heading and sets Chinese heavily, so
+            // the face comes from the theme rather than being fixed here.
             Text("Local workspace")
-                .font(.system(size: 42, weight: .medium, design: .serif))
+                .font(PocketTheme.displayFont(size: 40))
                 .foregroundStyle(PocketTheme.primaryText)
-                .padding(.top, 34)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, PocketSpacing.xl)
 
             Text("A coding agent that lives on your iPhone. Projects stay here; the model only reasons over them.")
                 .font(.subheadline)
                 .foregroundStyle(PocketTheme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 8) {
+            HStack(spacing: PocketSpacing.sm) {
                 StatusPill(text: "On-device files", tint: PocketTheme.accent)
-                StatusPill(text: "Lua 5.4", tint: PocketTheme.secondaryText)
+                StatusPill(text: "Local copy", tint: PocketTheme.secondaryText)
             }
-            .padding(.top, 4)
+            .padding(.top, PocketSpacing.xxs)
         }
     }
 
@@ -160,8 +163,8 @@ struct ProjectsView: View {
                 Label("More", systemImage: "ellipsis")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(PocketTheme.primaryText)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
+                    .padding(.horizontal, PocketSpacing.md)
+                    .padding(.vertical, PocketSpacing.md)
                     .overlay {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .stroke(PocketTheme.stroke, lineWidth: 1)
@@ -169,11 +172,11 @@ struct ProjectsView: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(.top, 20)
+        .padding(.top, PocketSpacing.lg)
     }
 
     private var projectList: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: PocketSpacing.sm) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Projects")
                     .font(.title3.weight(.semibold))
@@ -183,47 +186,60 @@ struct ProjectsView: View {
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(PocketTheme.secondaryText)
             }
-            .padding(.bottom, 8)
 
             if projectStore.projects.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("No workspace yet.")
-                        .font(.body.weight(.medium))
-                        .foregroundStyle(PocketTheme.primaryText)
-                    Text("Create a project or import a folder. Nothing leaves this iPhone unless you export it.")
-                        .font(.subheadline)
-                        .foregroundStyle(PocketTheme.secondaryText)
-                    Button("Create first project") {
-                        newProjectName = ""
-                        showNewProject = true
-                    }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .padding(.top, 4)
-                }
-                .padding(.vertical, 22)
+                emptyProjects
+                    .pocketCard(padding: PocketSpacing.lg)
             } else {
-                ForEach(projectStore.projects) { project in
-                    Button {
-                        appState.open(project)
-                    } label: {
-                        ProjectRow(project: project)
-                    }
-                    .buttonStyle(.plain)
-                    .contextMenu {
-                        Button(role: .destructive) {
-                            projectToDelete = project
+                // The rows sit inside one card rather than floating on the
+                // canvas: a plain list on a gradient has no grouping at all,
+                // which is what made this screen read as unfinished.
+                VStack(spacing: 0) {
+                    ForEach(projectStore.projects) { project in
+                        Button {
+                            appState.open(project)
                         } label: {
-                            Label("Remove project", systemImage: "trash")
+                            ProjectRow(project: project)
+                                .padding(.horizontal, PocketSpacing.lg)
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                projectToDelete = project
+                            } label: {
+                                Label("Remove project", systemImage: "trash")
+                            }
+                        }
+
+                        if project.id != projectStore.projects.last?.id {
+                            Divider()
+                                .overlay(PocketTheme.stroke.opacity(0.6))
+                                .padding(.leading, PocketSpacing.lg)
                         }
                     }
-
-                    if project.id != projectStore.projects.last?.id {
-                        Divider()
-                            .overlay(PocketTheme.stroke.opacity(0.7))
-                    }
                 }
+                .pocketCard(padding: 0)
             }
         }
+    }
+
+    private var emptyProjects: some View {
+        VStack(alignment: .leading, spacing: PocketSpacing.sm) {
+            Text("No workspace yet.")
+                .font(.body.weight(.medium))
+                .foregroundStyle(PocketTheme.primaryText)
+            Text("Create a project or import a folder. Nothing leaves this iPhone unless you export it.")
+                .font(.subheadline)
+                .foregroundStyle(PocketTheme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Create first project") {
+                newProjectName = ""
+                showNewProject = true
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .padding(.top, PocketSpacing.xs)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var footer: some View {
@@ -233,7 +249,8 @@ struct ProjectsView: View {
         }
         .font(.caption2)
         .foregroundStyle(PocketTheme.secondaryText)
-        .padding(.top, 30)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.top, PocketSpacing.xl)
     }
 
     private func createProject() {
@@ -308,7 +325,7 @@ private struct ProjectRow: View {
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(PocketTheme.secondaryText.opacity(0.6))
         }
-        .padding(.vertical, 15)
+        .padding(.vertical, PocketSpacing.md)
         .contentShape(Rectangle())
     }
 }
