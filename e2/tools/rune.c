@@ -493,15 +493,25 @@ static int run_proc(int idx) {
     // Ring buffer of recent steps: when execution stops on a bad access, the
     // useful question is "how did this register get here", and that needs the
     // preceding instructions rather than the faulting one.
-    struct { uint64_t pc, insn, x0, x1, x2; } hist[32];
+    struct { uint64_t pc, insn, x0, x1, x19, x20, x23; } hist[32];
     unsigned hist_at = 0, hist_n = 0;
     long guard = 0;
     while (p->alive) {
         hist[hist_at].pc = p->m.cpu.pc;
-        hist[hist_at].insn = p->m.ctx.instruction;
+        // Read the word at pc rather than ctx.instruction: ctx carries the
+        // instruction of the previous step, which put every history entry one
+        // behind its own pc and made the trace read as if a branch had gone the
+        // wrong way.
+        {
+            uint32_t word = 0;
+            if (e2_memory_read(&p->m.mem, p->m.cpu.pc, &word, 4) != 0) word = 0;
+            hist[hist_at].insn = word;
+        }
         hist[hist_at].x0 = p->m.cpu.x[0];
         hist[hist_at].x1 = p->m.cpu.x[1];
-        hist[hist_at].x2 = p->m.cpu.x[2];
+        hist[hist_at].x19 = p->m.cpu.x[19];
+        hist[hist_at].x20 = p->m.cpu.x[20];
+        hist[hist_at].x23 = p->m.cpu.x[23];
         hist_at = (hist_at + 1) % 32;
         if (hist_n < 32) hist_n++;
         if (++guard > 40000000L) { snprintf(g_reason, sizeof(g_reason), "instruction cap"); g_fault = 1; break; }
@@ -552,12 +562,14 @@ static int run_proc(int idx) {
                             (unsigned long long)p->m.cpu.pc);
                     for (unsigned k = 0; k < hist_n; k++) {
                         const unsigned idx = (hist_at + 32 - hist_n + k) % 32;
-                        fprintf(stderr, "  pc=0x%llx insn=0x%08llx x0=0x%llx x1=0x%llx x2=0x%llx\n",
+                        fprintf(stderr, "  pc=0x%llx insn=0x%08llx x0=0x%llx x1=0x%llx x19=0x%llx x20=0x%llx x23=0x%llx\n",
                                 (unsigned long long)hist[idx].pc,
                                 (unsigned long long)hist[idx].insn,
                                 (unsigned long long)hist[idx].x0,
                                 (unsigned long long)hist[idx].x1,
-                                (unsigned long long)hist[idx].x2);
+                                (unsigned long long)hist[idx].x19,
+                                (unsigned long long)hist[idx].x20,
+                                (unsigned long long)hist[idx].x23);
                     }
                 }
                 if (getenv("E2_TRACE_GREP")) {
@@ -583,12 +595,14 @@ static int run_proc(int idx) {
                 fprintf(stderr, "[hist] last %u steps:\n", hist_n);
                 for (unsigned k = 0; k < hist_n; k++) {
                     const unsigned hidx = (hist_at + 32 - hist_n + k) % 32;
-                    fprintf(stderr, "  pc=0x%llx insn=0x%08llx x0=0x%llx x1=0x%llx x2=0x%llx\n",
+                    fprintf(stderr, "  pc=0x%llx insn=0x%08llx x0=0x%llx x1=0x%llx x19=0x%llx x20=0x%llx x23=0x%llx\n",
                             (unsigned long long)hist[hidx].pc,
                             (unsigned long long)hist[hidx].insn,
                             (unsigned long long)hist[hidx].x0,
                             (unsigned long long)hist[hidx].x1,
-                            (unsigned long long)hist[hidx].x2);
+                            (unsigned long long)hist[hidx].x19,
+                            (unsigned long long)hist[hidx].x20,
+                            (unsigned long long)hist[hidx].x23);
                 }
             }
             if (getenv("E2_TRACE_GREP")) {
