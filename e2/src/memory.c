@@ -100,6 +100,26 @@ int e2_memory_map_any(e2_memory *mem, size_t size, int prot, uint64_t *base_out)
     return 0;
 }
 
+int e2_memory_protect(e2_memory *mem, uint64_t addr, size_t size, int prot) {
+    if (size == 0) {
+        return 0;
+    }
+    // Every page touched by the range must belong to a single region; splitting a
+    // protection change across regions would silently apply to too much.
+    const e2_region *region = find(mem, addr, size);
+    if (region == NULL) {
+        return -1;
+    }
+    // Regions are stored by value, so re-derive a mutable pointer by index.
+    for (unsigned i = 0; i < mem->count; i++) {
+        if (&mem->regions[i] == region) {
+            mem->regions[i].prot = prot;
+            return 0;
+        }
+    }
+    return -1;
+}
+
 static uint8_t *host_ptr_for(const e2_memory *mem, uint64_t addr, size_t len, int prot) {
     const e2_region *r = find(mem, addr, len);
     if (r == NULL) {

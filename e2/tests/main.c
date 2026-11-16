@@ -8,7 +8,10 @@
 #include <string.h>
 
 #include "e2/exec.h"
+#include "e2/loader.h"
 #include "e2/syscall.h"
+
+#include <stdlib.h>
 
 // --- Encoders -----------------------------------------------------------------
 // Hand-assembled from the AArch64 encoding tables, so the tests do not depend on
@@ -357,6 +360,89 @@ static void test_unknown_syscall(void) {
     e2_machine_destroy(&m);
 }
 
+static void test_load_real_elf(void) {
+    printf("load and run a real aarch64 ELF\n");
+    FILE *f = fopen("tests/guest/hello.elf", "rb");
+    if (f == NULL) {
+        printf("  SKIP (tests/guest/hello.elf not built)\n");
+        return;
+    }
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    uint8_t *image = (uint8_t *)malloc((size_t)size);
+    if (image == NULL || fread(image, 1, (size_t)size, f) != (size_t)size) {
+        fclose(f);
+        free(image);
+        CHECK(0, "could not read hello.elf");
+        return;
+    }
+    fclose(f);
+
+    e2_machine m;
+    e2_machine_init(&m, 0, 16384);
+    e2_load_result lr = e2_load_elf(&m, image, (size_t)size);
+    CHECK(lr == E2_LOAD_OK, "load result: %s", e2_load_result_name(lr));
+
+    if (lr == E2_LOAD_OK) {
+        capture cap = {0};
+        e2_syscall_env env = {.write = capture_write, .exit = capture_exit, .ctx = &cap};
+        e2_status st = run_program(&m, &env, 1000);
+        CHECK(st == E2_HALTED, "expected halt, got %s (%s)", e2_status_name(st),
+              m.ctx.reason ? m.ctx.reason : "-");
+        CHECK(strcmp(cap.out, "hello\n") == 0, "output was \"%s\"", cap.out);
+        CHECK(cap.status == 0, "exit status %d", cap.status);
+    }
+
+    e2_machine_destroy(&m);
+    free(image);
+}
+
+static void test_reject_dynamic(void) {
+    printf("dynamic executables are refused with a clear reason\n");
+    // A crafted header: valid ELF64 aarch64 EXEC with one PT_INTERP segment.
+    uint8_t image[64 + 2 * 56] = {0};
+    image[0] = 0x7f; image[1] = 'E'; image[2] = 'L'; image[3] = 'F';
+    image[4] = 2;    // 64-bit
+    image[5] = 1;    // little endian
+    image[6] = 1;
+    // e_type = ET_EXEC
+    image[16] = 2;
+    // e_machine = 183 (AArch64)
+    image[18] = 183; image[19] = 0;
+    // e_phoff = 64
+    image[32] = 64;
+    // e_phentsize = 56
+    image[54] = 56;
+    // e_phnum = 2
+    image[56] = 2;
+    // first phdr: PT_INTERP
+    image[64] = 3;
+
+    e2_machine m;
+    e2_machine_init(&m, 0, 4096);
+    e2_load_result lr = e2_load_elf(&m, image, sizeof(image));
+    CHECK(lr == E2_LOAD_NEEDS_INTERP, "expected needs-interpreter, got %s",
+          e2_load_result_name(lr));
+    e2_machine_destroy(&m);
+}
+
+static void test_reject_wrong_machine(void) {
+    printf("wrong architecture is refused\n");
+    uint8_t image[64] = {0};
+    image[0] = 0x7f; image[1] = 'E'; image[2] = 'L'; image[3] = 'F';
+    image[4] = 2;
+    image[5] = 1;
+    image[16] = 2;
+    image[18] = 62;  // EM_X86_64
+    e2_machine m;
+    e2_machine_init(&m, 0, 4096);
+    e2_load_result lr = e2_load_elf(&m, image, sizeof(image));
+    CHECK(lr == E2_LOAD_UNSUPPORTED, "expected unsupported, got %s",
+          e2_load_result_name(lr));
+    e2_machine_destroy(&m);
+}
+
 int main(void) {
     printf("== e2 interpreter core tests ==\n");
     test_movz_and_ret();
@@ -371,6 +457,9 @@ int main(void) {
     test_hello_world();
     test_exit_status();
     test_unknown_syscall();
+    test_load_real_elf();
+    test_reject_dynamic();
+    test_reject_wrong_machine();
 
     printf("\n%d checks, %d failure(s)\n", checks, failures);
     return failures == 0 ? 0 : 1;

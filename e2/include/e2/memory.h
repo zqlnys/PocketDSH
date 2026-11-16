@@ -41,6 +41,13 @@ int e2_memory_map_any(e2_memory *mem, size_t size, int prot, uint64_t *base_out)
 /// existing region.
 int e2_memory_map_at(e2_memory *mem, uint64_t base, size_t size, int prot);
 
+/// Changes the protection of an already mapped range.
+///
+/// The loader needs this: a segment can be R+X in its final form while its bytes
+/// still have to be written during load, so it is mapped writable first and
+/// narrowed afterwards, exactly like a real loader does.
+int e2_memory_protect(e2_memory *mem, uint64_t addr, size_t size, int prot);
+
 /// Copies host bytes into a guest region. Returns 0 on success.
 int e2_memory_write(e2_memory *mem, uint64_t addr, const void *src, size_t len);
 
