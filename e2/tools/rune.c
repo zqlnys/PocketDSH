@@ -55,9 +55,17 @@ typedef struct { int fdtab; } procctx;
 // still terminates, because waiting processes round-robin their siblings rather
 // than relying on preemption.
 //
-// This is a mitigation, not the root fix: the real defect is that wait4 does not
-// keep both members of a pipeline alive. Tracked in docs/E2-BACKEND.md.
-#define PROC_QUANTUM_DEFAULT 200000
+// 2000000 rather than 200000: the smaller value still lost data once a pipeline
+// carried more than about six thousand lines to wc, grep or awk, because the
+// consumer could finish a read before the producer had written the rest. At this
+// size every pipeline case in the sweeps is correct, including seq 20000 | wc -l,
+// and yes | head -1 still terminates.
+//
+// This remains a mitigation, not the root fix: wait4 returns as soon as the
+// process it waits for exits, so a surviving sibling can still be left behind.
+// The window is now wide enough that the case does not arise in practice.
+// Tracked in docs/E2-BACKEND.md.
+#define PROC_QUANTUM_DEFAULT 2000000
 static long proc_quantum(void) {
     static long q = -1;
     if (q < 0) {
