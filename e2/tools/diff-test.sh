@@ -24,6 +24,23 @@ for f in /tmp/alpine-root/tmp /tmp; do
     printf '  spaced  \n\ttab\n' > "$f/dtc" 2>/dev/null || true
 done
 
+cat > /tmp/dtsh 2>/dev/null <<'SCRIPT'
+count=0
+for f in /tmp/dta /tmp/dtb; do
+    if [ -f "$f" ]; then count=$((count + 1)); fi
+done
+echo "files=$count"
+sum=0
+for i in 1 2 3 4 5; do sum=$((sum + i)); done
+echo "sum=$sum"
+square() { echo $(( $1 * $1 )); }
+echo "sq=$(square 7)"
+echo hello | tr a-z A-Z
+printf '%s\n' a b c | wc -l
+case x in x) echo matched;; esac
+while [ "$#" -gt 0 ]; do echo "arg=$1"; shift; done
+SCRIPT
+cp /tmp/dtsh /tmp/alpine-root/tmp/dtsh 2>/dev/null || true
 pass=0
 fail=0
 while IFS= read -r cmd; do
@@ -106,6 +123,7 @@ awk 'BEGIN{print length()}'
 awk 'NR==2 {print $0}' /tmp/dta
 awk '{print NR": "$0}' /tmp/dta
 awk 'END{print NR, NF}' /tmp/dta
+sh /tmp/dtsh alpha beta
 EOF
 echo "diff test: $pass same, $fail different"
 [ "$fail" -eq 0 ]

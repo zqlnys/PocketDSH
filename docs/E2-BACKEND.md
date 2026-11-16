@@ -4286,3 +4286,36 @@ seq 3000 | grep -c 1
 这两条正是之前会失败的形状——如果将来有人把量子调回去，
 或者改了调度逻辑，扫描会立刻变红。
 
+### 真实脚本与 qemu 输出完全一致
+
+差分测试加了一个完整的小脚本——循环、函数、条件、`case`、`shift`、管道混合：
+
+```sh
+count=0
+for f in /tmp/dta /tmp/dtb; do
+    if [ -f "$f" ]; then count=$((count + 1)); fi
+done
+echo "files=$count"
+square() { echo $(( $1 * $1 )); }
+echo "sq=$(square 7)"
+echo hello | tr a-z A-Z
+case x in x) echo matched;; esac
+while [ "$#" -gt 0 ]; do echo "arg=$1"; shift; done
+```
+
+**两边输出逐行相同**：
+
+```
+files=2
+sum=15
+sq=49
+HELLO
+3
+matched
+arg=alpha
+arg=beta
+```
+
+差分用例从 66 扩到 **67**。这一条比前面所有单行用例都更有说服力——
+它同时考验了解释、fork/exec、管道、变量、函数和参数传递。
+
