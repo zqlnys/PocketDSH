@@ -91,21 +91,42 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             2>&1 | tee "$LOG_DIR/build.log"
 
-      - name: Capture Tier C screenshots
-        id: screenshot
+      - name: Build Lab app for simulator
+        id: build_sim
         if: steps.build.outcome == 'success'
         continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
+          # The device build above proves the arm64 target compiles; screenshots
+          # need a simulator-slice product, which is a separate build.
           SIMULATOR_UDID="$(python3 scripts/select_simulator.py)"
+          echo "SIMULATOR_UDID=$SIMULATOR_UDID" >> "$GITHUB_ENV"
+          xcodebuild build \
+            -project "$PROJECT_NAME.xcodeproj" \
+            -scheme "$SCHEME" \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+            -derivedDataPath "$DERIVED_DATA" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            2>&1 | tee "$LOG_DIR/build-simulator.log"
+
+      - name: Capture Tier C screenshots
+        id: screenshot
+        if: steps.build_sim.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          SIMULATOR_UDID="$SIMULATOR_UDID"
           echo "Simulator UDID: $SIMULATOR_UDID" | tee "$LOG_DIR/simulator.log"
           xcrun simctl boot "$SIMULATOR_UDID" >/dev/null 2>&1 || true
           xcrun simctl bootstatus "$SIMULATOR_UDID" -b 2>&1 | tee -a "$LOG_DIR/simulator.log"
 
           SIMULATOR_APP="$DERIVED_DATA/Build/Products/Debug-iphonesimulator/$APP_NAME.app"
-          APP_PATH="$DERIVED_DATA/Build/Products/Debug-iphoneos/$APP_NAME.app"
-          test -d "$APP_PATH"
+          test -d "$SIMULATOR_APP"
           xcrun simctl install "$SIMULATOR_UDID" "$SIMULATOR_APP" 2>&1 | tee "$LOG_DIR/install.log"
 
           xcrun simctl launch "$SIMULATOR_UDID" "$BUNDLE_ID" -PocketDSHSkipOnboarding -PocketDSHWorkspaceDemo -PocketDSHTierCSmoke 2>&1 | tee -a "$LOG_DIR/launch.log"

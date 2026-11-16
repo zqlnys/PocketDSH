@@ -98,7 +98,6 @@ targets:
       - path: PocketDSH
         excludes:
           - Resources/Info.plist
-          - Resources/Lab-Info.plist
       - path: TierCProbe/ISHBridge.c
       - path: TierCProbe/ISHBridge.h
       - path: TierCProbe/ISHPersistentShell.c
@@ -140,7 +139,7 @@ targets:
         SUPPORTS_MACCATALYST: NO
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
     info:
-      path: PocketDSH/Resources/Lab-Info.plist
+      path: Lab-Info.plist
       properties:
         CFBundleDisplayName: PocketDSH Lab
         CFBundleShortVersionString: $(MARKETING_VERSION)
