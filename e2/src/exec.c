@@ -627,6 +627,130 @@ e2_status e2_step(e2_machine *machine) {
         return E2_OK;
     }
 
+    // --- Floating point to integer: FCVTZS / FCVTZU ---
+    // C's float-to-int casts lower to these. AArch64 saturates out-of-range
+    // values and maps NaN to zero; the host cast is undefined there, so the
+    // range is clamped explicitly.
+    if ((insn & 0x5F3EFC00u) == 0x1E380000u) {
+        const bool wide = BIT(insn, 31) != 0;
+        const bool is_unsigned = BIT(insn, 16) != 0;
+        const unsigned ftype = BITS(insn, 23, 22);
+        const unsigned rn2 = BITS(insn, 9, 5);
+        double v;
+        if (ftype == 0) {
+            uint32_t b32 = (uint32_t)cpu->v[rn2][0];
+            float f;
+            memcpy(&f, &b32, 4);
+            v = (double)f;
+        } else {
+            uint64_t b64 = cpu->v[rn2][0];
+            memcpy(&v, &b64, 8);
+        }
+        uint64_t result;
+        if (v != v) {
+            result = 0;                                  // NaN
+        } else if (is_unsigned) {
+            if (v <= 0.0) result = 0;
+            else if (wide && v >= 18446744073709551615.0) result = ~0ULL;
+            else if (!wide && v >= 4294967295.0) result = 0xFFFFFFFFULL;
+            else result = (uint64_t)v;
+        } else {
+            if (wide) {
+                if (v <= -9223372036854775808.0) result = 0x8000000000000000ULL;
+                else if (v >= 9223372036854775807.0) result = 0x7FFFFFFFFFFFFFFFULL;
+                else result = (uint64_t)(int64_t)v;
+            } else {
+                if (v <= -2147483648.0) result = (uint64_t)(int64_t)(int32_t)0x80000000;
+                else if (v >= 2147483647.0) result = 0x7FFFFFFFULL;
+                else result = (uint64_t)(int64_t)(int32_t)v;
+            }
+        }
+        write_reg(cpu, rd, result, wide);
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
+    // --- SIMD scalar SCVTF / UCVTF (integer in a vector register) ---
+    // Python's float formatting uses this form rather than the general-register
+    // one. U is bit 29, sz is bit 22; `ucvtf d0, d0` is 0x7E61D800 and
+    // `scvtf d0, d0` 0x5E61D800, so those two bits stay out of the mask.
+    if ((insn & 0xDF3FFC00u) == 0x5E21D800u) {
+        const bool is_unsigned = BIT(insn, 29) != 0;
+        const bool dbl = BIT(insn, 22) != 0;
+        const unsigned rn2 = BITS(insn, 9, 5);
+        const uint64_t raw = cpu->v[rn2][0];
+        if (dbl) {
+            const double d = is_unsigned ? (double)(uint64_t)raw : (double)(int64_t)raw;
+            uint64_t bits;
+            memcpy(&bits, &d, 8);
+            cpu->v[rd][0] = bits;
+            cpu->v[rd][1] = 0;
+        } else {
+            const uint32_t r32 = (uint32_t)raw;
+            const float f = is_unsigned ? (float)r32 : (float)(int32_t)r32;
+            uint32_t bits;
+            memcpy(&bits, &f, 4);
+            cpu->v[rd][0] = bits;
+            cpu->v[rd][1] = 0;
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
+    // --- Advanced SIMD, three same-width register operations ---
+    // Python's integer arithmetic runs on these. In the logical subgroup the
+    // operation is selected by the size field (0 AND, 1 BIC, 2 ORR, 3 ORN),
+    // while add/sub/mul use the (U, opcode) pair.
+    if ((insn & 0x1F200400u) == 0x0E200400u) {
+        const bool q = BIT(insn, 30) != 0;
+        const unsigned u = BIT(insn, 29);
+        const unsigned size = BITS(insn, 23, 22);
+        const unsigned rm = BITS(insn, 20, 16);
+        const unsigned opcode = BITS(insn, 15, 11);
+        const unsigned rn2 = BITS(insn, 9, 5);
+        const unsigned key = (u << 5) | opcode;
+        const uint64_t a0 = cpu->v[rn2][0], a1 = cpu->v[rn2][1];
+        const uint64_t b0 = cpu->v[rm][0], b1 = cpu->v[rm][1];
+        uint64_t r0 = 0, r1 = 0;
+        if (key == 3) {                       // logical subgroup
+            switch (size) {
+                case 0: r0 = a0 & b0;  r1 = a1 & b1;  break;   // and
+                case 1: r0 = a0 & ~b0; r1 = a1 & ~b1; break;   // bic
+                case 2: r0 = a0 | b0;  r1 = a1 | b1;  break;   // orr
+                default: r0 = a0 | ~b0; r1 = a1 | ~b1; break;  // orn
+            }
+        } else if (key == 35 && size == 0) {  // eor
+            r0 = a0 ^ b0; r1 = a1 ^ b1;
+        } else if (key == 16 || key == 48 || key == 19) {   // add / sub / mul
+            const unsigned lanes = q ? (128u / (8u << size)) : (64u / (8u << size));
+            const unsigned width = 8u << size;
+            const uint64_t mask = (width >= 64) ? ~0ULL : ((1ULL << width) - 1);
+            for (unsigned i = 0; i < lanes; i++) {
+                const unsigned bit_off = i * width;
+                const int half = bit_off / 64;
+                const unsigned off = bit_off % 64;
+                const uint64_t av = ((half ? a1 : a0) >> off) & mask;
+                const uint64_t bv = ((half ? b1 : b0) >> off) & mask;
+                uint64_t rv;
+                if (key == 16) rv = (av + bv) & mask;
+                else if (key == 48) rv = (av - bv) & mask;
+                else rv = (av * bv) & mask;
+                if (half) r1 = (r1 & ~(mask << off)) | (rv << off);
+                else      r0 = (r0 & ~(mask << off)) | (rv << off);
+            }
+        } else {
+            machine->ctx.reason = "unimplemented SIMD three-same opcode";
+            return E2_UNIMPL;
+        }
+        cpu->v[rd][0] = r0;
+        cpu->v[rd][1] = q ? r1 : 0;
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     // --- Scalar floating point compare: FCMP / FCMPE ---
     // AArch64 sets NZCV in a specific way for unordered comparisons, which is
     // how C's <, <=, == on floats end up branching.
