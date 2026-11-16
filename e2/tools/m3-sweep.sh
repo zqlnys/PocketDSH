@@ -30,6 +30,10 @@ while IFS= read -r cmd; do
         pass=$((pass + 1))
     fi
 done <<'EOF'
+# Arguments and variable values longer than the old 63/95-byte buffers. These
+# silently resolved to the wrong thing before, so they are worth keeping.
+awk 'BEGIN{count=0; items[1]=1; for(k in items) if(items[k]) {count=items[k]; pick=1}; print count}'
+LONGVAR=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; echo ${#LONGVAR}
 # Above roughly six thousand lines the consumer used to finish a read before the
 # producer had written the rest, which only a wide enough time slice papered over.
 # This case would have caught it.

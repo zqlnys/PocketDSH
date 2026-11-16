@@ -211,6 +211,11 @@ static long sys_pathop(e2_machine *m, e2_syscall_env *env, int op,
 extern unsigned long long g_global_step;
 extern int g_dbg_pid;
 
+// Guest paths. 512 was enough for every case tested and would still silently
+// truncate a longer one into a different path, which is the same failure the
+// argument and environment buffers had.
+#define E2_PATH_MAX 1024
+
 e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
     // One line per syscall, opt-in. Comparing this against qemu's -strace is the
     // fastest way to see which operation a program takes and where the two
@@ -352,7 +357,7 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             if (env->execve == NULL) {
                 E2_RETURN(-E2_ENOSYS);
             }
-            char path[512];
+            char path[E2_PATH_MAX];
             int rc = read_guest_string(m, a0, path, sizeof(path));
             if (rc != 0) {
                 E2_RETURN(rc);
@@ -401,7 +406,7 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             if (files == NULL || files->readlink == NULL) {
                 E2_RETURN(-E2_ENOSYS);
             }
-            char path[512];
+            char path[E2_PATH_MAX];
             const int rc3 = read_guest_string(m, a1, path, sizeof(path));
             if (rc3 != 0) {
                 E2_RETURN(rc3);
@@ -436,16 +441,22 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             E2_RETURN(buf);
         }
         case E2_SYS_chdir: {
-            char path[512];
+            char path[E2_PATH_MAX];
             const int rc2 = read_guest_string(m, a0, path, sizeof(path));
             if (rc2 != 0) {
                 E2_RETURN(rc2);
             }
+            // env->cwd is its own fixed buffer; copy at most what fits rather than
+            // letting the compiler infer a truncation.
             if (path[0] == '/') {
-                snprintf(env->cwd, sizeof(env->cwd), "%s", path);
+                snprintf(env->cwd, sizeof(env->cwd), "%.*s",
+                         (int)(sizeof(env->cwd) - 1), path);
             } else {
                 const size_t len = strlen(env->cwd);
-                snprintf(env->cwd + len, sizeof(env->cwd) - len, "/%s", path);
+                if (len + 1 < sizeof(env->cwd)) {
+                    snprintf(env->cwd + len, sizeof(env->cwd) - len, "/%.*s",
+                             (int)(sizeof(env->cwd) - len - 2), path);
+                }
             }
             E2_RETURN(0);
         }
@@ -453,7 +464,7 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             if (files == NULL) {
                 E2_RETURN(-E2_ENOSYS);
             }
-            char path[512];
+            char path[E2_PATH_MAX];
             int rc = read_guest_string(m, a1, path, sizeof(path));
             if (rc != 0) {
                 E2_RETURN(rc);
@@ -503,7 +514,7 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             if (files == NULL) {
                 E2_RETURN(-E2_ENOSYS);
             }
-            char path[512];
+            char path[E2_PATH_MAX];
             int rc = read_guest_string(m, a1, path, sizeof(path));
             if (rc != 0) {
                 E2_RETURN(rc);
