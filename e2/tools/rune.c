@@ -1153,6 +1153,23 @@ static int run_proc(int idx) {
                 fprintf(stderr, "\"\n");
             }
         }
+        if (getenv("E2_TRACE_PCS")) {
+            // Record the instruction path from a chosen address, so it can be
+            // diffed against the same window taken from qemu's single-step.
+            static int recording = 0;
+            static uint64_t buf[512];
+            static int n = 0;
+            const uint64_t from = strtoull(getenv("E2_TRACE_PCS"), NULL, 0);
+            if (!recording && p->m.cpu.pc == from) recording = 1;
+            if (recording && n < (int)(sizeof(buf) / sizeof(buf[0])))
+                buf[n++] = p->m.cpu.pc;
+            if (recording && n == (int)(sizeof(buf) / sizeof(buf[0]))) {
+                for (int q = 0; q < n; q++) fprintf(stdout, "%llx\n",
+                                                   (unsigned long long)buf[q]);
+                fflush(stdout);
+                recording = -1;
+            }
+        }
         const uint64_t pre_pc = p->m.cpu.pc;
         // Shadow call stack. Chasing a bad argument by re-running with a probe
         // one frame up, over and over, was the slowest part of the last few
