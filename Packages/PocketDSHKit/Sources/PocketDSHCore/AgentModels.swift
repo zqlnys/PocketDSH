@@ -255,6 +255,10 @@ public enum ToolNames {
     /// web_fetch; this is the part of that which a phone can do without a
     /// search API key.
     public static let fetchURL = "fetch_url"
+    /// Searches the web and returns a small numbered list of results. Uses the
+    /// HTML endpoint rather than an API, so it needs no key - which matters for
+    /// an app whose only credential is the model key.
+    public static let webSearch = "web_search"
     public static let todoWrite = "todo_write"
     /// Marks a workspace file as something the user should open.
     public static let present = "present"

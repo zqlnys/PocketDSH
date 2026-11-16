@@ -82,6 +82,8 @@ final class ToolExecutor {
                 return try prepareCall(arguments)
             case ToolNames.fetchURL:
                 return try await fetchURL(arguments)
+            case ToolNames.webSearch:
+                return try await webSearch(arguments)
             case ToolNames.todoWrite:
                 return todoWrite(arguments)
             case ToolNames.present:
@@ -428,6 +430,145 @@ final class ToolExecutor {
     /// do a plain GET, which is what reading documentation needs. HTML is
     /// reduced to text here rather than returned raw, because the model spends
     /// its whole context on markup otherwise.
+    /// A search that needs no API key.
+    ///
+    /// The desktop tool talks to a search API; this app has exactly one
+    /// credential and it belongs to the model, so the HTML endpoint is the only
+    /// option. The result list is small and the format stable enough to parse,
+    /// and the parser is written to degrade to "no results" rather than to
+    /// return something malformed.
+    private func webSearch(_ arguments: [String: JSONValue]) async throws -> ToolExecutionResult {
+        guard let query = arguments["query"]?.stringValue,
+              !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return .failure("web_search requires a non-empty query.")
+        }
+        let count = min(max(arguments["count"]?.intValue ?? 5, 1), 10)
+
+        var components = URLComponents(string: "https://html.duckduckgo.com/html/")!
+        components.queryItems = [URLQueryItem(name: "q", value: query)]
+        guard let url = components.url else {
+            return .failure("web_search could not build a request for that query.")
+        }
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 20
+        request.httpMethod = "GET"
+        request.setValue("PocketDSH/1.0 (iOS; local agent)", forHTTPHeaderField: "User-Agent")
+        request.setValue("text/html", forHTTPHeaderField: "Accept")
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            return .failure("web_search failed: \(error.localizedDescription)")
+        }
+        if Task.isCancelled {
+            return .failure("Cancelled before reading the response.")
+        }
+
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        let body = String(data: data, encoding: .utf8) ?? ""
+        let results = Self.searchResults(fromHTML: body, limit: count)
+
+        if results.isEmpty {
+            return .success("query: \(query)\nstatus: \(status)\nresults: 0\n-----
+No results were parsed. The page may be a captcha, a consent screen, or a layout change.")
+        }
+        var output = "query: \(query)\nstatus: \(status)\nresults: \(results.count)\n-----\n"
+        for (index, item) in results.enumerated() {
+            output += "\(index + 1). \(item.title)\n   \(item.url)\n"
+            if !item.snippet.isEmpty {
+                output += "   \(item.snippet)\n"
+            }
+        }
+        return .success(output)
+    }
+
+    struct SearchHit: Equatable {
+        let title: String
+        let url: String
+        let snippet: String
+    }
+
+    /// Pull title, target URL and snippet out of a results page.
+    ///
+    /// Deliberately hand-rolled rather than a DOM parse: the page is fetched
+    /// once, the shape is stable, and a dependency that can fail to build is a
+    /// worse trade than eighty lines here. Anything unrecognised yields no
+    /// result rather than a wrong one.
+    nonisolated static func searchResults(fromHTML html: String, limit: Int) -> [SearchHit] {
+        var hits: [SearchHit] = []
+        var cursor = html.startIndex
+        let anchor = "class=\"result__a\""
+
+        while hits.count < limit {
+            guard let marker = html.range(of: anchor, range: cursor..<html.endIndex) else { break }
+            // The href may precede or follow the class attribute; take the
+            // nearest one inside this tag.
+            let tagStart = html.range(of: "<a ", options: .backwards,
+                                      range: cursor..<marker.lowerBound)?.lowerBound
+                ?? marker.lowerBound
+            guard let tagEnd = html.range(of: ">", range: marker.upperBound..<html.endIndex) else { break }
+            let tag = String(html[tagStart..<tagEnd.lowerBound])
+
+            guard let hrefValue = attribute("href", in: tag),
+                  let target = expandRedirect(hrefValue) else {
+                cursor = tagEnd.upperBound
+                continue
+            }
+            guard let close = html.range(of: "</a>", range: tagEnd.upperBound..<html.endIndex) else { break }
+            let title = Self.plainText(fromHTML: String(html[tagEnd.upperBound..<close.lowerBound]))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            var snippet = ""
+            let afterLink = close.upperBound
+            if let snippetMarker = html.range(of: "class=\"result__snippet\"",
+                                              range: afterLink..<html.endIndex),
+               let snippetOpen = html.range(of: ">", range: snippetMarker.upperBound..<html.endIndex),
+               let snippetClose = html.range(of: "</a>", range: snippetOpen.upperBound..<html.endIndex) {
+                snippet = Self.plainText(fromHTML: String(html[snippetOpen.upperBound..<snippetClose.lowerBound]))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                cursor = snippetClose.upperBound
+            } else {
+                cursor = afterLink
+            }
+            if !title.isEmpty {
+                hits.append(SearchHit(title: title, url: target, snippet: snippet))
+            }
+        }
+        return hits
+    }
+
+    private nonisolated static func attribute(_ name: String, in tag: String) -> String? {
+        guard let key = tag.range(of: "\(name)=\"") else { return nil }
+        let start = key.upperBound
+        guard let end = tag.range(of: "\"", range: start..<tag.endIndex) else { return nil }
+        return String(tag[start..<end.lowerBound])
+            .replacingOccurrences(of: "&amp;", with: "&")
+    }
+
+    /// DuckDuckGo wraps targets in a redirect of the form `.../l/?uddg=<url>`.
+    /// Unwrapping it means the tool returns the address a person could paste,
+    /// not a tracking link.
+    private nonisolated static func expandRedirect(_ href: String) -> String? {
+        let absolute: String
+        if href.hasPrefix("//") {
+            absolute = "https:" + href
+        } else if href.hasPrefix("/") {
+            absolute = "https://duckduckgo.com" + href
+        } else if href.hasPrefix("http") {
+            absolute = href
+        } else {
+            return nil
+        }
+        guard let components = URLComponents(string: absolute),
+              let raw = components.queryItems?.first(where: { $0.name == "uddg" })?.value else {
+            return absolute
+        }
+        return raw.hasPrefix("http") ? raw : absolute
+    }
+
     private func fetchURL(_ arguments: [String: JSONValue]) async throws -> ToolExecutionResult {
         guard let raw = arguments["url"]?.stringValue else {
             return .failure("fetch_url requires url.")

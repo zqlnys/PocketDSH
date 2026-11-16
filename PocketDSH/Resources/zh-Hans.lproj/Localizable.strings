@@ -239,3 +239,8 @@
 /* Searching the project list. */
 "Search projects" = "搜索项目";
 "No projects match \"\(query)\"." = "没有匹配 \"\(query)\" 的项目。";
+
+/* web_search. */
+"Search the web and return the top results as a numbered list of title, URL and snippet. Use it to find pages worth reading, then fetch_url the one you need. It returns links, not page contents." = "搜索网络并返回标题、URL 与摘要的编号列表。用它找到值得阅读的页面，再用 fetch_url 抓取需要的那一个。它返回的是链接，不是页面内容。";
+"What to search for" = "搜索内容";
+"How many results to return, default 5, max 10" = "返回结果数量，默认 5，最多 10";

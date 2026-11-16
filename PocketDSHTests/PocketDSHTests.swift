@@ -192,6 +192,39 @@ final class PocketDSHTests: XCTestCase {
         XCTAssertFalse(text.isEmpty)
     }
 
+    func testSearchResultParsing() throws {
+        // A trimmed version of the real results page: two hits, one of them
+        // behind DuckDuckGo's redirect wrapper.
+        let html = """
+        <div class="result results_links">
+          <h2><a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fa&amp;rut=xyz">First &amp; Best</a></h2>
+          <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fa">A <b>snippet</b> for the first.</a>
+        </div>
+        <div class="result results_links">
+          <h2><a rel="nofollow" class="result__a" href="https://example.org/b">Second result</a></h2>
+          <a class="result__snippet" href="https://example.org/b">Another snippet.</a>
+        </div>
+        """
+        let hits = ToolExecutor.searchResults(fromHTML: html, limit: 5)
+        XCTAssertEqual(hits.count, 2)
+        // The redirect is unwrapped so the caller gets a usable address, and
+        // the markup inside the title is stripped.
+        XCTAssertEqual(hits.first?.url, "https://example.com/a")
+        XCTAssertEqual(hits.first?.title, "First & Best")
+        XCTAssertEqual(hits.first?.snippet, "A snippet for the first.")
+        // A plain href is passed through untouched.
+        XCTAssertEqual(hits.last?.url, "https://example.org/b")
+        XCTAssertEqual(hits.last?.title, "Second result")
+    }
+
+    func testSearchResultParsingHandlesEmptyPage() throws {
+        // A captcha or consent screen must come back as "no results" rather than
+        // as a malformed entry, because the model will read whatever it is given.
+        XCTAssertTrue(ToolExecutor.searchResults(fromHTML: "<html><body>nothing</body></html>",
+                                                 limit: 5).isEmpty)
+        XCTAssertTrue(ToolExecutor.searchResults(fromHTML: "", limit: 5).isEmpty)
+    }
+
     func testDeliverablesRoundTrip() throws {
         let original = AgentConversation(
             messages: [],

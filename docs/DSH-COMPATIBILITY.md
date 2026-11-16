@@ -70,7 +70,7 @@ E2 是自写的 aarch64 解释器 + syscall 层，不复用 iSH 的 GPL 代码�
 | 桌面 DSH 能力 | PocketDSH | 说明 |
 | --- | --- | --- |
 | `web_fetch` | 有 `fetch_url` | 纯 GET，HTML 转文本；无渲染、无 POST、无 cookie |
-| `web_search` | **缺失** | 需要搜索 API 或密钥，未接入 |
+| `web_search` | **已实现** | 走 DuckDuckGo 的 HTML 端点，无需密钥；返回标题/URL/摘要，再用 `fetch_url` 取正文 |
 | `todo_write` | 有 `todo_write` | 整表覆盖式提交；对话上方显示进度条与步骤 |
 | `subagent` / 并行委派 | **缺失** | 单 Agent 串行执行 |
 | `skill` 技能目录 | 有 `use_skill` | 工作区 `skills/*.md`；无参列出、给名加载 |
@@ -79,7 +79,11 @@ E2 是自写的 aarch64 解释器 + syscall 层，不复用 iSH 的 GPL 代码�
 | `schedule_*` | 等价 | 有 `schedule_alert` / `schedule_reminder`，但只到通知/提醒 |
 | `present` 交付物 | 有 `present` | 校验文件存在；对话上方以卡片显示，点击跳到文件页 |
 
-按对体验的影响排序，补的优先级应是：**web_search → subagent**。
+按对体验的影响排序，补的优先级现在是：**subagent**（`web_search` 已补齐）。
+
+`web_search` 之所以能用 HTML 端点而不是 API：这个 App 只有一把凭据，就是模型密钥。
+搜索走公开网页、解析结果列表，是在不引入第二把密钥的前提下能满足需求的唯一做法。
+解析器对无法识别的页面返回「没有结果」而不是残缺条目——模型会照单全收，宁可空也不要错。
 （`fetch_url`、`todo_write`、`present`、`use_skill` 已补上。）
 
 ## 工具名称映射
