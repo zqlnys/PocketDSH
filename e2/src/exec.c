@@ -39,6 +39,7 @@ const char *e2_status_name(e2_status status) {
 
 void e2_machine_init(e2_machine *machine, uint64_t entry, size_t stack_size) {
     memset(machine, 0, sizeof(*machine));
+    machine->cycle_clock = 1000000;
     e2_memory_init(&machine->mem);
     e2_cpu_reset_impl(&machine->cpu, entry);
 
@@ -307,6 +308,47 @@ e2_status e2_step(e2_machine *machine) {
         return E2_OK;
     }
 
+    // --- ADD / SUB (extended register) ---
+    // Distinguished from the shifted-register form by bit 21. The second operand
+    // is zero- or sign-extended to the operation width before shifting, and both
+    // Rn and Rd may be SP. `sub sp, sp, x2` compiles to this.
+    if ((insn & 0x1F200000u) == 0x0B200000u) {
+        const bool is_sub = BIT(insn, 30) != 0;
+        const bool set_flags = BIT(insn, 29) != 0;
+        const unsigned rm = BITS(insn, 20, 16);
+        const unsigned option = BITS(insn, 15, 13);
+        const unsigned shift_amount = BITS(insn, 12, 10);
+        const unsigned width = is64 ? 64 : 32;
+        const uint64_t mask = is64 ? ~0ULL : 0xFFFFFFFFULL;
+
+        uint64_t operand = e2_read_xzr(cpu, rm);
+        switch (option) {
+            case 0x0: operand &= 0xFF; break;                       // UXTB
+            case 0x1: operand &= 0xFFFF; break;                     // UXTH
+            case 0x2: operand &= 0xFFFFFFFFu; break;                // UXTW
+            case 0x3: break;                                        // UXTX / LSL
+            case 0x4: operand = (uint64_t)(int64_t)(int8_t)operand; break;   // SXTB
+            case 0x5: operand = (uint64_t)(int64_t)(int16_t)operand; break;  // SXTH
+            case 0x6: operand = (uint64_t)(int64_t)(int32_t)operand; break;  // SXTW
+            default: break;                                         // SXTX
+        }
+        operand = (operand << shift_amount) & mask;
+
+        const uint64_t a = e2_read_sp(cpu, rn) & mask;
+        const uint64_t result = (is_sub ? (a - operand) : (a + operand)) & mask;
+        if (set_flags) {
+            set_flags_addsub(cpu, a, operand, result, is_sub, width);
+        }
+        if (set_flags) {
+            write_reg(cpu, rd, result, is64);
+        } else {
+            e2_write_sp(cpu, rd, result);
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     // --- Logical (immediate): AND / ORR / EOR / ANDS ---
     // musl's startup aligns the stack with `and sp, x0, #~15`, so nothing runs
     // until this exists.
@@ -352,7 +394,8 @@ e2_status e2_step(e2_machine *machine) {
 
     // --- Logical (shifted register): AND / ORR / EOR / ANDS ---
     // Also covers MOV (register), which assemblers emit as ORR Xd, XZR, Xm.
-    if ((insn & 0x1F000000u) == 0x0A000000u && BIT(insn, 21) == 0) {
+    if ((insn & 0x1F000000u) == 0x0A000000u) {
+        const bool invert = BIT(insn, 21) != 0;
         const unsigned opc = BITS(insn, 30, 29);
         const unsigned shift_type = BITS(insn, 23, 22);
         const unsigned shift_amount = BITS(insn, 15, 10);
@@ -376,6 +419,9 @@ e2_status e2_step(e2_machine *machine) {
             }
         }
         operand &= mask;
+        if (invert) {
+            operand = ~operand & mask;
+        }
 
         // No SP form here: Rn=31 means XZR, so read through the zero-aware helper.
         const uint64_t a = e2_read_xzr(cpu, rn) & mask;
@@ -676,11 +722,78 @@ e2_status e2_step(e2_machine *machine) {
         return E2_OK;
     }
 
+    // --- Data processing (2 source): UDIV / SDIV / LSLV / LSRV / ASRV / RORV ---
+    // These share the 11010110 prefix in bits 28-21 and are separated by the
+    // opcode field in bits 15-10. Variable shifts are common in real code even
+    // though the assembler's `lsl xD, xN, xM` form looks exotic.
+    if ((insn & 0x7FE00000u) == 0x1AC00000u) {
+        const unsigned opcode = BITS(insn, 15, 10);
+        const unsigned rm = BITS(insn, 20, 16);
+        const unsigned rn2 = BITS(insn, 9, 5);
+        const unsigned width = is64 ? 64 : 32;
+        const uint64_t mask = is64 ? ~0ULL : 0xFFFFFFFFULL;
+
+        const uint64_t a = e2_read_xzr(cpu, rn2) & mask;
+        const uint64_t b = e2_read_xzr(cpu, rm) & mask;
+        uint64_t result;
+        switch (opcode) {
+            case 0x02:  // UDIV
+                result = (b == 0) ? 0 : (a / b);
+                break;
+            case 0x03: {  // SDIV
+                if (b == 0) {
+                    result = 0;
+                } else if (is64) {
+                    result = (b == (uint64_t)-1 && a == (1ULL << 63))
+                                 ? a
+                                 : (uint64_t)((int64_t)a / (int64_t)b);
+                } else {
+                    const int32_t sa = (int32_t)a;
+                    const int32_t sb = (int32_t)b;
+                    result = (uint64_t)(int64_t)(sb == -1 ? (int32_t)(0u - (uint32_t)sa) : sa / sb);
+                }
+                break;
+            }
+            case 0x08: {  // LSLV
+                const unsigned shift = (unsigned)(b & (width - 1));
+                result = (a << shift) & mask;
+                break;
+            }
+            case 0x09: {  // LSRV
+                const unsigned shift = (unsigned)(b & (width - 1));
+                result = a >> shift;
+                break;
+            }
+            case 0x0A: {  // ASRV
+                const unsigned shift = (unsigned)(b & (width - 1));
+                const uint64_t sign = is64 ? a : (a | (a & (1ULL << 31) ? ~mask : 0));
+                result = (uint64_t)((int64_t)sign >> shift) & mask;
+                break;
+            }
+            case 0x0B: {  // RORV
+                unsigned shift = (unsigned)(b & (width - 1));
+                if (shift == 0) {
+                    result = a;
+                } else {
+                    result = ((a >> shift) | (a << (width - shift))) & mask;
+                }
+                break;
+            }
+            default:
+                machine->ctx.reason = "unimplemented data-processing (2 source)";
+                return E2_UNIMPL;
+        }
+        write_reg(cpu, rd, result, is64);
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     // --- CCMP / CCMN (conditional compare) ---
     // Chains comparisons without branching, e.g. `a <= b && b < c`. When the
     // condition fails the flags are taken from the instruction instead of being
     // computed, which is how short-circuit evaluation stays branch-free.
-    if ((insn & 0x1FE00000u) == 0x1A400000u) {
+    if ((insn & 0x3FE00000u) == 0x3A400000u) {
         const bool is_compare = BIT(insn, 30) != 0;  // 1 = CCMP(sub), 0 = CCMN(add)
         const bool is_immediate = BIT(insn, 11) != 0;
         const unsigned cond = BITS(insn, 15, 12);
@@ -965,6 +1078,54 @@ e2_status e2_step(e2_machine *machine) {
                 machine->ctx.svc_number = (uint16_t)(addr & 0xFFFF);
                 return E2_FAULT;
             }
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
+    // --- MRS / MSR (system registers) ---
+    // Only the handful a userspace process actually touches. TPIDR_EL0 is the
+    // thread pointer, which is how TLS is addressed; libc sets and reads it
+    // constantly. Anything else is reported rather than silently ignored,
+    // because a wrong value here corrupts every thread-local access.
+    if ((insn & 0xFFF00000u) == 0xD5100000u || (insn & 0xFFF00000u) == 0xD5300000u) {
+        const bool is_read = BIT(insn, 21) != 0;
+        const unsigned sysreg = BITS(insn, 20, 5);
+        const unsigned rt = BITS(insn, 4, 0);
+
+        switch (sysreg) {
+            case 0xDE82:  // TPIDR_EL0: thread pointer
+                if (is_read) {
+                    write_reg(cpu, rt, cpu->tpidr_el0, true);
+                } else {
+                    cpu->tpidr_el0 = e2_read_xzr(cpu, rt);
+                }
+                break;
+            case 0xDE83:  // TPIDRRO_EL0: read-only thread pointer
+                if (is_read) {
+                    write_reg(cpu, rt, cpu->tpidr_el0, true);
+                }
+                break;
+            case 0x5F01:  // CNTVCT_EL0: virtual counter, monotonic nanoseconds-ish
+                if (is_read) {
+                    machine->cycle_clock += 1000;
+                    write_reg(cpu, rt, machine->cycle_clock, true);
+                }
+                break;
+            case 0xC082:  // CTR_EL0: cache type register, constant
+                if (is_read) {
+                    write_reg(cpu, rt, 0x8444C004ULL, true);
+                }
+                break;
+            case 0xC1E2:  // DCZID_EL0: data cache zero id, no DZP
+                if (is_read) {
+                    write_reg(cpu, rt, 0x4ULL, true);
+                }
+                break;
+            default:
+                machine->ctx.reason = "unimplemented system register";
+                return E2_UNIMPL;
         }
         cpu->pc = next_pc;
         machine->instructions++;

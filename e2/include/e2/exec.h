@@ -22,6 +22,8 @@ typedef struct {
     e2_exec_context ctx;
     uint64_t instructions;
     int exit_status;
+    /// Monotonic counter handed to CNTVCT_EL0 readers; advances per read.
+    uint64_t cycle_clock;
 } e2_machine;
 
 /// Prepares a machine with a stack of `stack_size` bytes. The stack top is
