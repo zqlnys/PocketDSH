@@ -138,6 +138,35 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             }
             E2_RETURN(files->read(env->ctx, (int)a0, dst, (size_t)a2, (long long)m->cpu.x[3]));
         }
+        case E2_SYS_clone: {
+            // The shell uses clone(SIGCHLD, 0, ...) for fork; a NULL stack means
+            // "same address space, copied". A non-NULL stack is a thread, which
+            // this model does not offer.
+            if (env->fork == NULL) {
+                E2_RETURN(-E2_ENOSYS);
+            }
+            if (a1 != 0) {
+                E2_RETURN(-E2_EINVAL);
+            }
+            E2_RETURN(env->fork(env->ctx, m));
+        }
+        case E2_SYS_execve: {
+            if (env->execve == NULL) {
+                E2_RETURN(-E2_ENOSYS);
+            }
+            char path[512];
+            int rc = read_guest_string(m, a0, path, sizeof(path));
+            if (rc != 0) {
+                E2_RETURN(rc);
+            }
+            E2_RETURN(env->execve(env->ctx, m, path, a1, a2));
+        }
+        case E2_SYS_wait4: {
+            if (env->wait4 == NULL) {
+                E2_RETURN(-E2_ENOSYS);
+            }
+            E2_RETURN(env->wait4(env->ctx, (int)a0, a2, (int)m->cpu.x[3]));
+        }
         case E2_SYS_pipe2: {
             if (files == NULL || files->pipe == NULL) {
                 E2_RETURN(-E2_ENOSYS);

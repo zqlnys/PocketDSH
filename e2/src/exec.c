@@ -193,6 +193,15 @@ static void set_flags_addsub(e2_cpu *cpu, uint64_t a, uint64_t b, uint64_t resul
     }
 }
 
+int e2_machine_clone(const e2_machine *src, e2_machine *dst) {
+    *dst = *src;
+    if (e2_memory_clone(&src->mem, &dst->mem) != 0) {
+        return -1;
+    }
+    dst->ctx.reason = NULL;
+    return 0;
+}
+
 e2_status e2_step(e2_machine *machine) {
     e2_cpu *cpu = &machine->cpu;
     machine->ctx.pc = cpu->pc;

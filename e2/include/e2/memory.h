@@ -37,6 +37,11 @@ typedef struct {
 void e2_memory_init(e2_memory *mem);
 void e2_memory_destroy(e2_memory *mem);
 
+/// Deep-copies every region of `src` into `dst`, which must not hold live
+/// regions. This is the whole of fork()'s address-space work. Returns 0 on
+/// success, negative on allocation failure (in which case `dst` is left empty).
+int e2_memory_clone(const e2_memory *src, e2_memory *dst);
+
 /// Reserves `size` bytes at a host-chosen guest address, rounded up to page size.
 /// Returns 0 on success, negative on failure.
 int e2_memory_map_any(e2_memory *mem, size_t size, int prot, uint64_t *base_out);

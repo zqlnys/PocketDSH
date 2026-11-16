@@ -8,6 +8,25 @@ void e2_memory_init(e2_memory *mem) {
     memset(mem, 0, sizeof(*mem));
 }
 
+int e2_memory_clone(const e2_memory *src, e2_memory *dst) {
+    e2_memory_init(dst);
+    for (unsigned i = 0; i < src->count; i++) {
+        const e2_region *r = &src->regions[i];
+        uint8_t *buf = malloc(r->size);
+        if (buf == NULL) {
+            e2_memory_destroy(dst);
+            return -1;
+        }
+        memcpy(buf, r->host, r->size);
+        e2_region *d = &dst->regions[dst->count++];
+        d->base = r->base;
+        d->size = r->size;
+        d->host = buf;
+        d->prot = r->prot;
+    }
+    return 0;
+}
+
 void e2_memory_destroy(e2_memory *mem) {
     for (unsigned i = 0; i < mem->count; i++) {
         free(mem->regions[i].host);

@@ -41,6 +41,10 @@ void e2_machine_destroy(e2_machine *machine);
 /// already advanced past the SVC; the caller services it and resumes execution.
 e2_status e2_step(e2_machine *machine);
 
+/// Duplicates a machine's architectural state and address space. Used by fork.
+/// Returns 0 on success. The destination must not already own memory.
+int e2_machine_clone(const e2_machine *src, e2_machine *dst);
+
 /// Runs until halt, fault, unimplemented instruction, or the instruction budget
 /// is exhausted. Returns the status that stopped it.
 e2_status e2_run(e2_machine *machine, uint64_t max_instructions);

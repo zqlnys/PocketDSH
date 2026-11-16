@@ -10,6 +10,9 @@
 /// the numbering every aarch64 Linux userspace binary is built against.
 #define E2_SYS_dup3 24
 #define E2_SYS_fcntl 25
+#define E2_SYS_clone 220
+#define E2_SYS_execve 221
+#define E2_SYS_wait4 260
 #define E2_SYS_openat 56
 #define E2_SYS_pipe2 59
 #define E2_SYS_close 57
@@ -72,6 +75,17 @@ typedef struct {
     /// lives with the host, not in the interpreter.
     const e2_file_ops *files;
     void *ctx;
+    /// Forks the calling process. `parent` is the machine to duplicate; the
+    /// host decides where the child runs. Returns the child pid in the parent,
+    /// 0 in the child's own image, or a negative errno.
+    long (*fork)(void *ctx, const e2_machine *parent);
+    /// Replaces the current image with the program at `path`. The host builds
+    /// the new address space and stack inside `m`. Returns 0 or negative errno.
+    int (*execve)(void *ctx, e2_machine *m, const char *path, uint64_t argv,
+                  uint64_t envp);
+    /// Waits for a child and writes its 32-bit wait status to `status_ptr`.
+    /// Returns the reaped pid or a negative errno.
+    long (*wait4)(void *ctx, int pid, uint64_t status_ptr, int options);
 } e2_syscall_env;
 
 /// Services the syscall the machine stopped on.
