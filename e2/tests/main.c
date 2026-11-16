@@ -1063,14 +1063,35 @@ static void test_scalar_immediates(void) {
     {
         // fcvtzs d0, d0 - FP to integer, result kept as a float. `sleep`
         // converts a double to whole seconds through this.
+        // fcvtzs leaves an INTEGER in the FP register, so its result is checked
+        // as bits rather than as a double; the rounding forms below stay in the
+        // FP domain and are checked as doubles.
         static const struct { uint32_t insn; double in; double want; const char *what; } cv[] = {
-            {0x5EE1B800u,  3.7,  3.0, "fcvtzs truncates toward zero"},
-            {0x5EE1B800u, -3.7, -3.0, "fcvtzs truncates toward zero (negative)"},
             {0x5E61B800u, -3.2, -4.0, "fcvtms rounds toward -inf"},
             {0x5EE1A800u,  3.2,  4.0, "fcvtps rounds toward +inf"},
             {0x5E61A800u,  2.5,  2.0, "fcvtns rounds to even"},
             {0x5E61C800u,  2.5,  3.0, "fcvtas rounds half away from zero"},
         };
+        {
+            // fcvtzs produces an integer, so assert on the raw bits.
+            e2_machine m;
+            e2_machine_init(&m, 0, 1 << 20);
+            const uint64_t at = 0x30000000ULL;
+            e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+            uint32_t tz = 0x5EE1B800u;   // fcvtzs d0, d0
+            e2_memory_write(&m.mem, at, &tz, 4);
+            const double a = 3.7, b = -3.7;
+            memcpy(&m.cpu.v[0][0], &a, 8);
+            m.cpu.pc = at;
+            e2_step(&m);
+            CHECK(m.cpu.v[0][0] == 3, "fcvtzs truncates toward zero");
+            memcpy(&m.cpu.v[0][0], &b, 8);
+            m.cpu.pc = at;
+            e2_step(&m);
+            CHECK(m.cpu.v[0][0] == (uint64_t)(int64_t)-3,
+                  "fcvtzs truncates toward zero (negative)");
+            e2_memory_destroy(&m.mem);
+        }
         for (unsigned i = 0; i < sizeof(cv) / sizeof(cv[0]); i++) {
             e2_machine m;
             e2_machine_init(&m, 0, 1 << 20);
@@ -1725,6 +1746,40 @@ static void test_scalar_immediates(void) {
         m.cpu.pc = at;
         e2_step(&m);
         CHECK(m.cpu.x[3] == 7, "fcvtzs x3, d0 writes to x3");
+        e2_memory_destroy(&m.mem);
+    }
+
+    {
+        // fcvtzs in its SIMD scalar form: the destination is an FP register, not
+        // a general one. awk's int() uses exactly this pair - fcvtzs d8, d9 then
+        // scvtf d8, d8 - and getting it wrong leaves the raw IEEE bits in place,
+        // which is why int(7) printed 7.0's bit pattern.
+        e2_machine m;
+        e2_machine_init(&m, 0, 1 << 20);
+        const uint64_t at = 0x30000000ULL;
+        e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+
+        uint32_t insn = 0x5EE1B928u;   // fcvtzs d8, d9
+        e2_memory_write(&m.mem, at, &insn, 4);
+        const double seven = 7.0, three_nine = 3.9;
+        memcpy(&m.cpu.v[9][0], &seven, 8);
+        m.cpu.pc = at;
+        e2_step(&m);
+        CHECK(m.cpu.v[8][0] == 7, "fcvtzs d8, d9 converts to an integer in an FP register");
+
+        memcpy(&m.cpu.v[9][0], &three_nine, 8);
+        m.cpu.pc = at;
+        e2_step(&m);
+        CHECK(m.cpu.v[8][0] == 3, "fcvtzs d8, d9 truncates toward zero");
+
+        uint32_t back = 0x5E61D908u;   // scvtf d8, d8
+        e2_memory_write(&m.mem, at, &back, 4);
+        m.cpu.v[8][0] = 7;
+        m.cpu.pc = at;
+        e2_step(&m);
+        double d = 0;
+        memcpy(&d, &m.cpu.v[8][0], 8);
+        CHECK(d == 7.0, "scvtf d8, d8 converts back to a double");
         e2_memory_destroy(&m.mem);
     }
 

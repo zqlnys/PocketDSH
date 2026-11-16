@@ -807,6 +807,52 @@ e2_status e2_step(e2_machine *machine) {
         return E2_OK;
     }
 
+    // --- SIMD scalar FCVTZS / FCVTZU (FP register destination) ---
+    // Distinct from the general-register form below: here the integer result
+    // lands in an FP register. awk's int() is exactly this pair -
+    // `fcvtzs d8, d9` then `scvtf d8, d8` - so without it the raw double bits
+    // survive and every integral value prints as its IEEE bit pattern.
+    if ((insn & 0xFFBFFC00u) == 0x5EA1B800u || (insn & 0xFFBFFC00u) == 0x7EA1B800u) {
+        const bool is_unsigned = BIT(insn, 31) != 0;
+        const bool dbl = BIT(insn, 22) != 0;
+        const unsigned rn2 = BITS(insn, 9, 5);
+        const unsigned rd2 = BITS(insn, 4, 0);
+        double v;
+        if (dbl) {
+            uint64_t b = cpu->v[rn2][0];
+            memcpy(&v, &b, 8);
+        } else {
+            uint32_t b = (uint32_t)cpu->v[rn2][0];
+            float f;
+            memcpy(&f, &b, 4);
+            v = (double)f;
+        }
+        uint64_t result;
+        if (v != v) {
+            result = 0;
+        } else if (is_unsigned) {
+            if (v <= 0.0) result = 0;
+            else if (dbl && v >= 18446744073709551615.0) result = ~0ULL;
+            else if (!dbl && v >= 4294967295.0) result = 0xFFFFFFFFULL;
+            else result = (uint64_t)v;
+        } else {
+            if (dbl) {
+                if (v <= -9223372036854775808.0) result = 0x8000000000000000ULL;
+                else if (v >= 9223372036854775807.0) result = 0x7FFFFFFFFFFFFFFFULL;
+                else result = (uint64_t)(int64_t)v;
+            } else {
+                if (v <= -2147483648.0) result = (uint64_t)(int64_t)(int32_t)0x80000000;
+                else if (v >= 2147483647.0) result = 0x7FFFFFFFULL;
+                else result = (uint64_t)(int64_t)(int32_t)v;
+            }
+        }
+        cpu->v[rd2][0] = result;
+        cpu->v[rd2][1] = 0;
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     // --- Floating point to integer: FCVTZS / FCVTZU ---
     // C's float-to-int casts lower to these. AArch64 saturates out-of-range
     // values and maps NaN to zero; the host cast is undefined there, so the

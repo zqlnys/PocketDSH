@@ -1428,6 +1428,27 @@ static int run_proc(int idx) {
                         (unsigned long long)(p->m.cpu.pc + (int64_t)imm * 4));
             }
         }
+        if (getenv("E2_TRACE_RING")) {
+            // Ring of the last few (pc, d0) pairs. Chasing a value that changes
+            // inside a call is hopeless by watching a fixed window, because the
+            // change happens in code the window does not cover.
+            static struct { uint64_t pc, d0; } ringbuf[512];
+            static unsigned ringpos = 0;
+            if (ringpos == 0 || p->m.cpu.v[0][0] != ringbuf[(ringpos - 1) & 511].d0) {
+                ringbuf[ringpos & 511].pc = p->m.cpu.pc;
+                ringbuf[ringpos & 511].d0 = p->m.cpu.v[0][0];
+                ringpos++;
+            }
+            if (p->m.cpu.pc == 0x4944b8) {
+                for (unsigned k = 1; k <= 250; k++) {
+                    const unsigned idx = (ringpos - 251 + k) & 511;
+                    fprintf(stderr, "[ring] %2u pc=0x%llx d0=0x%llx\n", k,
+                            (unsigned long long)ringbuf[idx].pc,
+                            (unsigned long long)ringbuf[idx].d0);
+                }
+                exit(0);
+            }
+        }
         const uint64_t pre_pc = p->m.cpu.pc;
         // Shadow call stack. Chasing a bad argument by re-running with a probe
         // one frame up, over and over, was the slowest part of the last few
