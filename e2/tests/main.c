@@ -91,6 +91,7 @@ static int test_file_stat(void *ctx, int fd, void *buf, size_t buflen) {
     return -9;  // EBADF
 }
 unsigned long long g_global_step;
+int g_dbg_pid;
 static long long test_clock_ns(void *ctx, int clock_id) { (void)ctx; (void)clock_id; return 0; }
 
 static const e2_file_ops test_files = {
