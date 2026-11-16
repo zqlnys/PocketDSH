@@ -645,11 +645,12 @@ e2_status e2_step(e2_machine *machine) {
         return E2_OK;
     }
 
-    // --- MADD / MSUB / SMULH / UMULH ---
-    // Ra=31 is not an accumulator here: it is the marker for the high-half
-    // multiply variants. Treating it as a register read produced garbage
-    // accumulators, which showed up as loop counters turning into addresses.
-    if ((insn & 0x1F000000u) == 0x1B000000u) {
+    // --- MADD / MSUB ---
+    // `mul xD, Xn, Xm` is MADD with Ra=XZR, so the accumulator being 31 is
+    // normal here. The high-multiply variants live in a different encoding group
+    // (bit 23 set) and are handled separately below; keying on Ra alone made
+    // every plain multiply return the high half of the product, i.e. zero.
+    if ((insn & 0x1F000000u) == 0x1B000000u && BIT(insn, 23) == 0) {
         const bool is_sub = BIT(insn, 15) != 0;
         const unsigned rm = BITS(insn, 20, 16);
         const unsigned ra = BITS(insn, 14, 10);
@@ -658,22 +659,57 @@ e2_status e2_step(e2_machine *machine) {
 
         const uint64_t a = e2_read_xzr(cpu, rn2) & mask;
         const uint64_t b = e2_read_xzr(cpu, rm) & mask;
-
-        uint64_t result;
-        if (ra == E2_REG_XZR && is64) {
-            const unsigned __int128 product = (unsigned __int128)a * (unsigned __int128)b;
-            if (is_sub) {
-                // SMULH: signed high half
-                const __int128 sproduct = (__int128)(int64_t)a * (__int128)(int64_t)b;
-                result = (uint64_t)(sproduct >> 64);
-            } else {
-                result = (uint64_t)(product >> 64);
-            }
-        } else {
-            const uint64_t acc = e2_read_xzr(cpu, ra) & mask;
-            result = is_sub ? (acc - a * b) : (acc + a * b);
-        }
+        const uint64_t acc = e2_read_xzr(cpu, ra) & mask;
+        const uint64_t result = is_sub ? (acc - a * b) : (acc + a * b);
         write_reg(cpu, rd, result & mask, is64);
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
+    // --- SMADDL / SMSUBL / UMADDL / UMSUBL ---
+    // 32x32 -> 64 widen-multiply with accumulate. `umull xD, wN, wM` is UMADDL
+    // with Ra=XZR; compilers emit these for any 32-bit multiply whose result is
+    // held in 64 bits, so they appear in ordinary integer code.
+    if ((insn & 0x7F200000u) == 0x1B200000u) {
+        const bool is_unsigned = BIT(insn, 22) != 0;
+        const bool is_sub = BIT(insn, 15) != 0;
+        const unsigned rm = BITS(insn, 20, 16);
+        const unsigned ra = BITS(insn, 14, 10);
+        const unsigned rn2 = BITS(insn, 9, 5);
+
+        uint64_t a = cpu->x[rn2] & 0xFFFFFFFFu;
+        uint64_t b = cpu->x[rm] & 0xFFFFFFFFu;
+        if (!is_unsigned) {
+            a = (uint64_t)(int64_t)(int32_t)a;
+            b = (uint64_t)(int64_t)(int32_t)b;
+        }
+        const uint64_t acc = e2_read_xzr(cpu, ra);
+        const uint64_t product = a * b;
+        const uint64_t result = is_sub ? (acc - product) : (acc + product);
+        write_reg(cpu, rd, result, true);
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
+    // --- SMULH / UMULH (Ra field is 11111; bit 22 selects signed vs unsigned) ---
+    if ((insn & 0x7FE0FC00u) == 0x1B407C00u || (insn & 0x7FE0FC00u) == 0x1BC07C00u) {
+        const bool is_unsigned = BIT(insn, 22) != 0;
+        const unsigned rm = BITS(insn, 20, 16);
+        const unsigned rn2 = BITS(insn, 9, 5);
+
+        const uint64_t a = e2_read_xzr(cpu, rn2);
+        const uint64_t b = e2_read_xzr(cpu, rm);
+        uint64_t result;
+        if (is_unsigned) {
+            const unsigned __int128 product = (unsigned __int128)a * (unsigned __int128)b;
+            result = (uint64_t)(product >> 64);
+        } else {
+            const __int128 product = (__int128)(int64_t)a * (__int128)(int64_t)b;
+            result = (uint64_t)(product >> 64);
+        }
+        write_reg(cpu, rd, result, true);
         cpu->pc = next_pc;
         machine->instructions++;
         return E2_OK;

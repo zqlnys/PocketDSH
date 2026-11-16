@@ -523,6 +523,48 @@ static void test_compiled_c_program(void) {
     free(image);
 }
 
+/// Exercises argument passing, nested calls, and callee-saved registers. A
+/// program that renders digits from the wrong register usually turns out to be
+/// a call-path bug rather than an arithmetic one, so this isolates it.
+static void test_function_calls(void) {
+    printf("function calls, arguments, callee-saved registers\n");
+    FILE *f = fopen("tests/guest/calls.elf", "rb");
+    if (f == NULL) {
+        printf("  SKIP (tests/guest/calls.elf not built)\n");
+        return;
+    }
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    uint8_t *image = (uint8_t *)malloc((size_t)size);
+    if (image == NULL || fread(image, 1, (size_t)size, f) != (size_t)size) {
+        fclose(f);
+        free(image);
+        CHECK(0, "could not read calls.elf");
+        return;
+    }
+    fclose(f);
+
+    e2_machine m;
+    e2_machine_init(&m, 0, 1 << 20);
+    e2_loaded_image info = {0};
+    e2_load_result lr = e2_load_elf_full(&m, image, (size_t)size, true, &info);
+    CHECK(lr == E2_LOAD_OK, "load: %s", e2_load_result_name(lr));
+
+    if (lr == E2_LOAD_OK) {
+        capture cap = {0};
+        e2_syscall_env env = {.write = capture_write, .exit = capture_exit, .ctx = &cap};
+        e2_status st = run_program(&m, &env, 100000);
+        CHECK(st == E2_HALTED, "expected halt, got %s (%s)", e2_status_name(st),
+              m.ctx.reason ? m.ctx.reason : "-");
+        CHECK(cap.status == 0, "exit status %d (the mismatching value)", cap.status);
+        CHECK(strcmp(cap.out, "ok\n") == 0, "output \"%s\"", cap.out);
+    }
+
+    e2_machine_destroy(&m);
+    free(image);
+}
+
 static void test_pie_relocation(void) {
     printf("PIE load bias and RELATIVE relocation\n");
     e2_machine m;
@@ -654,6 +696,7 @@ int main(void) {
     test_load_real_elf();
     test_recursive_fib_elf();
     test_simd_memset_elf();
+    test_function_calls();
     test_compiled_c_program();
     test_pie_relocation();
     test_reject_dynamic();
