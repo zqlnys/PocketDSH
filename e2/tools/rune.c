@@ -1402,11 +1402,21 @@ int main(int argc, char **argv) {
     for (int i = 2; i < argc && nargs < 16; i++)
         snprintf(args[nargs++], sizeof(args[0]), "%s", argv[i]);
     char envs[8][96]; int nenv = 0;
+    // E2_MIN_ENV=1 passes no environment at all. If an applet behaves
+    // differently without it, the cause is the stack layout or environ rather
+    // than the code being exercised.
+    if (getenv("E2_MIN_ENV") != NULL) {
+        goto env_done;
+    }
     snprintf(envs[nenv++], sizeof(envs[0]), "PATH=/bin:/sbin:/usr/bin:/usr/sbin");
     snprintf(envs[nenv++], sizeof(envs[0]), "HOME=/root");
     snprintf(envs[nenv++], sizeof(envs[0]), "TERM=xterm");
     snprintf(envs[nenv++], sizeof(envs[0]), "PWD=/");
-    snprintf(envs[nenv++], sizeof(envs[0]), "LANG=C");
+    // E2_NO_LANG exists to test whether a failing applet is taking a locale
+    // path: several text tools consult LANG before compiling a pattern.
+    if (getenv("E2_NO_LANG") == NULL) {
+        snprintf(envs[nenv++], sizeof(envs[0]), "LANG=C");
+    }
     // Pass Python's own knobs through, so the guest can be pointed at a
     // rootfs without rebuilding the harness.
     {
@@ -1420,6 +1430,7 @@ int main(int argc, char **argv) {
         }
     }
 
+env_done:
     if (start_image(&m, path, args, nargs, envs, nenv) != 0) {
         fprintf(stderr, "cannot load %s\n", path);
         return 1;
