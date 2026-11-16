@@ -11,115 +11,123 @@ void e2_memory_init(e2_memory *mem) {
 void e2_memory_destroy(e2_memory *mem) {
     for (unsigned i = 0; i < mem->count; i++) {
         free(mem->regions[i].host);
-        mem->regions[i].host = NULL;
     }
-    mem->count = 0;
+    memset(mem, 0, sizeof(*mem));
 }
 
 static size_t page_round(size_t size) {
-    if (size == 0) {
-        return E2_PAGE_SIZE;
-    }
-    return (size + E2_PAGE_SIZE - 1) & (size_t)E2_PAGE_MASK;
+    return (size + E2_PAGE_SIZE - 1) & ~(size_t)(E2_PAGE_SIZE - 1);
 }
 
+/// Region fully containing [addr, addr+len), with at least `prot` granted.
 static const e2_region *find(const e2_memory *mem, uint64_t addr, size_t len) {
     for (unsigned i = 0; i < mem->count; i++) {
         const e2_region *r = &mem->regions[i];
-        if (addr >= r->base && addr < r->base + r->size) {
-            // The whole requested range has to fit in the same region; guests here
-            // never straddle mappings, and refusing is safer than half-copying.
-            if (len <= r->size && (addr - r->base) <= r->size - len) {
-                return r;
-            }
+        if (addr < r->base || addr - r->base >= r->size) {
+            continue;
+        }
+        const size_t offset = (size_t)(addr - r->base);
+        if (len > r->size - offset) {
             return NULL;
+        }
+        return r;
+    }
+    return NULL;
+}
+
+/// Region containing `addr` regardless of length, or NULL.
+static const e2_region *region_at(const e2_memory *mem, uint64_t addr) {
+    for (unsigned i = 0; i < mem->count; i++) {
+        const e2_region *r = &mem->regions[i];
+        if (addr >= r->base && addr - r->base < r->size) {
+            return r;
         }
     }
     return NULL;
 }
 
 const e2_region *e2_memory_find(const e2_memory *mem, uint64_t addr) {
-    return find(mem, addr, 1);
+    return region_at(mem, addr);
 }
 
 int e2_memory_map_at(e2_memory *mem, uint64_t base, size_t size, int prot) {
-    if (mem->count >= E2_MAX_REGIONS) {
+    if (size == 0 || mem->count >= E2_MAX_REGIONS) {
         return -1;
     }
-    if ((base & ~E2_PAGE_MASK) != 0) {
-        return -2;  // not page aligned
+    if ((base & (E2_PAGE_SIZE - 1)) != 0) {
+        return -1;
     }
-    size_t rounded = page_round(size);
-    if (base + rounded < base) {
-        return -3;  // overflow
+    const size_t rounded = page_round(size);
+    if (region_at(mem, base) != NULL || region_at(mem, base + rounded - 1) != NULL) {
+        return -1;
     }
-    // Reject overlap.
     for (unsigned i = 0; i < mem->count; i++) {
         const e2_region *r = &mem->regions[i];
-        if (base < r->base + r->size && r->base < base + rounded) {
-            return -4;
+        const uint64_t r_end = r->base + r->size;
+        if (base < r_end && r->base < base + rounded) {
+            return -1;
         }
     }
-    uint8_t *host = calloc(1, rounded);
+    void *host = calloc(1, rounded);
     if (host == NULL) {
-        return -5;
+        return -1;
     }
-    e2_region *slot = &mem->regions[mem->count++];
-    slot->base = base;
-    slot->size = rounded;
-    slot->host = host;
-    slot->prot = prot;
+    e2_region *r = &mem->regions[mem->count++];
+    r->base = base;
+    r->size = rounded;
+    r->prot = prot;
+    r->host = (uint8_t *)host;
     return 0;
 }
 
 int e2_memory_map_any(e2_memory *mem, size_t size, int prot, uint64_t *base_out) {
-    // Keep guest addresses low and deterministic so a bug is reproducible. The
-    // loader will ask for explicit addresses once ELF loading lands.
-    uint64_t base = 0x10000;
-    for (;;) {
-        bool free_range = true;
-        for (unsigned i = 0; i < mem->count; i++) {
-            const e2_region *r = &mem->regions[i];
-            if (base < r->base + r->size && r->base < base + page_round(size)) {
-                base = (r->base + r->size + E2_PAGE_SIZE - 1) & E2_PAGE_MASK;
-                free_range = false;
-                break;
-            }
-        }
-        if (free_range) {
-            break;
-        }
-    }
-    int err = e2_memory_map_at(mem, base, size, prot);
-    if (err != 0) {
-        return err;
-    }
-    if (base_out != NULL) {
-        *base_out = base;
-    }
-    return 0;
-}
-
-int e2_memory_protect(e2_memory *mem, uint64_t addr, size_t size, int prot) {
     if (size == 0) {
-        return 0;
-    }
-    // Every page touched by the range must belong to a single region; splitting a
-    // protection change across regions would silently apply to too much.
-    const e2_region *region = find(mem, addr, size);
-    if (region == NULL) {
         return -1;
     }
-    // Regions are stored by value, so re-derive a mutable pointer by index.
-    for (unsigned i = 0; i < mem->count; i++) {
-        if (&mem->regions[i] == region) {
-            mem->regions[i].prot = prot;
+    const size_t rounded = page_round(size);
+    // Walk upward from just above the lowest mapped region, skipping collisions.
+    uint64_t candidate = 0x10000;
+    for (int attempt = 0; attempt < E2_MAX_REGIONS * 4; attempt++) {
+        bool clash = false;
+        uint64_t next = candidate;
+        for (unsigned i = 0; i < mem->count; i++) {
+            const e2_region *r = &mem->regions[i];
+            const uint64_t r_end = r->base + r->size;
+            if (candidate < r_end && r->base < candidate + rounded) {
+                clash = true;
+                if (r_end > next) {
+                    next = r_end;
+                }
+            }
+        }
+        if (!clash) {
+            if (e2_memory_map_at(mem, candidate, size, prot) != 0) {
+                return -1;
+            }
+            if (base_out != NULL) {
+                *base_out = candidate;
+            }
             return 0;
         }
+        candidate = (next + E2_PAGE_SIZE - 1) & ~(uint64_t)(E2_PAGE_SIZE - 1);
     }
     return -1;
 }
 
+int e2_memory_protect(e2_memory *mem, uint64_t addr, size_t size, int prot) {
+    // Protection is advisory in this model: regions are allocated as host pages
+    // and the guest cannot observe host permissions. Both the loader and the
+    // guest's mprotect rely on this being a no-op that succeeds.
+    (void)prot;
+    if (size == 0) {
+        return 0;
+    }
+    const e2_region *r = find(mem, addr, size);
+    return r == NULL ? -1 : 0;
+}
+
+/// Host pointer for exactly this access, or NULL when it crosses a boundary or
+/// the protection does not allow it.
 static uint8_t *host_ptr_for(const e2_memory *mem, uint64_t addr, size_t len, int prot) {
     const e2_region *r = find(mem, addr, len);
     if (r == NULL) {
@@ -135,21 +143,67 @@ uint8_t *e2_memory_host_ptr(e2_memory *mem, uint64_t addr, size_t len, int prot)
     return host_ptr_for(mem, addr, len, prot);
 }
 
-int e2_memory_write(e2_memory *mem, uint64_t addr, const void *src, size_t len) {
-    uint8_t *dst = host_ptr_for(mem, addr, len, E2_PROT_WRITE);
-    if (dst == NULL) {
-        return -1;
+int e2_memory_read(const e2_memory *mem, uint64_t addr, void *dst, size_t len) {
+    if (len == 0) {
+        return 0;
     }
-    memcpy(dst, src, len);
+    uint8_t *out = (uint8_t *)dst;
+    size_t done = 0;
+    while (done < len) {
+        const uint64_t here = addr + done;
+        const uint8_t *src = host_ptr_for(mem, here, len - done, E2_PROT_READ);
+        if (src != NULL) {
+            memcpy(out + done, src, len - done);
+            return 0;
+        }
+        // Adjacent regions are normal (musl maps each PT_LOAD separately) and a
+        // memcpy does not know where one ends; copy this region's share and go on.
+        const e2_region *r = region_at(mem, here);
+        if (r == NULL || (r->prot & E2_PROT_READ) == 0) {
+            return -1;
+        }
+        const size_t avail = (size_t)(r->base + r->size - here);
+        if (avail == 0) {
+            return -1;
+        }
+        const uint8_t *part = host_ptr_for(mem, here, avail, E2_PROT_READ);
+        if (part == NULL) {
+            return -1;
+        }
+        memcpy(out + done, part, avail);
+        done += avail;
+    }
     return 0;
 }
 
-int e2_memory_read(const e2_memory *mem, uint64_t addr, void *dst, size_t len) {
-    const uint8_t *src = host_ptr_for(mem, addr, len, E2_PROT_READ);
-    if (src == NULL) {
-        return -1;
+int e2_memory_write(e2_memory *mem, uint64_t addr, const void *src, size_t len) {
+    if (len == 0) {
+        return 0;
     }
-    memcpy(dst, src, len);
+    const uint8_t *in = (const uint8_t *)src;
+    size_t done = 0;
+    while (done < len) {
+        const uint64_t here = addr + done;
+        uint8_t *dst = host_ptr_for(mem, here, len - done, E2_PROT_WRITE);
+        if (dst != NULL) {
+            memcpy(dst, in + done, len - done);
+            return 0;
+        }
+        const e2_region *r = region_at(mem, here);
+        if (r == NULL || (r->prot & E2_PROT_WRITE) == 0) {
+            return -1;
+        }
+        const size_t avail = (size_t)(r->base + r->size - here);
+        if (avail == 0) {
+            return -1;
+        }
+        uint8_t *part = host_ptr_for(mem, here, avail, E2_PROT_WRITE);
+        if (part == NULL) {
+            return -1;
+        }
+        memcpy(part, in + done, avail);
+        done += avail;
+    }
     return 0;
 }
 

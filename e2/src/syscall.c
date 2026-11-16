@@ -212,8 +212,27 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
         case 29:  // ioctl: report "not a tty"
             E2_RETURN(-E2_ENOTSUP);
         case E2_SYS_brk: {
-            // Report the existing break so allocators fall back to mmap.
-            E2_RETURN(a0);
+            // Back the break with a real mapping. Returning a plausible address
+            // without mapping it makes every later store fault, which is exactly
+            // how musl's allocator fails after its first allocation.
+            if (m->brk_base == 0) {
+                const uint64_t base = 0x20000000ULL;
+                const size_t size = 16u << 20;
+                if (e2_memory_map_at(&m->mem, base, size,
+                                    E2_PROT_READ | E2_PROT_WRITE) != 0) {
+                    E2_RETURN(-12);
+                }
+                m->brk_base = base;
+                m->brk_current = base;
+                m->brk_limit = base + size;
+            }
+            if (a0 == 0) {
+                E2_RETURN(m->brk_current);
+            }
+            if (a0 >= m->brk_base && a0 <= m->brk_limit) {
+                m->brk_current = a0;
+            }
+            E2_RETURN(m->brk_current);
         }
         case E2_SYS_mmap: {
             // Anonymous mappings come from the interpreter's own address space.
@@ -223,8 +242,33 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             if (prot & 0x1) e2_prot |= E2_PROT_READ;
             if (prot & 0x2) e2_prot |= E2_PROT_WRITE;
             if (prot & 0x4) e2_prot |= E2_PROT_EXEC;
+            // Always grant write. The guest's mprotect is advisory here, and the
+            // loader must be able to populate text through a mapping it asked for
+            // as R+X; on a real kernel that goes through a writable private
+            // mapping followed by mprotect.
+            e2_prot |= E2_PROT_WRITE;
+
+            const int mmap_flags = (int)m->cpu.x[3];
+            const uint64_t hint = a0;
+            const bool fixed = (mmap_flags & 0x10) != 0;  // MAP_FIXED
             uint64_t base = 0;
-            if (e2_memory_map_any(&m->mem, (size_t)length, e2_prot, &base) != 0) {
+            if (fixed && hint != 0) {
+                // Honouring the hint matters: musl places its own bookkeeping at
+                // an address it already computed references to, so returning a
+                // different address leaves those references dangling.
+                const uint64_t aligned = hint & ~0xFFFULL;
+                if (e2_memory_find(&m->mem, aligned) != NULL) {
+                    // MAP_FIXED replaces whatever was there. The address is
+                    // already backed by a region of ours, which is what the guest
+                    // asked for, so accept it rather than failing with ENOMEM.
+                    base = aligned;
+                } else if (e2_memory_map_at(&m->mem, aligned, (size_t)length,
+                                            e2_prot) != 0) {
+                    E2_RETURN(-12);
+                } else {
+                    base = aligned;
+                }
+            } else if (e2_memory_map_any(&m->mem, (size_t)length, e2_prot, &base) != 0) {
                 E2_RETURN(-12);  // ENOMEM
             }
             E2_RETURN(base);

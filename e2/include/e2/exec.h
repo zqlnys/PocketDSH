@@ -24,6 +24,10 @@ typedef struct {
     int exit_status;
     /// Monotonic counter handed to CNTVCT_EL0 readers; advances per read.
     uint64_t cycle_clock;
+    /// Program break, backed by a real mapping. libc's allocator grows it.
+    uint64_t brk_base;
+    uint64_t brk_current;
+    uint64_t brk_limit;
 } e2_machine;
 
 /// Prepares a machine with a stack of `stack_size` bytes. The stack top is

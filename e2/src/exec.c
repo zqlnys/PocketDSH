@@ -1218,12 +1218,12 @@ e2_status e2_step(e2_machine *machine) {
                     write_reg(cpu, rt, machine->cycle_clock, true);
                 }
                 break;
-            case 0xC082:  // CTR_EL0: cache type register, constant
+            case 0xD809:  // CTR_EL0: cache type register, constant
                 if (is_read) {
                     write_reg(cpu, rt, 0x8444C004ULL, true);
                 }
                 break;
-            case 0xC1E2:  // DCZID_EL0: data cache zero id, no DZP
+            case 0xD807:  // DCZID_EL0: data cache zero id, no DZP
                 if (is_read) {
                     write_reg(cpu, rt, 0x4ULL, true);
                 }
@@ -1265,6 +1265,35 @@ e2_status e2_step(e2_machine *machine) {
                 return E2_FAULT;
             }
             write_reg(cpu, rs, 0, size_code == 3);  // 0 = succeeded
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
+    // --- DSB / DMB / ISB ---
+    // Execution is strictly sequential and the host provides the ordering, so
+    // these retire without doing anything. They still have to be recognised:
+    // dropping them as unimplemented would stop every atomic sequence.
+    if ((insn & 0xFFFFF09Fu) == 0xD503309Fu ||   // DSB / DMB
+        insn == 0xD5033FDFu ||                    // ISB
+        insn == 0xD5033F9Fu) {                    // ISB (alt encoding)
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
+    // --- DC ZVA (data cache zero by VA) ---
+    // Zeroes the cache line containing Xt. memcpy/memset use it to clear whole
+    // lines at once. The line size is 64 bytes here, matching the CTR_EL0 value
+    // reported above.
+    if ((insn & 0xFFFFFFE0u) == 0xD50B7420u) {
+        const unsigned rt = BITS(insn, 4, 0);
+        const uint64_t addr = e2_read_xzr(cpu, rt) & ~(uint64_t)63;
+        static const uint8_t zeros[64] = {0};
+        if (e2_memory_write(&machine->mem, addr, zeros, sizeof(zeros)) != 0) {
+            machine->ctx.reason = "DC ZVA outside mapped memory";
+            return E2_FAULT;
         }
         cpu->pc = next_pc;
         machine->instructions++;
