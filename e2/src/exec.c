@@ -41,11 +41,15 @@ void e2_machine_init(e2_machine *machine, uint64_t entry, size_t stack_size) {
     e2_cpu_reset_impl(&machine->cpu, entry);
 
     if (stack_size > 0) {
+        const size_t rounded = (stack_size + E2_PAGE_SIZE - 1) & ~(size_t)(E2_PAGE_SIZE - 1);
+        // One spare page above SP: startup code in musl zeroes the region between
+        // a computed base and the stack top, and the top itself is exclusive, so
+        // the last store lands one word past SP. Real kernels leave room there;
+        // without it the very first line of libc init faults.
         uint64_t stack_base = 0;
-        if (e2_memory_map_any(&machine->mem, stack_size, E2_PROT_READ | E2_PROT_WRITE,
-                              &stack_base) == 0) {
-            // SP points at the top (grows down).
-            machine->cpu.sp = stack_base + ((stack_size + E2_PAGE_SIZE - 1) & ~(size_t)(E2_PAGE_SIZE - 1));
+        if (e2_memory_map_any(&machine->mem, rounded + E2_PAGE_SIZE,
+                              E2_PROT_READ | E2_PROT_WRITE, &stack_base) == 0) {
+            machine->cpu.sp = stack_base + rounded - 64;
         }
     }
 }
@@ -61,6 +65,52 @@ static void write_reg(e2_cpu *cpu, unsigned reg, uint64_t value, bool is64) {
     if (reg != E2_REG_XZR) {
         cpu->x[reg] = value;
     }
+}
+
+/// ARM ARM "DecodeBitMasks": expands the immN:imms:immr encoding into a 64-bit
+/// pattern that repeats an element of size 1<<len.
+///
+/// This is the fiddliest encoding in the integer set. Get it wrong and the
+/// failure looks like a wild pointer, because the operands are usually masks and
+/// alignments rather than data.
+static int decode_bit_masks(unsigned n, unsigned imms, unsigned immr, unsigned width,
+                            bool immediate, uint64_t *wmask_out) {
+    const unsigned combined = (n << 6) | ((~imms) & 0x3Fu);
+    int len = -1;
+    for (int i = 6; i >= 0; i--) {
+        if (combined & (1u << i)) {
+            len = i;
+            break;
+        }
+    }
+    if (len < 1) {
+        return -1;
+    }
+    const unsigned levels = (1u << len) - 1;
+    if (immediate && (imms & levels) == levels) {
+        return -1;  // reserved for MOV (bitmask immediate)
+    }
+    const unsigned s = imms & levels;
+    const unsigned r = immr & levels;
+    const unsigned esize = 1u << len;
+    if (esize > width) {
+        return -1;
+    }
+
+    const uint64_t ones = (s + 1 >= 64) ? ~0ULL : ((1ULL << (s + 1)) - 1);
+    const uint64_t esize_mask = (esize >= 64) ? ~0ULL : ((1ULL << esize) - 1);
+    uint64_t elem = ones & esize_mask;
+    const unsigned rotate = r % esize;
+    if (rotate != 0) {
+        elem = ((elem >> rotate) | (elem << (esize - rotate))) & esize_mask;
+    }
+
+    uint64_t result = 0;
+    for (unsigned i = 0; i < width; i += esize) {
+        result |= elem << i;
+    }
+    *wmask_out = result;
+    return 0;
 }
 
 /// Evaluates an AArch64 condition code.
@@ -216,13 +266,56 @@ e2_status e2_step(e2_machine *machine) {
             }
         }
         operand &= mask;
-        uint64_t a = cpu->x[rn] & mask;
+        uint64_t a = e2_read_xzr(cpu, rn) & mask;
         uint64_t result = is_sub ? (a - operand) : (a + operand);
         result &= mask;
         if (set_flags) {
             set_flags_addsub(cpu, a, operand, result, is_sub, width);
         }
         write_reg(cpu, rd, result, is64);
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
+    // --- Logical (immediate): AND / ORR / EOR / ANDS ---
+    // musl's startup aligns the stack with `and sp, x0, #~15`, so nothing runs
+    // until this exists.
+    if ((insn & 0x1F800000u) == 0x12000000u) {
+        const unsigned opc = BITS(insn, 30, 29);
+        const unsigned n_bit = BIT(insn, 22);
+        const unsigned immr = BITS(insn, 21, 16);
+        const unsigned imms = BITS(insn, 15, 10);
+        const unsigned width = is64 ? 64 : 32;
+
+        uint64_t mask = 0;
+        if (decode_bit_masks(n_bit, imms, immr, width, false, &mask) != 0) {
+            machine->ctx.reason = "invalid logical immediate";
+            return E2_UNIMPL;
+        }
+
+        const uint64_t a = e2_read_sp(cpu, rn) & (is64 ? ~0ULL : 0xFFFFFFFFULL);
+        uint64_t result;
+        switch (opc) {
+            case 0: result = a & mask; break;   // AND
+            case 1: result = a | mask; break;   // ORR
+            case 2: result = a ^ mask; break;   // EOR
+            default: result = a & mask; break;  // ANDS
+        }
+        result &= is64 ? ~0ULL : 0xFFFFFFFFULL;
+        if (opc == 3) {
+            cpu->flags.n = (result & (1ULL << (width - 1))) != 0;
+            cpu->flags.z = result == 0;
+            cpu->flags.c = false;
+            cpu->flags.v = false;
+        }
+        // Same S-bit rule as add/sub immediate: Rd=31 is SP for AND/ORR/EOR,
+        // and XZR for ANDS.
+        if (opc == 3) {
+            write_reg(cpu, rd, result, is64);
+        } else {
+            e2_write_sp(cpu, rd, result);
+        }
         cpu->pc = next_pc;
         machine->instructions++;
         return E2_OK;
@@ -254,7 +347,8 @@ e2_status e2_step(e2_machine *machine) {
         }
         operand &= mask;
 
-        const uint64_t a = cpu->x[rn] & mask;
+        // No SP form here: Rn=31 means XZR, so read through the zero-aware helper.
+        const uint64_t a = e2_read_xzr(cpu, rn) & mask;
         uint64_t result;
         switch (opc) {
             case 0: result = a & operand; break;   // AND
@@ -269,6 +363,54 @@ e2_status e2_step(e2_machine *machine) {
             cpu->flags.c = false;
             cpu->flags.v = false;
         }
+        write_reg(cpu, rd, result, is64);
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
+    // --- Bitfield: SBFM / BFM / UBFM ---
+    // Every narrowing or widening conversion compiles to one of these, so they
+    // appear immediately in libc.
+    if ((insn & 0x1F800000u) == 0x13000000u) {
+        const unsigned opc = BITS(insn, 30, 29);  // 00 SBFM, 01 BFM, 10 UBFM
+        const unsigned immr = BITS(insn, 21, 16);
+        const unsigned imms = BITS(insn, 15, 10);
+        const unsigned width = is64 ? 64 : 32;
+        const uint64_t width_mask = is64 ? ~0ULL : 0xFFFFFFFFULL;
+
+        if (opc == 3) {
+            machine->ctx.reason = "reserved bitfield encoding";
+            return E2_UNIMPL;
+        }
+
+        const uint64_t src = cpu->x[rn] & width_mask;
+        const unsigned rotate = immr % width;
+        uint64_t rotated = rotate ? ((src >> rotate) | (src << (width - rotate))) : src;
+        rotated &= width_mask;
+
+        const unsigned bits = imms + 1;
+        const uint64_t field_mask = (bits >= 64) ? ~0ULL : ((1ULL << bits) - 1);
+        const uint64_t bot = rotated & field_mask;
+
+        uint64_t result;
+        switch (opc) {
+            case 0: {  // SBFM: sign-extend the field
+                const uint64_t sign_bit = 1ULL << (imms % 64);
+                result = (bot ^ sign_bit) - sign_bit;
+                break;
+            }
+            case 1: {  // BFM: insert the field into the destination
+                const uint64_t dst = cpu->x[rd] & width_mask;
+                result = (dst & ~field_mask) | bot;
+                break;
+            }
+            default:   // UBFM: zero-extend the field
+                result = bot;
+                break;
+        }
+        result &= width_mask;
+
         write_reg(cpu, rd, result, is64);
         cpu->pc = next_pc;
         machine->instructions++;
@@ -519,6 +661,49 @@ e2_status e2_step(e2_machine *machine) {
                 machine->ctx.reason = "store outside mapped memory";
                 return E2_FAULT;
             }
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
+    // --- LDR / STR (immediate, unscaled / pre-index / post-index) ---
+    // Compilers use the signed-offset form for struct and stack slot access, so
+    // it shows up as soon as real code runs.
+    if ((insn & 0x3B200000u) == 0x38000000u && BIT(insn, 26) == 0) {
+        const bool is_load = BIT(insn, 22) != 0;
+        const unsigned size_code = BITS(insn, 31, 30);
+        const unsigned mode = BITS(insn, 11, 10);   // 00 unscaled, 01 post, 11 pre
+        const int64_t imm9 = (int64_t)sign_extend(BITS(insn, 20, 12), 9);
+        const unsigned bytes = 1u << size_code;
+
+        uint64_t base = e2_read_sp(cpu, rn);
+        uint64_t addr;
+        if (mode == 1) {                            // post-index
+            addr = base;
+        } else {
+            addr = (uint64_t)((int64_t)base + imm9);
+        }
+
+        if (is_load) {
+            uint64_t value = 0;
+            if (e2_memory_read(&machine->mem, addr, &value, bytes) != 0) {
+                machine->ctx.reason = "unscaled load outside mapped memory";
+                return E2_FAULT;
+            }
+            write_reg(cpu, rd, value, size_code == 3);
+        } else {
+            uint64_t value = cpu->x[rd];
+            if (e2_memory_write(&machine->mem, addr, &value, bytes) != 0) {
+                machine->ctx.reason = "unscaled store outside mapped memory";
+                return E2_FAULT;
+            }
+        }
+
+        if (mode == 1) {                            // post-index writeback
+            e2_write_sp(cpu, rn, (uint64_t)((int64_t)base + imm9));
+        } else if (mode == 3) {                     // pre-index writeback
+            e2_write_sp(cpu, rn, addr);
         }
         cpu->pc = next_pc;
         machine->instructions++;

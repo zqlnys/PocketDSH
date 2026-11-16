@@ -14,6 +14,10 @@
 #define E2_PAGE_MASK (~((uint64_t)E2_PAGE_SIZE - 1))
 #define E2_MAX_REGIONS 64
 
+/// Where position-independent images are placed. Fixed so a failing layout
+/// reproduces exactly instead of moving with each run.
+#define E2_PIE_BASE 0x40000000ULL
+
 typedef struct {
     uint64_t base;   ///< guest base address, page aligned
     size_t size;     ///< byte length, page aligned

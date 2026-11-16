@@ -16,12 +16,29 @@ typedef enum {
     E2_LOAD_TRUNCATED,      ///< headers or segment data run past the image
 } e2_load_result;
 
-/// Loads a statically linked aarch64 ELF into the machine's address space and
-/// points PC at its entry.
+/// Where a position-independent image was placed. Relocations are expressed
+/// relative to the image, so the loader has to report the bias it chose.
+typedef struct {
+    uint64_t load_bias;     ///< added to every p_vaddr
+    uint64_t entry;         ///< entry point with the bias applied
+    uint64_t dynamic_addr;  ///< guest address of PT_DYNAMIC, 0 when absent
+    uint64_t dynamic_size;
+    uint64_t phdr_addr;     ///< guest address of the program headers
+    uint16_t phnum;
+    uint16_t phentsize;
+} e2_loaded_image;
+
+/// Loads an aarch64 ELF into the machine's address space.
 ///
-/// Deliberately refuses dynamic executables for now: silently loading only the
-/// main image would fail in confusing ways later, and a clear E2_LOAD_NEEDS_INTERP
-/// is a better signal.
+/// Handles ET_EXEC (fixed addresses) and ET_DYN (position independent; placed at
+/// a deterministic base so failures reproduce). Returns E2_LOAD_NEEDS_INTERP when
+/// the image carries PT_INTERP and the caller asked to refuse dynamic
+/// executables; callers that intend to run the interpreter pass
+/// `allow_interpreter = true` and load the interpreter themselves.
+e2_load_result e2_load_elf_full(e2_machine *machine, const uint8_t *image, size_t size,
+                                bool allow_interpreter, e2_loaded_image *out);
+
+/// Convenience wrapper that refuses dynamic executables.
 e2_load_result e2_load_elf(e2_machine *machine, const uint8_t *image, size_t size);
 
 /// Human-readable name, for tests and logs.

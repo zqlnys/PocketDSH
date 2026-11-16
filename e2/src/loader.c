@@ -21,6 +21,7 @@
 #define EM_AARCH64 183
 
 #define PT_LOAD 1
+#define PT_DYNAMIC 2
 #define PT_INTERP 3
 
 #define PF_X 1
@@ -78,7 +79,8 @@ static int prot_from_flags(uint32_t flags) {
     return prot;
 }
 
-e2_load_result e2_load_elf(e2_machine *machine, const uint8_t *image, size_t size) {
+e2_load_result e2_load_elf_full(e2_machine *machine, const uint8_t *image, size_t size,
+                                bool allow_interpreter, e2_loaded_image *out) {
     if (image == NULL || size < sizeof(e2_elf64_ehdr)) {
         return E2_LOAD_TRUNCATED;
     }
@@ -104,19 +106,42 @@ e2_load_result e2_load_elf(e2_machine *machine, const uint8_t *image, size_t siz
 
     const e2_elf64_phdr *ph = (const e2_elf64_phdr *)(image + eh->e_phoff);
 
-    // Refuse dynamic executables up front: without a linker the program would
-    // jump into an unmapped PLT and the failure would be far from the cause.
+    bool has_interp = false;
+    uint64_t dynamic_vaddr = 0;
+    uint64_t dynamic_size = 0;
     for (unsigned i = 0; i < eh->e_phnum; i++) {
         if (ph[i].p_type == PT_INTERP) {
-            return E2_LOAD_NEEDS_INTERP;
+            has_interp = true;
+        } else if (ph[i].p_type == PT_DYNAMIC) {
+            dynamic_vaddr = ph[i].p_vaddr;
+            dynamic_size = ph[i].p_memsz;
         }
+    }
+    if (has_interp && !allow_interpreter) {
+        return E2_LOAD_NEEDS_INTERP;
+    }
+
+    // Position-independent images are placed at a fixed base: reproducible
+    // failures matter more than ASLR for an emulator under test.
+    uint64_t bias = 0;
+    if (eh->e_type == ET_DYN) {
+        uint64_t lowest = UINT64_MAX;
+        for (unsigned i = 0; i < eh->e_phnum; i++) {
+            if (ph[i].p_type == PT_LOAD && ph[i].p_memsz > 0 && ph[i].p_vaddr < lowest) {
+                lowest = ph[i].p_vaddr;
+            }
+        }
+        if (lowest == UINT64_MAX) {
+            return E2_LOAD_UNSUPPORTED;
+        }
+        bias = E2_PIE_BASE - (lowest & ~(uint64_t)(E2_PAGE_SIZE - 1));
     }
 
     for (unsigned i = 0; i < eh->e_phnum; i++) {
         if (ph[i].p_type != PT_LOAD) {
             continue;
         }
-        const uint64_t vaddr = ph[i].p_vaddr;
+        const uint64_t vaddr = ph[i].p_vaddr + bias;
         const uint64_t memsz = ph[i].p_memsz;
         const uint64_t filesz = ph[i].p_filesz;
         if (memsz == 0) {
@@ -125,9 +150,10 @@ e2_load_result e2_load_elf(e2_machine *machine, const uint8_t *image, size_t siz
         if (ph[i].p_offset > size || filesz > size - ph[i].p_offset) {
             return E2_LOAD_TRUNCATED;
         }
-        // p_vaddr is only guaranteed to be congruent to p_offset modulo the page
-        // size, not page aligned. Map whole pages around the segment and let the
-        // data land at its real address inside them.
+
+        // p_vaddr is only congruent to p_offset modulo the page size, not page
+        // aligned. Map whole pages around the segment and let the data land at
+        // its real address inside them.
         const uint64_t page_mask = (uint64_t)(E2_PAGE_SIZE - 1);
         const uint64_t map_base = vaddr & ~page_mask;
         const uint64_t map_end = (vaddr + memsz + page_mask) & ~page_mask;
@@ -158,12 +184,24 @@ e2_load_result e2_load_elf(e2_machine *machine, const uint8_t *image, size_t siz
                                        (size_t)(map_end - map_base), final_prot) != 0) {
             return E2_LOAD_NO_MEMORY;
         }
-        // The remainder of the segment (p_memsz - p_filesz) is .bss and already
-        // zero because regions are calloc'd.
     }
 
-    machine->cpu.pc = eh->e_entry;
+    machine->cpu.pc = eh->e_entry + bias;
     // SP is a separate field and was set up by e2_machine_init; writing it through
     // the general register array would run past X30.
+
+    if (out != NULL) {
+        out->load_bias = bias;
+        out->entry = eh->e_entry + bias;
+        out->dynamic_addr = dynamic_vaddr ? dynamic_vaddr + bias : 0;
+        out->dynamic_size = dynamic_size;
+        out->phdr_addr = eh->e_phoff + bias;
+        out->phnum = eh->e_phnum;
+        out->phentsize = eh->e_phentsize;
+    }
     return E2_LOAD_OK;
+}
+
+e2_load_result e2_load_elf(e2_machine *machine, const uint8_t *image, size_t size) {
+    return e2_load_elf_full(machine, image, size, false, NULL);
 }
