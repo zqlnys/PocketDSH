@@ -352,6 +352,19 @@ static int start_image(e2_machine *m, const char *path, char args[][64], int nar
         envp[i] = cur;
         cur += (l + 15) & ~15ULL;
     }
+    // AT_RANDOM must point at 16 readable bytes. musl takes the stack canary
+    // and the pointer guard from it; leaving the entry out means a zero canary,
+    // which still "works" and is exactly the kind of silent difference that is
+    // impossible to see later.
+    uint64_t rnd = cur;
+    {
+        static const unsigned char seed[16] = {
+            0x9e, 0x37, 0x79, 0xb9, 0x7f, 0x4a, 0x7c, 0x15,
+            0x5a, 0x2f, 0xe4, 0x68, 0x3d, 0x2c, 0x0e, 0x61,
+        };
+        e2_memory_write(&m->mem, rnd, seed, sizeof(seed));
+        cur += 16;
+    }
     uint64_t sp = (strs - 512) & ~15ULL;
     // AT_* come from <elf.h>.
     uint64_t st[80];
@@ -368,7 +381,20 @@ static int start_image(e2_machine *m, const char *path, char args[][64], int nar
     st[k++] = AT_BASE;   st[k++] = ld.entry ? ld.load_bias : 0;
     st[k++] = AT_ENTRY;  st[k++] = app.entry;
     st[k++] = AT_EXECFN; st[k++] = argp[0];
-    st[k++] = AT_NULL;   st[k++] = 0;
+    // The rest of the standard set. A program that reads one of these and finds
+    // it absent gets zero, which may mean "no capability" - but it may also mean
+    // "unknown", and the two lead to different paths.
+    st[k++] = AT_HWCAP;   st[k++] = 0;
+    st[k++] = AT_HWCAP2;  st[k++] = 0;
+    st[k++] = AT_UID;     st[k++] = 0;
+    st[k++] = AT_EUID;    st[k++] = 0;
+    st[k++] = AT_GID;     st[k++] = 0;
+    st[k++] = AT_EGID;    st[k++] = 0;
+    st[k++] = AT_SECURE;  st[k++] = 0;
+    st[k++] = AT_CLKTCK;  st[k++] = 100;
+    st[k++] = AT_FLAGS;   st[k++] = 0;
+    st[k++] = AT_RANDOM;  st[k++] = rnd;
+    st[k++] = AT_NULL;    st[k++] = 0;
     e2_memory_write(&m->mem, sp, st, (size_t)k * 8);
     m->cpu.sp = sp;
     m->cpu.pc = entry;
@@ -1285,31 +1311,6 @@ static int run_proc(int idx) {
                                                     (unsigned long long)buf[q]);
                 fflush(stdout);
             }
-        }
-        if (getenv("E2_TRACE_DIV2") && p->m.cpu.pc == 0x4c7fcc) {
-            static int n2 = 0;
-            if (++n2 <= 6) {
-                uint64_t f20 = 0, f24 = 0, arr = 0;
-                e2_memory_read(&p->m.mem, p->m.cpu.x[24] + 20, &f20, 8);
-                e2_memory_read(&p->m.mem, p->m.cpu.x[24] + 24, &f24, 8);
-                e2_memory_read(&p->m.mem, p->m.cpu.x[27] + 16, &arr, 8);
-                fprintf(stderr,
-                        "[d2] hit=%d w1=0x%llx [x24+20]=0x%llx [x24+24]=0x%llx "
-                        "x24=0x%llx x0=0x%llx x27=0x%llx\n",
-                        n2, (unsigned long long)p->m.cpu.x[1],
-                        (unsigned long long)f20, (unsigned long long)f24,
-                        (unsigned long long)p->m.cpu.x[24],
-                        (unsigned long long)p->m.cpu.x[0],
-                        (unsigned long long)p->m.cpu.x[27]);
-            }
-        }
-        if (getenv("E2_TRACE_MEMSET") && p->m.cpu.pc == 0x4004f4) {
-            static int n2 = 0;
-            if (++n2 <= 2)
-                fprintf(stderr, "[ms] x5=0x%llx x2=%llu w1=0x%llx\n",
-                        (unsigned long long)p->m.cpu.x[5],
-                        (unsigned long long)p->m.cpu.x[2],
-                        (unsigned long long)p->m.cpu.x[1]);
         }
         const uint64_t pre_pc = p->m.cpu.pc;
         // Shadow call stack. Chasing a bad argument by re-running with a probe
