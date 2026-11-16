@@ -185,8 +185,15 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
     // One line per syscall, opt-in. Comparing this against qemu's -strace is the
     // fastest way to see which operation a program takes and where the two
     // implementations diverge.
+    if (getenv("E2_TRACE_PATH") != NULL && m->cpu.x[8] == 56) {
+        char pbuf[256];
+        if (read_guest_string(m, m->cpu.x[1], pbuf, sizeof(pbuf)) == 0) {
+            fprintf(stderr, "[open] %s\n", pbuf);
+        }
+    }
     if (getenv("E2_TRACE_SYS") != NULL) {
-        fprintf(stderr, "[sys] %llu(0x%llx, 0x%llx, 0x%llx, 0x%llx, 0x%llx, 0x%llx)\n",
+        fprintf(stderr, "[sys@%ld pc=0x%llx] %llu(0x%llx, 0x%llx, 0x%llx, 0x%llx, 0x%llx, 0x%llx)\n",
+                (long)m->instructions, (unsigned long long)m->cpu.pc,
                 (unsigned long long)m->cpu.x[8],
                 (unsigned long long)m->cpu.x[0], (unsigned long long)m->cpu.x[1],
                 (unsigned long long)m->cpu.x[2], (unsigned long long)m->cpu.x[3],
