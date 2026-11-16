@@ -61,6 +61,10 @@ struct RawDiffView: View {
                     Text(line.isEmpty ? " " : line)
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(color(for: line))
+                        // A diff is read line by line: wrapping a long line
+                        // destroys the alignment that makes it readable, so it
+                        // keeps its natural width and the view scrolls instead.
+                        .fixedSize(horizontal: true, vertical: false)
                         .textSelection(.enabled)
                 }
             }
@@ -96,8 +100,8 @@ private struct DiffLineRow: View {
                 .foregroundStyle(foreground)
             Text(line.text.isEmpty ? " " : line.text)
                 .foregroundStyle(foreground)
+                .fixedSize(horizontal: true, vertical: false)
                 .textSelection(.enabled)
-            Spacer(minLength: 0)
         }
         .font(.system(.caption, design: .monospaced))
         .padding(.vertical, PocketSpacing.xxs)
