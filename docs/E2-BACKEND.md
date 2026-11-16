@@ -1,6 +1,6 @@
 # E2 后端：许可自由的 Linux 运行时
 
-状态：**M1 完成；M2 进行中**（musl 动态链接器完整运行；文件 syscall 层已接入，正在解决地址空间分配）
+状态：**M1 完成；M2 达成**（真实 busybox 端到端运行；动态链接仍在推进）
 最后更新：2026-11-16
 
 ---
@@ -264,6 +264,27 @@ Error relocating /lib/ld-musl-aarch64.so.1: unsupported relocation type 786232
 `786232 = 0xBFF38` 是 ld-musl **自己 `.data` 段的地址**，说明它把一个数据数组当成了重定位表。`dyn[]` 仍然不对，但问题从"崩溃"变成了"可诊断"。
 
 **已知另一处缺口**：qemu 序列里的 `getuid` / `ioctl(TIOCGWINSZ)` / `dup3` 在 E2 里还没实现。
+
+### M2 达成：真实 busybox 运行
+
+```
+BusyBox v1.36.1 (2025-11-23 14:32:18 UTC) multi-call binary.
+BusyBox is copyrighted by many authors between 1998-2015.
+Licensed under GPLv2. See source distribution for detailed
+copyright notices.
+```
+
+未修改的 busybox 在 E2 上打印自己的横幅并 `exit 0`——**91,112 条指令，652 个 syscall**。
+
+两个关键点：
+
+1. **`AT_PHDR` 对 ET_EXEC 算错了**。原实现是 `e_phoff + bias`，而固定地址二进制的 `bias` 为 0，于是得到 `0x40`（文件偏移），guest 把它当指针解引用，216 条指令就 fault。program headers 位于第一个 `PT_LOAD` 内，正确地址是该段的 `vaddr` 加上 `e_phoff` 在段内的偏移（此例为 `0x400040`）。
+
+2. **改用 Alpine 的 `busybox-static`**。与其继续啃动态链接的自举，不如先用静态 busybox 把解释器和 syscall 层在真实程序上验证一遍——把开放式调试变成了一个有输出的基线。动态链接仍是目标，其状态未变。
+
+另外栈必须缩小：4 MB 起始于 `0x10000` 会和静态二进制的 `0x400000` 代码段重叠。
+
+`busybox ls` 目前停在一处未实现指令（`0x5ac00339`），是下一步。
 
 步长错位后，`ldr x4, [x28, #8]` 读到的是 `0x910003fda9bf7bfd`——两条指令编码的拼接（`stp x29,x30` + `mov x29,sp`），因为指针滑进了 `.text`。这就是污染来源。
 
