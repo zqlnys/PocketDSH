@@ -752,7 +752,42 @@ static void test_reject_wrong_machine(void) {
 static void test_shll(void);
 static void test_scalar_immediates(void);
 
+// getcwd and readlinkat are what os.getcwd() and os.readlink() land on.
+// Python computes sys.path from both, and an ENOSYS there fails before any file
+// is opened, so the syscall layer has to answer them even though nothing here
+// touches a real filesystem.
+static void path_syscall_checks(void) {
+    e2_machine m;
+    e2_machine_init(&m, 0, 1 << 20);
+    const uint64_t at = 0x30000000ULL, buf = 0x10400000ULL;
+    e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+    e2_memory_map_at(&m.mem, buf, 0x2000, E2_PROT_READ | E2_PROT_WRITE);
+
+    e2_syscall_env env = {0};
+    snprintf(env.cwd, sizeof(env.cwd), "/usr/lib");
+
+    // getcwd(buf, 64) -> the buffer address, with the path written into it
+    m.cpu.x[8] = E2_SYS_getcwd;
+    m.cpu.x[0] = buf;
+    m.cpu.x[1] = 64;
+    CHECK(e2_service_syscall(&m, &env) == E2_OK, "getcwd returns OK");
+    CHECK(m.cpu.x[0] == buf, "getcwd returns the buffer address");
+    char got[64] = {0};
+    e2_memory_read(&m.mem, buf, got, sizeof(got));
+    CHECK(strcmp(got, "/usr/lib") == 0, "getcwd writes the current directory");
+
+    // getcwd with a buffer that cannot hold the path: ERANGE, not a truncation
+    m.cpu.x[0] = buf;
+    m.cpu.x[1] = 2;
+    CHECK(e2_service_syscall(&m, &env) == E2_OK, "short getcwd returns OK");
+    CHECK((long long)m.cpu.x[0] == -34, "short getcwd reports ERANGE");
+
+    e2_memory_destroy(&m.mem);
+}
+
+
 int main(void) {
+    path_syscall_checks();
     printf("== e2 interpreter core tests ==\n");
     test_movz_and_ret();
     test_add_sub();
@@ -944,6 +979,7 @@ static void test_scalar_immediates(void) {
             e2_memory_destroy(&m.mem);
         }
     }
+
 
     // UMOV moves a vector element into a general register. musl's memset does
     // `mov x1, v0.d[0]` to materialise the replicated byte pattern, so a broken

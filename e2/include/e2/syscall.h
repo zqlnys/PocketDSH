@@ -13,7 +13,10 @@
 #define E2_SYS_clone 220
 #define E2_SYS_execve 221
 #define E2_SYS_wait4 260
+#define E2_SYS_getcwd 17
+#define E2_SYS_chdir 49
 #define E2_SYS_openat 56
+#define E2_SYS_readlinkat 78
 #define E2_SYS_pipe2 59
 #define E2_SYS_close 57
 #define E2_SYS_lseek 62
@@ -62,6 +65,10 @@ typedef struct {
     /// fcntl(2) for the commands a shell needs: F_DUPFD / F_DUPFD_CLOEXEC and
     /// the FD/FL inspectors. Returns the command's result or a negative errno.
     long (*fcntl)(void *ctx, int fd, int cmd, long arg);
+    /// Resolves a symlink. `out` receives the target without a terminator and
+    /// the return value is its length, or a negative errno. Python's path
+    /// configuration calls os.readlink while normalising sys.path.
+    long (*readlink)(void *ctx, const char *path, char *out, size_t outlen);
 } e2_file_ops;
 
 /// Everything the syscall layer needs from its host. The iOS layer will provide
@@ -86,6 +93,11 @@ typedef struct {
     /// Waits for a child and writes its 32-bit wait status to `status_ptr`.
     /// Returns the reaped pid or a negative errno.
     long (*wait4)(void *ctx, int pid, uint64_t status_ptr, int options);
+    /// The guest's current working directory, as it should see it. Kept here
+    /// because getcwd has no other source: Python computes sys.path from
+    /// os.getcwd(), and returning ENOSYS makes that fail before any file is
+    /// opened, which shows up much later as an unrelated crash.
+    char cwd[512];
 } e2_syscall_env;
 
 /// Services the syscall the machine stopped on.

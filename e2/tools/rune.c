@@ -216,9 +216,22 @@ static long fs_fcntl(void *c, int fd, int cmd, long arg) {
         default: return -22; // EINVAL
     }
 }
+
+// readlinkat backs os.readlink, which Python uses while normalising sys.path.
+static long fs_readlink(void *ctx, const char *path, char *out, size_t outlen) {
+    (void)ctx;
+    char h[2048];
+    host_path(h, sizeof(h), path);
+    const ssize_t n = readlink(h, out, outlen);
+    if (n < 0) {
+        return -errno;
+    }
+    return (long)n;
+}
+
 static const e2_file_ops FS = {fs_open, fs_read, fs_write, fs_close, fs_stat,
                                fs_opendir, fs_readdir, fs_clock, fs_pipe, fs_dup3,
-                               fs_fcntl};
+                               fs_fcntl, fs_readlink};
 
 
 
@@ -966,15 +979,20 @@ static int run_proc(int idx) {
                             (unsigned long long)p->m.cpu.x[2]);
                 }
             }
+            // Arguments have to be read before the call: x0 holds the result after.
+            const uint64_t s_a0 = p->m.cpu.x[0];
+            const uint64_t s_a1 = p->m.cpu.x[1];
+            const uint64_t s_a2 = p->m.cpu.x[2];
             st = e2_service_syscall(&p->m, &env);
-            const long long a0_before = (long long)p->m.cpu.x[0];
-            (void)a0_before;
+            const long long s_ret = (long long)p->m.cpu.x[0];
             if (getenv("E2_TRACE_ALL"))
-                fprintf(stderr, "[p%d] sys %llu -> %lld\n", p->pid,
-                        (unsigned long long)pn, (long long)p->m.cpu.x[0]);
-            if (getenv("E2_TRACE_RET") && (long long)p->m.cpu.x[0] < 0)
-                fprintf(stderr, "[p%d] sys %llu -> %lld\n", p->pid,
-                        (unsigned long long)pn, (long long)p->m.cpu.x[0]);
+                fprintf(stderr, "[p%d] sys %llu a0=0x%llx a1=0x%llx a2=0x%llx -> %lld\n", p->pid,
+                        (unsigned long long)pn, (unsigned long long)s_a0,
+                        (unsigned long long)s_a1, (unsigned long long)s_a2, s_ret);
+            if (getenv("E2_TRACE_RET") && s_ret < 0)
+                fprintf(stderr, "[p%d] sys %llu a0=0x%llx a1=0x%llx a2=0x%llx -> %lld\n", p->pid,
+                        (unsigned long long)pn, (unsigned long long)s_a0,
+                        (unsigned long long)s_a1, (unsigned long long)s_a2, s_ret);
             if (st == E2_HALTED) { p->alive = 0; break; }
             if (st != E2_OK) {
                 {

@@ -1453,3 +1453,26 @@ Traceback (most recent call last):
 `tools/rune` 现在会把 `PYTHONHOME`、`PYTHONPATH`、`PYTHONNOUSERSITE` 透传给 guest，
 方便在不重编译的情况下做这类实验。
 
+### 已补齐的路径类系统调用
+
+排查 getpath 失败时发现两个缺失项，都是任何程序都会用到的：
+
+| 调用 | 之前 | 现在 |
+| --- | --- | --- |
+| `getcwd` (17) | ENOSYS | 返回 guest 的 cwd（`e2_syscall_env.cwd`） |
+| `chdir` (49) | 未实现 | 更新 cwd |
+| `readlinkat` (78) | ENOSYS | 经 `e2_file_ops.readlink` 交给宿主 |
+
+补齐后 Python 的错误输出**没有变化**，说明 getpath 的失败不是系统调用引起的，而是纯
+Python 层的计算问题。所有系统调用现在都返回正常（`readlinkat` 对非符号链接返回
+EINVAL 是正确行为）。
+
+### 报错点的确切位置
+
+字符串 `"error evaluating path"` 在 libpython 的 file offset `0x304a58`（vaddr 同值），
+代码里只有一处引用：`adrp` 在 vaddr `0x203524`，紧接着 `add x19, x0, #2648`，随后
+`mov x1, #0` 并调用 ——即 `_PyErr_WriteUnraisableMsg("error evaluating path", NULL)`。
+
+下一次可以从这里反推：调用它的分支条件是什么（前面是 `ldr x0,[x20]` / `sub` / `str` /
+`cbz` 的引用计数递减），以及 `x20` 持有的异常对象是什么。
+

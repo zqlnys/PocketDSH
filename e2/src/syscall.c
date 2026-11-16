@@ -98,6 +98,7 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
     const uint64_t a0 = m->cpu.x[0];
     const uint64_t a1 = m->cpu.x[1];
     const uint64_t a2 = m->cpu.x[2];
+    const uint64_t a3 = m->cpu.x[3];
     const e2_file_ops *files = env->files;
 
     // Result goes to X0 for every path; the helper keeps the returns uniform.
@@ -196,6 +197,58 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
                 E2_RETURN(-E2_ENOSYS);
             }
             E2_RETURN(files->dup3(env->ctx, (int)a0, (int)a1, (int)a2));
+        }
+        case E2_SYS_readlinkat: {
+            if (files == NULL || files->readlink == NULL) {
+                E2_RETURN(-E2_ENOSYS);
+            }
+            char path[512];
+            const int rc3 = read_guest_string(m, a1, path, sizeof(path));
+            if (rc3 != 0) {
+                E2_RETURN(rc3);
+            }
+            const uint64_t out = a2;
+            const uint64_t outlen = a3;
+            if (outlen == 0 || outlen > 4096) {
+                E2_RETURN(-22);  // EINVAL
+            }
+            char target[4096];
+            const long got = files->readlink(env->ctx, path, target, (size_t)outlen);
+            if (got < 0) {
+                E2_RETURN(got);
+            }
+            if (e2_memory_write(&m->mem, out, target, (size_t)got) != 0) {
+                E2_RETURN(-14);  // EFAULT
+            }
+            E2_RETURN(got);
+        }
+        case E2_SYS_getcwd: {
+            // (buf, size). Python calls this while working out sys.path.
+            const uint64_t buf = a0;
+            const uint64_t size = a1;
+            const char *dir = (env->cwd[0] != '\0') ? env->cwd : "/";
+            const size_t need = strlen(dir) + 1;
+            if (size < need) {
+                E2_RETURN(-34);  // ERANGE
+            }
+            if (e2_memory_write(&m->mem, buf, dir, need) != 0) {
+                E2_RETURN(-14);  // EFAULT
+            }
+            E2_RETURN(buf);
+        }
+        case E2_SYS_chdir: {
+            char path[512];
+            const int rc2 = read_guest_string(m, a0, path, sizeof(path));
+            if (rc2 != 0) {
+                E2_RETURN(rc2);
+            }
+            if (path[0] == '/') {
+                snprintf(env->cwd, sizeof(env->cwd), "%s", path);
+            } else {
+                const size_t len = strlen(env->cwd);
+                snprintf(env->cwd + len, sizeof(env->cwd) - len, "/%s", path);
+            }
+            E2_RETURN(0);
         }
         case E2_SYS_openat: {
             if (files == NULL) {
