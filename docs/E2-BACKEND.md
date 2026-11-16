@@ -1698,3 +1698,31 @@ qemu 仍正常输出、本实现仍 fault，所以不是 `envp` 内容差异造�
 （`awk '{print NF}'` 在直接调用形式下没有复现，可能是参数引用方式的问题，
 未进一步确认。）
 
+### awk：同样的 NULL 指针症状
+
+批量测试 applet 时发现 `awk` 也坏，但只在特定路径：
+
+| 调用 | 结果 |
+| --- | --- |
+| `awk '{print}' file` | 正常 |
+| `awk 'BEGIN{print 1}'` | fault |
+| `awk 'END{print 1}' file` | fault |
+| `awk 'BEGIN{x=1}'` | 正常 |
+
+也就是**没有输入上下文时的 `print`** 会崩。
+
+定位到 musl 的 `fwrite`：`mul x21,x1,x2` 算总字节、`ldr w1,[x3,#140]` 读 FILE 标志，
+而 **`x3`（FILE*）是 NULL**。
+
+qemu 下同一位置 `x3 = 0x520200`——musl 的静态 `__stdout_FILE`。
+
+**排除了加载器**：那个指针的静态初值就在文件里（vaddr `0x51f480`），
+本实现读出来的正是 `0x520200`，说明 .data 段加载正确。NULL 是运行时产生的。
+
+**与 grep 的关系**：两者都是「该有有效指针的地方拿到 NULL/自环」，
+很可能同一个根因，但都还没找到。
+
+顺带记一个设施缺口：`e2_apply_relative_relocations` 在 `src/loader.c` 里存在，
+**但没有任何调用者**。对静态 ET_EXEC 目前不需要它（初值就在文件里），
+但静态 PIE（ET_DYN）会需要——现在的 loader 只走 tests。
+
