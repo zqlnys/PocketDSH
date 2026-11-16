@@ -32,12 +32,15 @@ struct TierCSmokeView: View {
     /// Two independent checks:
     ///
     /// 1. stdout capture — what the guest printed inside the observation window.
-    ///    This window is short (~5s), and each emulated command costs one to two
-    ///    seconds, so the *last* command's output routinely misses it.
+    ///    Under i686 emulation a single external command (uname, ls, cat) costs
+    ///    one to three seconds, so only the first command or two reliably make
+    ///    it into the window. The command is therefore ordered with the
+    ///    critical step first.
     /// 2. host readback — the guest writes a file into /workspace, then the host
     ///    reads the same path through FileManager. realfs shares inodes with the
     ///    host, so a successful readback proves the mount is live and writable,
-    ///    independent of capture timing.
+    ///    independent of capture timing. Readback polls instead of reading once,
+    ///    because the guest shell keeps running after the window expires.
     private func runSmokeTest() async {
         guard let workspaceURL = appState.activeSession?.rootURL else {
             let result = await appState.linuxRuntime.run(command: "uname -a; cat /etc/alpine-release")
@@ -48,11 +51,22 @@ struct TierCSmokeView: View {
         let probeURL = workspaceURL.appendingPathComponent(".tierc-probe.txt")
         try? FileManager.default.removeItem(at: probeURL)
 
-        // `echo` is a shell builtin, so this finishes without spawning a process.
-        let command = "uname -a; echo tierc-write-ok > /workspace/.tierc-probe.txt; ls -la /workspace"
+        // `echo` is a shell builtin, so the write completes without waiting on a
+        // fork/exec. Put it first so it lands even if later commands overrun.
+        let command = "echo tierc-write-ok > /workspace/.tierc-probe.txt; uname -m; ls -la /workspace"
         let result = await appState.linuxRuntime.run(command: command, workspace: workspaceURL)
 
         var text = result.content
+        var capacity = (try? FileManager.default.contentsOfDirectory(atPath: workspaceURL.path)) ?? []
+        if !capacity.contains(".tierc-probe.txt") {
+            // The guest shell outlives the capture window; give it room to finish.
+            for _ in 0..<12 {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                capacity = (try? FileManager.default.contentsOfDirectory(atPath: workspaceURL.path)) ?? []
+                if capacity.contains(".tierc-probe.txt") { break }
+            }
+        }
+
         if let written = try? String(contentsOf: probeURL, encoding: .utf8) {
             let value = written.trimmingCharacters(in: .whitespacesAndNewlines)
             text += "\n\n[host readback] \(probeURL.lastPathComponent) = \(value)"
@@ -61,6 +75,7 @@ struct TierCSmokeView: View {
                 : "\n[host readback] unexpected content."
         } else {
             text += "\n\n[host readback] \(probeURL.lastPathComponent) missing — guest write did not reach the host directory."
+            text += "\n[host readback] host directory listing: \(capacity.sorted().joined(separator: ", "))"
         }
         try? FileManager.default.removeItem(at: probeURL)
         output = text
