@@ -92,7 +92,23 @@ read(fd, 960)           -> -EISDIR
 writev(stderr, ...)     "Not a valid dynamic program"
 ```
 
-read 失败是因为 musl 传的**路径指针 0x80dde0 不在任何已映射区域内**，读回空串，open 落到了根目录。这是地址空间分配问题，不是 syscall 问题——而且 `mmap` 从未被调用，说明 musl 认为那块内存本来就存在。
+read 失败是因为 argv 字符串写在了 SP **下方**，musl 第一个栈帧就把它覆盖了，路径读回空串。改成真实 Linux 布局（字符串在栈顶、指针数组在下、SP 再下）后：
+
+```
+set_tid_address
+openat("/bin/busybox")  -> fd 3      正确路径
+read(fd, 960)           -> 960       读到 ELF 头
+mmap(len=0xf1000, R|X)  -> 0x811000  busybox 被映射
+mmap(MAP_FIXED 0x8fd000)
+close(fd)
+brk, mprotect
+```
+
+10 个 syscall、12,688 条指令，busybox 的 ELF 头被读出并映射成功。
+
+过程中修掉的地址空间问题：内存层不支持**跨相邻区域**访问（musl 每个 PT_LOAD 单独 mmap，memcpy 会跨边界）；`MAP_FIXED` 被忽略导致 musl 的簿记指针悬空；`brk` 返回地址却**没有真正映射内存**。
+
+当前卡点：`ldr w3, [x8]`，`x8 = 0` —— musl 期望它指向一个它从未拿到的指针。
 
 ### musl 推进过程（前半程）
 
