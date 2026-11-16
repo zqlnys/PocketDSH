@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "e2/exec.h"
+#include "e2/syscall.h"
 
 // --- Encoders -----------------------------------------------------------------
 // Hand-assembled from the AArch64 encoding tables, so the tests do not depend on
@@ -48,6 +49,58 @@
 #define COND_NE 1u
 #define COND_LT 11u
 #define COND_GT 12u
+
+// --- Program runner with syscall servicing ------------------------------------
+
+typedef struct {
+    char out[512];
+    size_t out_len;
+    int exited;
+    int status;
+    int syscall_count;
+} capture;
+
+static long capture_write(void *ctx, int fd, const void *buf, size_t len) {
+    capture *c = (capture *)ctx;
+    if (fd != 1 && fd != 2) {
+        return -9;  // EBADF
+    }
+    if (c->out_len + len < sizeof(c->out)) {
+        memcpy(c->out + c->out_len, buf, len);
+        c->out_len += len;
+        c->out[c->out_len] = '\0';
+    }
+    return (long)len;
+}
+
+static void capture_exit(void *ctx, int status) {
+    capture *c = (capture *)ctx;
+    c->exited = 1;
+    c->status = status;
+}
+
+/// Steps the machine, servicing syscalls as they arrive. This is the shape the
+/// iOS layer will use too: the interpreter has no idea what a file descriptor is.
+static e2_status run_program(e2_machine *m, e2_syscall_env *env, uint64_t budget) {
+    for (uint64_t i = 0; i < budget; i++) {
+        e2_status st = e2_step(m);
+        if (st == E2_SYSCALL) {
+            if (env != NULL) {
+                st = e2_service_syscall(m, env);
+                if (st != E2_OK) {
+                    return st;
+                }
+            } else {
+                return st;
+            }
+            continue;
+        }
+        if (st != E2_OK) {
+            return st;
+        }
+    }
+    return E2_FAULT;
+}
 
 // --- Harness ------------------------------------------------------------------
 
@@ -231,6 +284,79 @@ static void test_unimplemented(void) {
     e2_machine_destroy(&m);
 }
 
+static void test_hello_world(void) {
+    printf("hello world through SVC write + exit\n");
+    e2_machine m;
+    e2_machine_init(&m, 0, 8192);
+
+    // mov x0, #1        ; fd 1
+    // adr x1, msg       ; buffer, 28 bytes ahead
+    // mov x2, #6        ; length
+    // mov x8, #64       ; SYS_write
+    // svc #0
+    // mov x0, #0
+    // mov x8, #93       ; SYS_exit
+    // svc #0
+    // msg: "hello\n"
+    const uint32_t code[] = {
+        MOVZ_X(0, 1),
+        0x100000E1u,          // adr x1, +28
+        MOVZ_X(2, 6),
+        MOVZ_X(8, E2_SYS_write),
+        SVC(0),
+        MOVZ_X(0, 0),
+        MOVZ_X(8, E2_SYS_exit),
+        SVC(0),
+        // "hello\n" packed little-endian: h e l l  /  o \n
+        0x6C6C6568u, 0x00000A6Fu,
+    };
+    load_program(&m, code, sizeof(code) / sizeof(code[0]));
+
+    capture cap = {0};
+    e2_syscall_env env = {.write = capture_write, .exit = capture_exit, .ctx = &cap};
+    e2_status st = run_program(&m, &env, 100);
+
+    CHECK(st == E2_HALTED, "expected halt, got %s", e2_status_name(st));
+    CHECK(cap.exited == 1, "exit hook not called");
+    CHECK(cap.status == 0, "exit status %d", cap.status);
+    CHECK(strcmp(cap.out, "hello\n") == 0, "output was \"%s\"", cap.out);
+    e2_machine_destroy(&m);
+}
+
+static void test_exit_status(void) {
+    printf("exit status propagates\n");
+    e2_machine m;
+    e2_machine_init(&m, 0, 8192);
+    const uint32_t code[] = {MOVZ_X(0, 7), MOVZ_X(8, E2_SYS_exit), SVC(0)};
+    load_program(&m, code, sizeof(code) / sizeof(code[0]));
+
+    capture cap = {0};
+    e2_syscall_env env = {.write = capture_write, .exit = capture_exit, .ctx = &cap};
+
+    e2_status st = run_program(&m, &env, 100);
+    CHECK(st == E2_HALTED, "expected halt, got %s", e2_status_name(st));
+    CHECK(m.exit_status == 7, "machine exit_status %d", m.exit_status);
+    CHECK(cap.status == 7, "captured status %d", cap.status);
+    e2_machine_destroy(&m);
+}
+
+static void test_unknown_syscall(void) {
+    printf("unknown syscall returns -ENOSYS instead of crashing\n");
+    e2_machine m;
+    e2_machine_init(&m, 0, 8192);
+    const uint32_t code[] = {MOVZ_X(8, 1234), SVC(0), MOVZ_X(1, 1), RET()};
+    load_program(&m, code, sizeof(code) / sizeof(code[0]));
+
+    capture cap = {0};
+    e2_syscall_env env = {.write = capture_write, .exit = capture_exit, .ctx = &cap};
+    e2_status st = run_program(&m, &env, 10);
+    CHECK(st != E2_HALTED, "should keep running after ENOSYS");
+    CHECK((int64_t)m.cpu.x[0] == -38, "x0 = %lld, want -ENOSYS(-38)",
+          (long long)(int64_t)m.cpu.x[0]);
+    CHECK_REG(m, 1, 1);
+    e2_machine_destroy(&m);
+}
+
 int main(void) {
     printf("== e2 interpreter core tests ==\n");
     test_movz_and_ret();
@@ -242,6 +368,9 @@ int main(void) {
     test_svc();
     test_nop();
     test_unimplemented();
+    test_hello_world();
+    test_exit_status();
+    test_unknown_syscall();
 
     printf("\n%d checks, %d failure(s)\n", checks, failures);
     return failures == 0 ? 0 : 1;

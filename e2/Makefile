@@ -7,7 +7,7 @@
 CC ?= cc
 CFLAGS ?= -std=c11 -Wall -Wextra -Werror -O2 -g -Iinclude
 BUILD := build
-SRC := src/memory.c src/exec.c
+SRC := src/memory.c src/exec.c src/syscall.c
 TEST_SRC := tests/main.c
 TEST_BIN := $(BUILD)/e2-tests
 

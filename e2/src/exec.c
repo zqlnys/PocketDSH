@@ -121,6 +121,24 @@ e2_status e2_step(e2_machine *machine) {
     const unsigned rn = BITS(insn, 9, 5);
     uint64_t next_pc = cpu->pc + 4;
 
+    // --- ADR / ADRP ---
+    if ((insn & 0x1F000000u) == 0x10000000u) {
+        const bool page = BIT(insn, 31) != 0;
+        const uint64_t immlo = BITS(insn, 30, 29);
+        const uint64_t immhi = BITS(insn, 23, 5);
+        const int64_t imm = (int64_t)sign_extend((immhi << 2) | immlo, 21);
+        uint64_t base = cpu->pc;
+        int64_t delta = imm;
+        if (page) {
+            base &= ~0xFFFULL;
+            delta = imm << 12;
+        }
+        write_reg(cpu, rd, (uint64_t)((int64_t)base + delta), true);
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     // --- MOVZ / MOVN / MOVK ---
     uint32_t mov_top = insn & 0x7F800000u;
     if (mov_top == 0x52800000u || mov_top == 0x12800000u || mov_top == 0x72800000u) {
