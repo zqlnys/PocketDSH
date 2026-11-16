@@ -48,7 +48,8 @@ struct TierCSmokeView: View {
         let probeURL = workspaceURL.appendingPathComponent(".tierc-probe.txt")
         try? FileManager.default.removeItem(at: probeURL)
 
-        let commands = [
+        let readOnly = appState.linuxRuntime.workspaceReadOnly
+        var commands = [
             "pwd",
             "uname -m",                                             // external: forks a child
             "echo alive-after-external",                            // session survived it?
@@ -56,8 +57,13 @@ struct TierCSmokeView: View {
             "read v < /workspace/.tierc-probe.txt; echo got:$v",    // builtin read of the mount
             "ls /workspace"                                         // external again
         ]
+        if readOnly {
+            // Proves the wrapper rejects writes rather than trusting the mount flag.
+            commands.append("echo should-fail > /workspace/.tierc-ro-probe.txt; echo write-exit:$?")
+        }
 
-        var text = "Running \(commands.count) commands through the shared session.\n\n"
+        let mode = readOnly ? "read-only" : "read-write"
+        var text = "Running \(commands.count) commands through the shared session (\(mode)).\n\n"
         output = text
         let began = Date()
 
@@ -70,6 +76,15 @@ struct TierCSmokeView: View {
 
         text += "session active: \(appState.linuxRuntime.isSessionActive ? "yes" : "no")\n"
         output = text
+
+        let readOnlyProbe = workspaceURL.appendingPathComponent(".tierc-ro-probe.txt")
+        if readOnly {
+            text += FileManager.default.fileExists(atPath: readOnlyProbe.path)
+                ? "\n[read-only check] FAILED — guest wrote into a read-only mount."
+                : "\n[read-only check] write rejected, no file created."
+            try? FileManager.default.removeItem(at: readOnlyProbe)
+            output = text
+        }
 
         if let written = try? String(contentsOf: probeURL, encoding: .utf8) {
             let value = written.trimmingCharacters(in: .whitespacesAndNewlines)

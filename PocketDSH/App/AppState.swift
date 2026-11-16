@@ -125,6 +125,13 @@ final class AppState: ObservableObject {
             showOnboarding = false
         }
 
+        // Exercises the read-only workspace wrapper: the mount rejects writes with
+        // EROFS instead of letting the guest mutate project files behind
+        // WorkspaceFileSystem's backups.
+        if arguments.contains("-PocketDSHTierCReadOnly") {
+            linuxRuntime.workspaceReadOnly = true
+        }
+
         if arguments.contains("-PocketDSHWorkspaceDemo") {
             showOnboarding = false
             let project = projectStore.projects.first(where: { $0.name == "Design preview" })

@@ -185,6 +185,14 @@ jobs:
           xcrun simctl io "$SIMULATOR_UDID" screenshot "$ARTIFACTS_DIR/pocketdsh-tierc.png" 2>&1 | tee "$LOG_DIR/screenshot-tierc.log"
           file "$ARTIFACTS_DIR/pocketdsh-tierc.png"
 
+          # Same smoke run with the workspace mounted read-only, to prove the
+          # wrapper actually rejects guest writes rather than just setting a flag.
+          xcrun simctl terminate "$SIMULATOR_UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
+          xcrun simctl launch "$SIMULATOR_UDID" "$BUNDLE_ID" -PocketDSHTierCSmoke -PocketDSHWorkspaceDemo -PocketDSHTierCReadOnly 2>&1 | tee -a "$LOG_DIR/simulator-launch.log"
+          sleep 45
+          xcrun simctl io "$SIMULATOR_UDID" screenshot "$ARTIFACTS_DIR/pocketdsh-tierc-readonly.png" 2>&1 | tee "$LOG_DIR/screenshot-tierc-readonly.log"
+          file "$ARTIFACTS_DIR/pocketdsh-tierc-readonly.png"
+
       - name: Build Release and package unsigned IPA
         id: ipa
         if: >-
