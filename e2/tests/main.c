@@ -918,6 +918,33 @@ static void test_scalar_immediates(void) {
         }
     }
 
+    // Sign-extending loads must extend, not just move bytes. The register-offset
+    // path skipped that once, so a 0xFF byte became 0xFF instead of -1 and every
+    // index derived from it was wrong.
+    {
+        static const struct { uint32_t insn; unsigned char byte; uint64_t want; const char *what; } se[] = {
+            {0x38B56B34u, 0xFF, 0xFFFFFFFFFFFFFFFFULL, "ldrsb x20, [x25, x21] with -1"},
+            {0x38B56B34u, 0x7F, 0x000000000000007FULL, "ldrsb x20, [x25, x21] with 127"},
+            {0x38B56B34u, 0x80, 0xFFFFFFFFFFFFFF80ULL, "ldrsb x20, [x25, x21] with -128"},
+        };
+        for (unsigned i = 0; i < sizeof(se) / sizeof(se[0]); i++) {
+            e2_machine m;
+            e2_machine_init(&m, 0, 1 << 20);
+            const uint64_t at = 0x30000000ULL;
+            e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+            const uint64_t tbl = 0x104D0000ULL;
+            e2_memory_map_at(&m.mem, tbl, 0x1000, E2_PROT_READ | E2_PROT_WRITE);
+            e2_memory_write(&m.mem, at, &se[i].insn, 4);
+            e2_memory_write(&m.mem, tbl, &se[i].byte, 1);
+            m.cpu.pc = at;
+            m.cpu.x[25] = tbl;
+            m.cpu.x[21] = 0;
+            const e2_status st = e2_step(&m);
+            CHECK(st == E2_OK && m.cpu.x[20] == se[i].want, "%s", se[i].what);
+            e2_memory_destroy(&m.mem);
+        }
+    }
+
     // scvtf/ucvtf convert an integer in x0 to a float in s0.
     {
         e2_machine m;

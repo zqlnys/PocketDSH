@@ -514,7 +514,7 @@ static int run_proc(int idx) {
         hist[hist_at].x23 = p->m.cpu.x[23];
         hist_at = (hist_at + 1) % 256;
         if (hist_n < 256) hist_n++;
-        if (++guard > 40000000L) { snprintf(g_reason, sizeof(g_reason), "instruction cap"); g_fault = 1; break; }
+        if (++guard > 400000000L) { snprintf(g_reason, sizeof(g_reason), "instruction cap"); g_fault = 1; break; }
         if (getenv("E2_TRACE_GREP") && p->m.cpu.pc == 0x4c4408) {
             static int ng = 0;
             if (ng == 0) {

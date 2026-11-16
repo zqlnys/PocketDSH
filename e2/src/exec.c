@@ -1669,7 +1669,13 @@ e2_status e2_step(e2_machine *machine) {
                 machine->ctx.svc_number = (uint16_t)(addr & 0xFFFF);
                 return E2_FAULT;
             }
-            write_reg(cpu, rd, value, size_code == 3);
+            // LDRSB / LDRSH / LDRSW are selected by opc, so the sign extension
+            // has to go through the same helper as the other load forms. This
+            // path used to store the raw bytes, which turned a 0xFF byte into
+            // 0xFF instead of -1 - the wrong index every time one was used.
+            value = apply_load_opc(value, opc, bytes, size_code == 3);
+            const bool dest64 = (opc == 2) || (size_code == 3);
+            write_reg(cpu, rd, value, dest64);
         } else {
             uint64_t value = e2_read_xzr(cpu, rd);
             if (e2_memory_write(&machine->mem, addr, &value, bytes) != 0) {
