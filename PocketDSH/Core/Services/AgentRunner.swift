@@ -250,6 +250,59 @@ final class AgentRunner: ObservableObject {
         }
     }
 
+    /// The conversation as Markdown, for sharing or keeping.
+    ///
+    /// Built from the same events the transcript shows, so what is exported is
+    /// what was on screen - including tool calls, which are the part of a run
+    /// that is hardest to reconstruct later.
+    func exportMarkdown() -> String {
+        var lines: [String] = ["# \(projectName)", ""]
+        if !todos.isEmpty {
+            lines.append("## Plan")
+            for item in todos {
+                let box: String
+                switch item.status {
+                case .pending: box = "- [ ]"
+                case .inProgress: box = "- [~]"
+                case .completed: box = "- [x]"
+                }
+                lines.append("\(box) \(item.content)")
+            }
+            lines.append("")
+        }
+        if !deliverables.isEmpty {
+            lines.append("## Delivered")
+            for item in deliverables {
+                lines.append(item.summary.isEmpty
+                             ? "- `\(item.path)`"
+                             : "- `\(item.path)` — \(item.summary)")
+            }
+            lines.append("")
+        }
+        lines.append("## Transcript")
+        lines.append("")
+        for event in events {
+            let stamp = event.timestamp.formatted(date: .omitted, time: .shortened)
+            switch event.kind {
+            case .user:
+                lines.append("**You** (\(stamp))")
+                lines.append("")
+                lines.append(event.detail.isEmpty ? event.title : event.detail)
+                lines.append("")
+            case .assistant:
+                lines.append("**Assistant** (\(stamp))")
+                lines.append("")
+                lines.append(event.detail)
+                lines.append("")
+            case .toolStarted:
+                lines.append("- _\(event.title)_ `\(event.detail.prefix(400))`")
+            case .toolFinished, .error, .cancelled, .status:
+                lines.append("- \(event.title)")
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+
     private func appendEvent(_ kind: AgentEvent.Kind, title: String, detail: String) {
         let limit = (kind == .assistant || kind == .user) ? 30_000 : 8_000
         events.append(

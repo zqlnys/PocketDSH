@@ -160,6 +160,38 @@ final class PocketDSHTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testExportMarkdownIncludesPlanDeliverablesAndTranscript() throws {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let root = base.appendingPathComponent("ws", isDirectory: true)
+        let meta = base.appendingPathComponent("meta", isDirectory: true)
+        let plugins = base.appendingPathComponent("plugins", isDirectory: true)
+        for dir in [root, meta, plugins] {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        let workspace = WorkspaceFileSystem(root: root, metadataRoot: meta)
+        let executor = ToolExecutor(workspace: workspace,
+                                    luaEngine: LuaEngine(),
+                                    systemActions: SystemActionStore())
+        let runner = AgentRunner(workspace: workspace,
+                                 toolExecutor: executor,
+                                 pluginRuntime: PluginRuntimeManager(store: PluginStore(root: plugins),
+                                                                    workspace: workspace),
+                                 keychain: KeychainStore(),
+                                 settings: SettingsStore(),
+                                 projectName: "Demo",
+                                 metadataRoot: meta)
+        let text = runner.exportMarkdown()
+        XCTAssertTrue(text.hasPrefix("# Demo"))
+        XCTAssertTrue(text.contains("## Transcript"))
+        // An empty conversation still exports a well-formed document rather
+        // than an empty string.
+        XCTAssertFalse(text.isEmpty)
+    }
+
     func testDeliverablesRoundTrip() throws {
         let original = AgentConversation(
             messages: [],

@@ -77,6 +77,11 @@ struct AgentView: View {
                         } label: {
                             Label("Settings", systemImage: "gearshape")
                         }
+                        ShareLink(item: agent.exportMarkdown()) {
+                            Label("Export transcript", systemImage: "square.and.arrow.up")
+                        }
+                        .disabled(agent.events.isEmpty)
+
                         Button(role: .destructive) {
                             agent.resetConversation()
                         } label: {

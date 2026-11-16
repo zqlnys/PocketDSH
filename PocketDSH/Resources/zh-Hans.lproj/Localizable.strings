@@ -232,3 +232,6 @@
 "Connection" = "连接";
 "About this build" = "关于此构建";
 "Tier C · Experimental" = "Tier C · 实验性";
+
+/* Sharing the transcript. */
+"Export transcript" = "导出对话";
