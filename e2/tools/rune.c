@@ -529,6 +529,7 @@ uint64_t g_dbg_sp;
 // events that happen in different processes, which is exactly what pipeline and
 // scheduling questions need.
 unsigned long long g_global_step;
+int g_dbg_pid;
 uint64_t g_dbg_pc2;
 static const char *g_self_path = NULL;
 
@@ -684,9 +685,14 @@ static int pump_children_for_tab(int tab) {
         proc_t *c = &procs[i];
         if (!c->used || !c->alive) continue;
         if (c->pc.fdtab == tab) continue;   // that is us
+        // run_proc here is nested inside the caller's own run_proc. Saving and
+        // restoring the budget keeps the outer process bounded: resetting it to
+        // -1 after the inner run left the caller unbounded, and preemption then
+        // landed wherever it liked.
+        const long outer_budget = g_proc_budget;
         g_proc_budget = proc_quantum();
         run_proc(i);
-        g_proc_budget = -1;
+        g_proc_budget = outer_budget;
         ran++;
     }
     return ran;
@@ -705,16 +711,18 @@ static long p_wait4(void *ctx, int pid, uint64_t status_ptr, int options) {
         // then keeps the consumer from ever running - `yes | head -1` hangs
         // exactly that way.
         while (c->alive) {
+            const long saved_budget = g_proc_budget;
             g_proc_budget = proc_quantum();
             run_proc(i);
-            g_proc_budget = -1;
+            g_proc_budget = saved_budget;
             for (int j = 1; j < 16; j++) {
                 if (j == i) continue;
                 proc_t *other = &procs[j];
                 if (!other->used || !other->alive || other->ppid != self->pid) continue;
+                const long saved_budget2 = g_proc_budget;
                 g_proc_budget = proc_quantum();
                 run_proc(j);
-                g_proc_budget = -1;
+                g_proc_budget = saved_budget2;
             }
         }
         const int code = c->exit_status & 0xFF;
@@ -795,6 +803,7 @@ static int run_proc(int idx) {
         if (g_proc_budget >= 0 && ++spent > g_proc_budget) break;
         g_dbg_pc = p->m.cpu.pc;
         g_dbg_sp = p->m.cpu.sp;
+        g_dbg_pid = p->pid;
         g_dbg_pc2 = p->m.cpu.pc;
         hist[hist_at].pc = p->m.cpu.pc;
         // Read the word at pc rather than ctx.instruction: ctx carries the

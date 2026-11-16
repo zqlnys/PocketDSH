@@ -209,6 +209,7 @@ static long sys_pathop(e2_machine *m, e2_syscall_env *env, int op,
 }
 
 extern unsigned long long g_global_step;
+extern int g_dbg_pid;
 
 e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
     // One line per syscall, opt-in. Comparing this against qemu's -strace is the
@@ -221,8 +222,8 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
         }
     }
     if (getenv("E2_TRACE_SYS") != NULL) {
-        fprintf(stderr, "[sys@%llu pc=0x%llx] %llu(0x%llx, 0x%llx, 0x%llx, 0x%llx, 0x%llx, 0x%llx)\n",
-                g_global_step, (unsigned long long)m->cpu.pc,
+        fprintf(stderr, "[sys@%llu p%d pc=0x%llx] %llu(0x%llx, 0x%llx, 0x%llx, 0x%llx, 0x%llx, 0x%llx)\n",
+                g_global_step, g_dbg_pid, (unsigned long long)m->cpu.pc,
                 (unsigned long long)m->cpu.x[8],
                 (unsigned long long)m->cpu.x[0], (unsigned long long)m->cpu.x[1],
                 (unsigned long long)m->cpu.x[2], (unsigned long long)m->cpu.x[3],
