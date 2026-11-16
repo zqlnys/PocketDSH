@@ -1614,6 +1614,38 @@ static void test_scalar_immediates(void) {
         e2_memory_destroy(&m.mem);
     }
 
+    {
+        // fcvtzs with a 64-bit destination. The 32-bit form is exercised by
+        // printf("%d") and worked, while awk's int() - which casts to long long
+        // - returned the raw IEEE bits of the double instead of the value. That
+        // is what a conversion that never happened looks like from outside.
+        e2_machine m;
+        e2_machine_init(&m, 0, 1 << 20);
+        const uint64_t at = 0x30000000ULL;
+        e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+
+        const double three_nine = 3.9, neg = -3.9;
+        uint64_t insn64 = 0x9E780000u;   // fcvtzs x0, d0
+        e2_memory_write(&m.mem, at, &insn64, 4);
+        memcpy(&m.cpu.v[0][0], &three_nine, 8);
+        m.cpu.pc = at;
+        e2_step(&m);
+        CHECK(m.cpu.x[0] == 3, "fcvtzs x0, d0 truncates toward zero");
+
+        memcpy(&m.cpu.v[0][0], &neg, 8);
+        m.cpu.pc = at;
+        e2_step(&m);
+        CHECK(m.cpu.x[0] == (uint64_t)(int64_t)-3, "fcvtzs x0, d0 truncates negatives");
+
+        uint32_t insn32 = 0x1E780000u;   // fcvtzs w0, d0
+        e2_memory_write(&m.mem, at, &insn32, 4);
+        memcpy(&m.cpu.v[0][0], &three_nine, 8);
+        m.cpu.pc = at;
+        e2_step(&m);
+        CHECK(m.cpu.x[0] == 3, "fcvtzs w0, d0 truncates into 32 bits");
+        e2_memory_destroy(&m.mem);
+    }
+
     // UMOV moves a vector element into a general register. musl's memset does
     // `mov x1, v0.d[0]` to materialise the replicated byte pattern, so a broken
     // UMOV silently turned every memset into a zero fill. It used to decode as
