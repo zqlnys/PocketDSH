@@ -749,6 +749,8 @@ static void test_reject_wrong_machine(void) {
     e2_machine_destroy(&m);
 }
 
+static void test_shll(void);
+
 int main(void) {
     printf("== e2 interpreter core tests ==\n");
     test_movz_and_ret();
@@ -773,6 +775,78 @@ int main(void) {
     test_reject_dynamic();
     test_reject_wrong_machine();
 
+    test_shll();
+
     printf("\n%d checks, %d failure(s)\n", checks, failures);
     return failures == 0 ? 0 : 1;
+}
+
+// SSHLL/USHLL select by bit31=0, bits28-23=011110 and opcode bits15-10=101001.
+// Getting the mask wrong once meant the shift-by-4 form was never recognised,
+// so this pins the behaviour: widen 32-bit lanes to 64-bit, signed and unsigned.
+static void test_shll(void) {
+    FILE *f = fopen("tests/guest/shll.elf", "rb");
+    if (!f) {
+        printf("  SKIP (tests/guest/shll.elf not built)\n");
+        return;
+    }
+    fclose(f);
+    FILE *in = fopen("tests/guest/shll.elf", "rb");
+    fseek(in, 0, SEEK_END);
+    long sz = ftell(in);
+    fseek(in, 0, SEEK_SET);
+    uint8_t *img = malloc((size_t)sz);
+    if (fread(img, 1, (size_t)sz, in) != (size_t)sz) {
+        fclose(in);
+        free(img);
+        CHECK(0, "could not read shll.elf");
+        return;
+    }
+    fclose(in);
+
+    e2_machine m;
+    e2_machine_init(&m, 0, 1 << 20);
+    e2_loaded_image info = {0};
+    if (e2_load_elf_full(&m, img, (size_t)sz, true, &info) != E2_LOAD_OK) {
+        free(img);
+        CHECK(0, "could not load shll.elf");
+        return;
+    }
+    free(img);
+
+    // Run to exit, capturing what the guest writes to fd 1.
+    static char captured[128];
+    size_t captured_len = 0;
+    struct capture_ctx { char *buf; size_t *len; } cx = {captured, &captured_len};
+    (void)cx;
+
+    int syscalls = 0;
+    for (long i = 0; i < 200000; i++) {
+        e2_status st = e2_step(&m);
+        if (st == E2_SYSCALL) {
+            if (m.cpu.x[8] == 64) {
+                const uint64_t fd = m.cpu.x[0];
+                const uint64_t buf = m.cpu.x[1];
+                const uint64_t n = m.cpu.x[2];
+                if (fd == 1 && captured_len + n < sizeof(captured)) {
+                    e2_memory_read(&m.mem, buf, captured + captured_len, (size_t)n);
+                    captured_len += (size_t)n;
+                }
+                m.cpu.x[0] = (uint64_t)n;
+                syscalls++;
+                continue;
+            }
+            if (m.cpu.x[8] == 93 || m.cpu.x[8] == 94) break;
+            syscalls++;
+            continue;
+        }
+        if (st != E2_OK) break;
+    }
+    captured[captured_len] = '\0';
+    CHECK(strcmp(captured, "1,-1|16,-16|1,4294967295\n") == 0,
+          "sshll/ushll widen 32-bit lanes to 64-bit");
+    if (strcmp(captured, "1,-1|16,-16|1,4294967295\n") != 0) {
+        printf("    got: %.80s\n", captured);
+    }
+    e2_memory_destroy(&m.mem);
 }

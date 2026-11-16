@@ -10,7 +10,7 @@ BUILD := build
 SRC := src/memory.c src/exec.c src/syscall.c src/loader.c
 TEST_SRC := tests/main.c
 TEST_BIN := $(BUILD)/e2-tests
-GUEST_ELF := tests/guest/hello.elf tests/guest/fib.elf tests/guest/memset.elf tests/guest/cprog.elf tests/guest/calls.elf tests/guest/mul.elf
+GUEST_ELF := tests/guest/hello.elf tests/guest/fib.elf tests/guest/memset.elf tests/guest/cprog.elf tests/guest/calls.elf tests/guest/mul.elf tests/guest/shll.elf
 
 # Cross-toolchain pieces for building the guest test binary. clang handles the
 # aarch64 target and lld links it statically, so no libc is needed.
@@ -70,3 +70,7 @@ overlaps:
 	else \
 		echo "skip: no reference binaries"; \
 	fi
+
+tests/guest/shll.elf: tests/guest/shll.c | $(BUILD)
+	$(CLANG) --target=aarch64-linux-gnu -O2 -ffreestanding -nostdlib -static -c $< -o $(BUILD)/shll-guest.o
+	$(LLD) -static -o $@ $(BUILD)/shll-guest.o
