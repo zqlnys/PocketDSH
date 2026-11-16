@@ -536,10 +536,11 @@ static int run_proc(int idx) {
                 fprintf(stderr, "\n");
             }
             if (np < 10) {
-                fprintf(stderr, "[probe] x25=0x%llx x27=0x%llx x19=0x%llx x23=0x%llx x24=0x%llx x21=0x%llx\n",
-                        (unsigned long long)p->m.cpu.x[25], (unsigned long long)p->m.cpu.x[27],
-                        (unsigned long long)p->m.cpu.x[19], (unsigned long long)p->m.cpu.x[23],
-                        (unsigned long long)p->m.cpu.x[24], (unsigned long long)p->m.cpu.x[21]);
+                fprintf(stderr, "[probe] x21=0x%llx x26=0x%llx mask=0x%llx byte=0x%02x\n",
+                        (unsigned long long)p->m.cpu.x[21],
+                        (unsigned long long)p->m.cpu.x[26],
+                        (unsigned long long)p->m.cpu.x[27],
+                        (unsigned)({unsigned char c=0; e2_memory_read(&p->m.mem, p->m.cpu.x[25]+p->m.cpu.x[21], &c, 1); c;}));
                 np++;
             }
         }
@@ -695,8 +696,12 @@ int main(int argc, char **argv) {
     e2_machine_init(&m, 0, 1 << 20);
 
     char args[16][64]; int nargs = 0;
-    // busybox picks its applet from argv[0]'s basename, so present it as "busybox".
-    snprintf(args[nargs++], sizeof(args[0]), "busybox");
+    // argv[0] must be the program's own name: busybox picks an applet from it and
+    // python prints it in usage text, so a hardcoded name lies to both.
+    {
+        const char *base = strrchr(path, '/');
+        snprintf(args[nargs++], sizeof(args[0]), "%s", base ? base + 1 : path);
+    }
     for (int i = 2; i < argc && nargs < 16; i++)
         snprintf(args[nargs++], sizeof(args[0]), "%s", argv[i]);
     char envs[8][96]; int nenv = 0;
