@@ -235,3 +235,7 @@
 
 /* Sharing the transcript. */
 "Export transcript" = "导出对话";
+
+/* Searching the project list. */
+"Search projects" = "搜索项目";
+"No projects match \"\(query)\"." = "没有匹配 \"\(query)\" 的项目。";

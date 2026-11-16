@@ -12,6 +12,18 @@ struct ProjectsView: View {
     @State private var showImporter = false
     @State private var importMode: ImportMode = .copy
     @State private var projectToDelete: ProjectRecord?
+    @State private var query = ""
+
+    /// Projects matching the search field. With many projects the list was a
+    /// scroll with no way to aim at one, which is the point at which a list
+    /// stops being usable rather than merely long.
+    private var visibleProjects: [ProjectRecord] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return projectStore.projects }
+        return projectStore.projects.filter {
+            $0.name.localizedCaseInsensitiveContains(trimmed)
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -36,6 +48,8 @@ struct ProjectsView: View {
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
+            .searchable(text: $query, prompt: Text("Search projects"))
+            .autocorrectionDisabled()
             .sheet(isPresented: $showSettings) {
                 SettingsView()
                     .environmentObject(appState.settings)
@@ -193,12 +207,20 @@ struct ProjectsView: View {
             if projectStore.projects.isEmpty {
                 emptyProjects
                     .pocketCard(padding: PocketSpacing.lg)
+            } else if visibleProjects.isEmpty {
+                // Distinguish "nothing matches the search" from "no projects":
+                // showing the empty-projects card here would be a lie.
+                Text("No projects match \"\(query)\".")
+                    .font(.subheadline)
+                    .foregroundStyle(PocketTheme.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .pocketCard(padding: PocketSpacing.lg)
             } else {
                 // The rows sit inside one card rather than floating on the
                 // canvas: a plain list on a gradient has no grouping at all,
                 // which is what made this screen read as unfinished.
                 VStack(spacing: 0) {
-                    ForEach(projectStore.projects) { project in
+                    ForEach(visibleProjects) { project in
                         Button {
                             appState.open(project)
                         } label: {
@@ -214,7 +236,7 @@ struct ProjectsView: View {
                             }
                         }
 
-                        if project.id != projectStore.projects.last?.id {
+                        if project.id != visibleProjects.last?.id {
                             Divider()
                                 .overlay(PocketTheme.stroke.opacity(0.6))
                                 .padding(.leading, PocketSpacing.lg)
