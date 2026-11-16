@@ -89,6 +89,23 @@ echo abc | rev
 echo a b c | awk '{print NF, $NF}'
 printf 'x\n' | tr x y
 echo test | wc -c
+awk 'BEGIN{print int(3.9), int(-3.9), int(0.5)}'
+awk 'BEGIN{print 7%3, 7%2, -7%3}'
+awk 'BEGIN{printf "%d %d\n", 7/2, 8/2}'
+awk 'BEGIN{x="5"; print x+1, x*2}'
+awk 'BEGIN{print substr("hello", 2, 3), length("hello")}'
+awk 'BEGIN{s="a,b,c"; n=split(s,p,","); print n, p[1], p[3]}'
+awk 'BEGIN{print toupper("ab"), tolower("CD")}'
+awk 'BEGIN{printf "%s|%5s|%-5s|\n", "x", "y", "z"}'
+awk 'BEGIN{printf "%o %x %X\n", 8, 255, 255}'
+awk 'BEGIN{print index("hello","ll"), match("abc", /b/)}'
+awk 'BEGIN{print sprintf("%.3f", 1/3)}'
+awk 'BEGIN{a["k"]=1; a["j"]=2; for (i in a) print i, a[i]}'
+awk 'BEGIN{print (1<2), (2<1)}'
+awk 'BEGIN{print length()}'
+awk 'NR==2 {print $0}' /tmp/dta
+awk '{print NR": "$0}' /tmp/dta
+awk 'END{print NR, NF}' /tmp/dta
 EOF
 echo "diff test: $pass same, $fail different"
 [ "$fail" -eq 0 ]
