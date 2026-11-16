@@ -63,18 +63,44 @@ typedef struct {
     int syscall_count;
 } capture;
 
-static long capture_write(void *ctx, int fd, const void *buf, size_t len) {
-    capture *c = (capture *)ctx;
-    if (fd != 1 && fd != 2) {
-        return -9;  // EBADF
+/// Memory-backed stand-in for the host file layer. Output goes to the capture
+/// buffer; input files are not needed by these tests yet.
+static long test_file_write(void *ctx, int fd, const void *buf, size_t len, long long offset) {
+    (void)fd; (void)offset;
+    capture *cap = (capture *)ctx;
+    if (len > sizeof(cap->out) - 1 - cap->out_len) {
+        len = sizeof(cap->out) - 1 - cap->out_len;
     }
-    if (c->out_len + len < sizeof(c->out)) {
-        memcpy(c->out + c->out_len, buf, len);
-        c->out_len += len;
-        c->out[c->out_len] = '\0';
-    }
+    memcpy(cap->out + cap->out_len, buf, len);
+    cap->out_len += len;
+    cap->out[cap->out_len] = 0;
+    cap->syscall_count++;
     return (long)len;
 }
+static long test_file_read(void *ctx, int fd, void *buf, size_t len, long long offset) {
+    (void)ctx; (void)fd; (void)buf; (void)len; (void)offset;
+    return 0;
+}
+static int test_file_open(void *ctx, const char *path, int flags, int mode) {
+    (void)ctx; (void)path; (void)flags; (void)mode;
+    return -2;  // ENOENT
+}
+static int test_file_close(void *ctx, int fd) { (void)ctx; (void)fd; return 0; }
+static int test_file_stat(void *ctx, int fd, void *buf, size_t buflen) {
+    (void)ctx; (void)fd; (void)buf; (void)buflen;
+    return -9;  // EBADF
+}
+static long long test_clock_ns(void *ctx) { (void)ctx; return 0; }
+
+static const e2_file_ops test_files = {
+    .open = test_file_open,
+    .read = test_file_read,
+    .write = test_file_write,
+    .close = test_file_close,
+    .stat = test_file_stat,
+    .clock_ns = test_clock_ns,
+};
+
 
 static void capture_exit(void *ctx, int status) {
     capture *c = (capture *)ctx;
@@ -316,7 +342,7 @@ static void test_hello_world(void) {
     load_program(&m, code, sizeof(code) / sizeof(code[0]));
 
     capture cap = {0};
-    e2_syscall_env env = {.write = capture_write, .exit = capture_exit, .ctx = &cap};
+    e2_syscall_env env = {.exit = capture_exit, .files = &test_files, .ctx = &cap};
     e2_status st = run_program(&m, &env, 100);
 
     CHECK(st == E2_HALTED, "expected halt, got %s", e2_status_name(st));
@@ -334,7 +360,7 @@ static void test_exit_status(void) {
     load_program(&m, code, sizeof(code) / sizeof(code[0]));
 
     capture cap = {0};
-    e2_syscall_env env = {.write = capture_write, .exit = capture_exit, .ctx = &cap};
+    e2_syscall_env env = {.exit = capture_exit, .files = &test_files, .ctx = &cap};
 
     e2_status st = run_program(&m, &env, 100);
     CHECK(st == E2_HALTED, "expected halt, got %s", e2_status_name(st));
@@ -351,7 +377,7 @@ static void test_unknown_syscall(void) {
     load_program(&m, code, sizeof(code) / sizeof(code[0]));
 
     capture cap = {0};
-    e2_syscall_env env = {.write = capture_write, .exit = capture_exit, .ctx = &cap};
+    e2_syscall_env env = {.exit = capture_exit, .files = &test_files, .ctx = &cap};
     e2_status st = run_program(&m, &env, 10);
     CHECK(st != E2_HALTED, "should keep running after ENOSYS");
     CHECK((int64_t)m.cpu.x[0] == -38, "x0 = %lld, want -ENOSYS(-38)",
@@ -386,7 +412,7 @@ static void test_load_real_elf(void) {
 
     if (lr == E2_LOAD_OK) {
         capture cap = {0};
-        e2_syscall_env env = {.write = capture_write, .exit = capture_exit, .ctx = &cap};
+        e2_syscall_env env = {.exit = capture_exit, .files = &test_files, .ctx = &cap};
         e2_status st = run_program(&m, &env, 1000);
         CHECK(st == E2_HALTED, "expected halt, got %s (%s)", e2_status_name(st),
               m.ctx.reason ? m.ctx.reason : "-");
@@ -424,7 +450,7 @@ static void test_recursive_fib_elf(void) {
 
     if (lr == E2_LOAD_OK) {
         capture cap = {0};
-        e2_syscall_env env = {.write = capture_write, .exit = capture_exit, .ctx = &cap};
+        e2_syscall_env env = {.exit = capture_exit, .files = &test_files, .ctx = &cap};
         e2_status st = run_program(&m, &env, 2000000);
         CHECK(st == E2_HALTED, "expected halt, got %s (%s)", e2_status_name(st),
               m.ctx.reason ? m.ctx.reason : "-");
@@ -463,7 +489,7 @@ static void test_simd_memset_elf(void) {
 
     if (lr == E2_LOAD_OK) {
         capture cap = {0};
-        e2_syscall_env env = {.write = capture_write, .exit = capture_exit, .ctx = &cap};
+        e2_syscall_env env = {.exit = capture_exit, .files = &test_files, .ctx = &cap};
         e2_status st = run_program(&m, &env, 10000);
         CHECK(st == E2_HALTED, "expected halt, got %s (%s)", e2_status_name(st),
               m.ctx.reason ? m.ctx.reason : "-");
@@ -508,7 +534,7 @@ static void test_compiled_c_program(void) {
 
     if (lr == E2_LOAD_OK) {
         capture cap = {0};
-        e2_syscall_env env = {.write = capture_write, .exit = capture_exit, .ctx = &cap};
+        e2_syscall_env env = {.exit = capture_exit, .files = &test_files, .ctx = &cap};
         e2_status st = run_program(&m, &env, 500000);
         CHECK(st == E2_HALTED, "expected halt, got %s (%s)", e2_status_name(st),
               m.ctx.reason ? m.ctx.reason : "-");
@@ -556,7 +582,7 @@ static void test_function_calls(void) {
 
     if (lr == E2_LOAD_OK) {
         capture cap = {0};
-        e2_syscall_env env = {.write = capture_write, .exit = capture_exit, .ctx = &cap};
+        e2_syscall_env env = {.exit = capture_exit, .files = &test_files, .ctx = &cap};
         e2_status st = run_program(&m, &env, 100000);
         CHECK(st == E2_HALTED, "expected halt, got %s (%s)", e2_status_name(st),
               m.ctx.reason ? m.ctx.reason : "-");
@@ -598,7 +624,7 @@ static void test_multiplication(void) {
 
     if (lr == E2_LOAD_OK) {
         capture cap = {0};
-        e2_syscall_env env = {.write = capture_write, .exit = capture_exit, .ctx = &cap};
+        e2_syscall_env env = {.exit = capture_exit, .files = &test_files, .ctx = &cap};
         e2_status st = run_program(&m, &env, 100000);
         CHECK(st == E2_HALTED, "expected halt, got %s (%s)", e2_status_name(st),
               m.ctx.reason ? m.ctx.reason : "-");
