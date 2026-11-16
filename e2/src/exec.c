@@ -627,7 +627,7 @@ e2_status e2_step(e2_machine *machine) {
     // --- SIMD: DUP (general) ---
     // `dup v0.16b, w1` is the first instruction of musl's memset, so this is the
     // entry point for vector support.
-    if ((insn & 0x9FF00C00u) == 0x0E000C00u) {
+    if ((insn & 0x9FF0FC00u) == 0x0E000C00u) {
         const bool q = BIT(insn, 30) != 0;
         const unsigned imm5 = BITS(insn, 20, 16);
         const unsigned rn_v = BITS(insn, 9, 5);
