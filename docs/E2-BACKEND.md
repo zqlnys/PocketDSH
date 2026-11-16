@@ -353,7 +353,22 @@ E2 : 9,8,7,6
 
 （`HASZERO(x) = (x - ONES) & ~x & HIGHS` 单独验证也与主机一致。）
 
-所以算法本身没问题，是 busybox 里那份 strlen 的实现走了别的路径。下一步：反汇编 busybox 的 strlen，看它实际用的是哪套代码。
+**根因找到了：logical immediate 的 `Rn=31` 被当成 SP 读取。**
+
+`mov xD, #imm` 编码为 `ORR Xd, XZR, #imm`，`Rn=31` 应为 **XZR**。但实现里用了 `e2_read_sp`，于是每条常量加载都算成 `sp | mask`。
+
+追踪链条：
+
+1. getopt32 用 `mov x4, #0xfefefefefefefefe` 构造 `ONES`
+2. 该常量实际得到 `0xfefefefefffffeff`（SP 被 OR 进去）
+3. `HASZERO` 因此漏掉内嵌的 NUL
+4. `strlen` 一路数到下一个字符串结尾，返回 35
+5. 长选项的 `val` 读到第二项，`0xff` 从未注册
+6. 互补选项扫描拒绝 `0xff` → `NO OPT`
+
+修复并验证：同一指令序列现在得到 `0xfefefefefefefefe`。
+
+`busybox ls` 从 15,401 条指令推进到 **99,917** 条。
 
 另一个纠正：被拒绝的字符是 **`0xff`**，不是空格——终端把它渲染成了不可见字符，导致前一轮在字符串里找一个根本不存在的空格。
 
