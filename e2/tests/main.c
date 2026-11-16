@@ -1087,6 +1087,47 @@ static void test_scalar_immediates(void) {
         }
     }
 
+    {
+        // shl d1, d1, #52 - SIMD shift by immediate. printf scales a mantissa
+        // with it, so getting the (imm - esize) rule wrong shows up as a wrong
+        // decimal rather than as a crash.
+        e2_machine m;
+        e2_machine_init(&m, 0, 1 << 20);
+        const uint64_t at = 0x30000000ULL;
+        e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+        uint32_t insn = 0x5F745400u;   // shl d0, d0, #52
+        e2_memory_write(&m.mem, at, &insn, 4);
+        m.cpu.pc = at;
+        m.cpu.v[0][0] = 1;
+        e2_step(&m);
+        CHECK(m.cpu.v[0][0] == (1ULL << 52), "shl d0, d0, #52 shifts by imm minus element size");
+
+        // ushr d0, d0, #4 - same family, logical right shift
+        uint32_t ushr = 0x7F7C0400u;
+        e2_memory_write(&m.mem, at, &ushr, 4);
+        m.cpu.pc = at;
+        m.cpu.v[0][0] = 0x80;
+        e2_step(&m);
+        CHECK(m.cpu.v[0][0] == 0x8, "ushr d0, d0, #4 shifts logically");
+        e2_memory_destroy(&m.mem);
+    }
+    {
+        // scvtf d0, w0, #2 - integer scaled down by 2^fbits. `%g` needs it.
+        e2_machine m;
+        e2_machine_init(&m, 0, 1 << 20);
+        const uint64_t at = 0x30000000ULL;
+        e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+        uint32_t insn = 0x1E42F800u;
+        e2_memory_write(&m.mem, at, &insn, 4);
+        m.cpu.pc = at;
+        m.cpu.x[0] = 5;
+        e2_step(&m);
+        double got;
+        memcpy(&got, &m.cpu.v[0][0], 8);
+        CHECK(got == 1.25, "scvtf d0, w0, #2 divides by four");
+        e2_memory_destroy(&m.mem);
+    }
+
     // UMOV moves a vector element into a general register. musl's memset does
     // `mov x1, v0.d[0]` to materialise the replicated byte pattern, so a broken
     // UMOV silently turned every memset into a zero fill. It used to decode as

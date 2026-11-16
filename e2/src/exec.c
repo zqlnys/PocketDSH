@@ -855,6 +855,133 @@ e2_status e2_step(e2_machine *machine) {
     // Python's number formatting does its arithmetic through these. Host float
     // and double arithmetic follows the same IEEE rules including NaN and
     // signed zero, so the operands are converted and the result stored back.
+    // --- Integer to floating point, fixed point (SCVTF/UCVTF with #fbits) ---
+    // `%g` on a small number reaches `scvtf d0, w0, #2`: the integer is scaled
+    // down by 2^fbits, and fbits is encoded as (64 - fbits) in bits 15-10.
+    if ((insn & 0xFF3F0000u) == 0x1E020000u || (insn & 0xFF3F0000u) == 0x1E030000u) {
+        const bool is_unsigned = BIT(insn, 16) != 0;
+        const bool from_64 = BIT(insn, 31) != 0;
+        const bool single = (BIT(insn, 22) == 0);
+        const unsigned rn2 = BITS(insn, 9, 5);
+        const unsigned rd2 = BITS(insn, 4, 0);
+        const unsigned fbits = 64u - BITS(insn, 15, 10);
+        const double scale = (fbits == 0) ? 1.0 : (double)(1ULL << fbits);
+        double v;
+        if (is_unsigned) {
+            const uint64_t raw = e2_read_xzr(cpu, rn2);
+            v = from_64 ? (double)raw : (double)(uint32_t)raw;
+        } else {
+            const uint64_t raw = e2_read_xzr(cpu, rn2);
+            v = from_64 ? (double)(int64_t)raw
+                        : (double)(int32_t)(uint32_t)raw;
+        }
+        v /= scale;
+        if (single) {
+            const float f = (float)v;
+            uint32_t raw;
+            memcpy(&raw, &f, 4);
+            cpu->v[rd2][0] = (cpu->v[rd2][0] & ~0xFFFFFFFFULL) | raw;
+        } else {
+            memcpy(&cpu->v[rd2][0], &v, 8);
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
+    // --- SIMD shift by immediate: SHL / SSHR / USHR ---
+    // printf's float formatting scales mantissas with `shl d1, d1, #52`. The
+    // element size lives in immh, so the shift amount is (imm - element size)
+    // rather than the raw immediate.
+    // immh == 0000 is not a shift by immediate at all - that encoding belongs to
+    // movi/mvni, which share this mask. Requiring it non-zero is the distinction
+    // the architecture itself uses.
+    // Bit 30 is set in every form of this family and clear in the FMADD
+    // encodings that share the mask; immh == 0000 is movi/mvni.
+    if ((insn & 0x8F000400u) == 0x0F000400u && BIT(insn, 30) != 0 &&
+        BITS(insn, 22, 19) != 0) {
+        const bool u = BIT(insn, 29) != 0;
+        const bool scalar = BIT(insn, 28) != 0;
+        const unsigned opcode = BITS(insn, 15, 11);
+        const unsigned imm = (BITS(insn, 22, 16));
+        // The mask is a family marker, not an opcode test: FMADD and the
+        // widening shifts share it. Claim the instruction only when the opcode
+        // is one of ours, and otherwise fall through so their own rules run -
+        // claiming them here turned a working fmadd into an error.
+        const bool is_shl = (!u && opcode == 0x0A);
+        const bool is_sshr = (!u && opcode == 0x00);
+        const bool is_ushr = (u && opcode == 0x00);
+        if (!is_shl && !is_sshr && !is_ushr) {
+            goto not_a_shift;
+        }
+        unsigned esize;
+        if (BIT(insn, 22)) esize = 64;
+        else if (BIT(insn, 21)) esize = 32;
+        else if (BIT(insn, 20)) esize = 16;
+        else esize = 8;
+        // Left and right shifts pack the amount differently: SHL stores
+        // (esize + shift), the right shifts store (2*esize - shift). Treating
+        // both as (imm - esize) turned `ushr d0, d0, #4` into a shift by 60.
+        const unsigned shift = is_shl ? (imm - esize) : (2u * esize - imm);
+        const unsigned rd2 = BITS(insn, 4, 0);
+        const unsigned rn2 = BITS(insn, 9, 5);
+        // Shifting everything out is legal and yields zero; it is not an error.
+        const unsigned eff = (shift >= esize) ? esize : shift;
+        const uint64_t mask = (esize == 64) ? ~0ULL : ((1ULL << esize) - 1);
+        const uint64_t src_lo = cpu->v[rn2][0];
+        const uint64_t src_hi = cpu->v[rn2][1];
+        if (scalar) {
+            const uint64_t lane = src_lo & mask;
+            uint64_t out;
+            if (!u && opcode == 0x0A) {          // SHL
+                out = (eff >= esize) ? 0 : ((lane << eff) & mask);
+            } else if (!u && opcode == 0x00) {   // SSHR
+                const int64_t signed_lane =
+                    (esize == 64) ? (int64_t)lane
+                                  : (int64_t)((lane ^ (1ULL << (esize - 1))) - (1ULL << (esize - 1)));
+                out = (uint64_t)(signed_lane >> eff) & mask;
+            } else if (u && opcode == 0x00) {    // USHR
+                out = (lane >> eff) & mask;
+            } else {
+                goto not_a_shift;
+            }
+            cpu->v[rd2][0] = out;
+            cpu->v[rd2][1] = 0;
+        } else {
+            uint64_t out_lo = 0, out_hi = 0;
+            const unsigned per_half = (esize == 64) ? 1u : (64u / esize);
+            for (unsigned h = 0; h < 2; h++) {
+                const uint64_t src = (h == 0) ? src_lo : src_hi;
+                uint64_t acc = 0;
+                for (unsigned l = 0; l < per_half; l++) {
+                    const unsigned bit = l * esize;
+                    const uint64_t lane = (src >> bit) & mask;
+                    uint64_t res;
+                    if (!u && opcode == 0x0A) {
+                        res = (eff >= esize) ? 0 : ((lane << eff) & mask);
+                    } else if (!u && opcode == 0x00) {
+                        const int64_t signed_lane =
+                            (esize == 64) ? (int64_t)lane
+                                          : (int64_t)((lane ^ (1ULL << (esize - 1))) - (1ULL << (esize - 1)));
+                        res = (uint64_t)(signed_lane >> eff) & mask;
+                    } else if (u && opcode == 0x00) {
+                        res = (lane >> eff) & mask;
+                    } else {
+                        goto not_a_shift;
+                    }
+                    acc |= res << bit;
+                }
+                if (h == 0) out_lo = acc; else out_hi = acc;
+            }
+            cpu->v[rd2][0] = out_lo;
+            cpu->v[rd2][1] = out_hi;
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+not_a_shift:;
+
     // --- FP to integer, written back into an FP register ---
     // Distinct from `fcvtzs x0, d0` (which targets a general register): these
     // convert to an integer and store the result as a floating-point value.

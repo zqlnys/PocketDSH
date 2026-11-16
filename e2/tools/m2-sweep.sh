@@ -72,6 +72,9 @@ date
 printf %d 42
 printf %05d 42
 printf %x 255
+printf '%.2f\n' 3.14159
+printf '%e\n' 1234.5
+printf '%g\n' 0.000123
 od -An -tu1 /dev/null
 md5sum /dev/null
 sha256sum /dev/null

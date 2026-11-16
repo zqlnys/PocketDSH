@@ -57,6 +57,8 @@ RULES = [
     # one-source group; masking both out merged six different conversions into
     # one key the first time this was written.
     ("FP to int (in FP reg)", 0xFFBFFC00, 0x5EA1B800),
+    ("SIMD shift immediate", 0x8F000400, 0x0F000400),
+    ("Int to FP fixed point", 0xFF3F0000, 0x1E020000),
 ]
 
 # llvm reports "unknown" for words that are data rather than instructions; a
@@ -106,6 +108,11 @@ FAMILY = {
     # stgp shares the pair encoding space; without MTE it behaves as stp, which
     # is what the handler does, so it is listed rather than reported.
     "LD/ST pair general": {"ldp", "stp", "ldpsw", "ldnp", "stnp", "stgp"},
+    "SIMD shift immediate": {"shl", "sshr", "ushr", "sli", "sri", "sri", "shrn",
+                              "sshr", "ushr", "ssra", "usra", "srsra", "ursra",
+                              "sri", "sli", "sqshl", "uqshl", "sqshrn", "uqshrn",
+                              "shll", "sshll", "ushll", "sqshlu", "scvtf", "ucvtf"},
+    "Int to FP fixed point": {"scvtf", "ucvtf"},
     "FP to int (in FP reg)": {"fcvtzs", "fcvtzu", "fcvtms", "fcvtps", "fcvtns",
                               "fcvtas", "fcvtmu", "fcvtpu", "fcvtnu", "fcvtau",
                               "fcvt"},
@@ -149,8 +156,20 @@ def main() -> int:
         if name is None:
             continue
         for rule, mask, val in RULES:
-            if (w & mask) == val:
-                by_rule[rule][name] += 1
+            if (w & mask) != val:
+                continue
+            # The shift-by-immediate family is only claimed when immh != 0;
+            # movi/mvni share the mask with immh == 0. Without this the checker
+            # reports those as a loose rule when the decoder already excludes
+            # them, and a checker that cries wolf gets ignored.
+            if rule == "SIMD shift immediate":
+                if ((w >> 30) & 1) == 0 or ((w >> 19) & 0xF) == 0:
+                    continue
+                # The decoder only claims SHL/SSHR/USHR; every other opcode in
+                # the family falls through to its own rule.
+                if ((w >> 11) & 0x1F) not in (0x0A, 0x00):
+                    continue
+            by_rule[rule][name] += 1
 
     bad = 0
     for rule, _mask, _val in RULES:
