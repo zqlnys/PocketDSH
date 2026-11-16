@@ -115,15 +115,26 @@ int e2_memory_map_any(e2_memory *mem, size_t size, int prot, uint64_t *base_out)
 }
 
 int e2_memory_protect(e2_memory *mem, uint64_t addr, size_t size, int prot) {
-    // Protection is advisory in this model: regions are allocated as host pages
-    // and the guest cannot observe host permissions. Both the loader and the
-    // guest's mprotect rely on this being a no-op that succeeds.
-    (void)prot;
     if (size == 0) {
         return 0;
     }
-    const e2_region *r = find(mem, addr, size);
-    return r == NULL ? -1 : 0;
+    // Apply the requested protection to every region the range touches. Treating
+    // this as advisory hid a real class of bug: a stray write into .rodata
+    // silently corrupted constant tables (string literals included), and the
+    // symptom appeared far away as nonsense option parsing.
+    size_t done = 0;
+    while (done < size) {
+        const uint64_t here = addr + done;
+        const e2_region *r = region_at(mem, here);
+        if (r == NULL) {
+            return -1;
+        }
+        const size_t avail = (size_t)(r->base + r->size - here);
+        e2_region *writable = (e2_region *)r;
+        writable->prot = prot;
+        done += avail < (size - done) ? avail : (size - done);
+    }
+    return 0;
 }
 
 /// Host pointer for exactly this access, or NULL when it crosses a boundary or

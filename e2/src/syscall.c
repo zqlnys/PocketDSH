@@ -339,11 +339,12 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             if (prot & 0x1) e2_prot |= E2_PROT_READ;
             if (prot & 0x2) e2_prot |= E2_PROT_WRITE;
             if (prot & 0x4) e2_prot |= E2_PROT_EXEC;
-            // Always grant write. The guest's mprotect is advisory here, and the
-            // loader must be able to populate text through a mapping it asked for
-            // as R+X; on a real kernel that goes through a writable private
-            // mapping followed by mprotect.
-            e2_prot |= E2_PROT_WRITE;
+            // The region is created writable so the caller can populate it, then
+            // narrowed to what was asked for. mprotect is now honoured, so a
+            // guest that writes where it declared read-only will fault here
+            // instead of silently corrupting its own constants.
+            const int final_prot = e2_prot | E2_PROT_WRITE;
+            e2_prot = final_prot;
 
             const int mmap_flags = (int)m->cpu.x[3];
             const uint64_t hint = a0;
