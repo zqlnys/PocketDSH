@@ -525,6 +525,10 @@ uint64_t g_dbg_pc;
 // between runs, which made several stack investigations report a write in one
 // run and nothing in the next for the very same logical slot.
 uint64_t g_dbg_sp;
+// One counter across all processes. Per-process instruction counts cannot order
+// events that happen in different processes, which is exactly what pipeline and
+// scheduling questions need.
+unsigned long long g_global_step;
 uint64_t g_dbg_pc2;
 static const char *g_self_path = NULL;
 
@@ -1457,6 +1461,7 @@ static int run_proc(int idx) {
         if (g_shadow_on) {
             if (e2_memory_read(&p->m.mem, pre_pc, &pre_insn, 4) != 0) pre_insn = 0;
         }
+        g_global_step++;
         e2_status st = e2_step(&p->m);
         if (g_shadow_on) {
             const uint32_t w = pre_insn;
