@@ -72,6 +72,8 @@ final class ToolExecutor {
                 return try prepareMessage(arguments)
             case ToolNames.prepareCall:
                 return try prepareCall(arguments)
+            case ToolNames.fetchURL:
+                return try await fetchURL(arguments)
             default:
                 return .failure("Unknown tool: \(name)")
             }
@@ -222,6 +224,89 @@ final class ToolExecutor {
         guard !result.isError else { return result }
         return .success("Linux output (Tier C):\n\(result.content)")
     }
+    /// Fetch a URL and return readable text.
+    ///
+    /// The desktop harness hands this job to a separate fetch layer; a phone can
+    /// do a plain GET, which is what reading documentation needs. HTML is
+    /// reduced to text here rather than returned raw, because the model spends
+    /// its whole context on markup otherwise.
+    private func fetchURL(_ arguments: [String: JSONValue]) async throws -> ToolExecutionResult {
+        guard let raw = arguments["url"]?.stringValue else {
+            return .failure("fetch_url requires url.")
+        }
+        guard let url = URL(string: raw),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else {
+            return .failure("fetch_url needs an absolute http or https URL.")
+        }
+        let limit = min(max(arguments["max_characters"]?.intValue ?? 20_000, 1_000), 200_000)
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 20
+        request.httpMethod = "GET"
+        request.setValue("PocketDSH/1.0 (iOS; local agent)", forHTTPHeaderField: "User-Agent")
+        request.setValue("text/html,text/plain;q=0.9,*/*;q=0.5", forHTTPHeaderField: "Accept")
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            return .failure("fetch_url failed: \(error.localizedDescription)")
+        }
+        if Task.isCancelled {
+            return .failure("Cancelled before reading the response.")
+        }
+
+        let http = response as? HTTPURLResponse
+        let status = http?.statusCode ?? 0
+        let mime = http?.mimeType ?? "unknown"
+        let body = String(data: data, encoding: .utf8)
+            ?? String(data: data, encoding: .isoLatin1)
+            ?? ""
+
+        let text = mime.contains("html") ? Self.plainText(fromHTML: body) : body
+        let clipped = text.count > limit ? String(text.prefix(limit)) : text
+
+        var output = "url: \(url.absoluteString)\n"
+        output += "status: \(status)\n"
+        output += "content_type: \(mime)\n"
+        output += "bytes_received: \(data.count)\n"
+        output += "characters: \(text.count)\n"
+        if text.count > limit {
+            output += "note: truncated to \(limit) characters.\n"
+        }
+        output += "-----\n"
+        output += clipped
+        return .success(output)
+    }
+
+    /// Reduce HTML to readable text: drop script and style bodies entirely, turn
+    /// remaining tags into spaces so words do not run together, and collapse the
+    /// whitespace that leaves behind.
+    nonisolated static func plainText(fromHTML html: String) -> String {
+        var text = html
+        text = text.replacingOccurrences(
+            of: "(?is)<script.*?</script>", with: " ", options: .regularExpression)
+        text = text.replacingOccurrences(
+            of: "(?is)<style.*?</style>", with: " ", options: .regularExpression)
+        text = text.replacingOccurrences(
+            of: "(?s)<!--.*?-->", with: " ", options: .regularExpression)
+        text = text.replacingOccurrences(
+            of: "(?s)<[^>]+>", with: " ", options: .regularExpression)
+        for (entity, replacement) in [("&nbsp;", " "), ("&amp;", "&"), ("&lt;", "<"),
+                                      ("&gt;", ">"), ("&quot;", "\""), ("&#39;", "'")] {
+            text = text.replacingOccurrences(of: entity, with: replacement)
+        }
+        text = text.replacingOccurrences(
+            of: "[ \t]+", with: " ", options: .regularExpression)
+        text = text.replacingOccurrences(
+            of: " ?\n ?", with: "\n", options: .regularExpression)
+        text = text.replacingOccurrences(
+            of: "\n{3,}", with: "\n\n", options: .regularExpression)
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private func scheduleAlert(_ arguments: [String: JSONValue]) async throws -> ToolExecutionResult {
         guard let title = arguments["title"]?.stringValue else {
             return .failure("schedule_alert requires title.")

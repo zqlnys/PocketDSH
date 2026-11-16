@@ -13,6 +13,7 @@ final class PocketDSHTests: XCTestCase {
         XCTAssertTrue(names.contains(ToolNames.applyPatch))
         XCTAssertTrue(names.contains(ToolNames.runLua))
         XCTAssertTrue(names.contains(ToolNames.runLinux))
+        XCTAssertTrue(names.contains(ToolNames.fetchURL))
     }
 
     func testToolSchemasAreObjectsWithRequiredFields() {
@@ -31,6 +32,20 @@ final class PocketDSHTests: XCTestCase {
         XCTAssertTrue(prompt.contains("iPhone"))
         XCTAssertTrue(prompt.contains("real files"))
         XCTAssertTrue(prompt.contains("shell commands"))
+    }
+
+    func testHTMLIsReducedToReadableText() {
+        let html = """
+        <html><head><style>body{color:red}</style>
+        <script>var x = 1 < 2;</script></head>
+        <body><h1>Title</h1><p>Some&nbsp;text &amp; more</p></body></html>
+        """
+        let text = ToolExecutor.plainText(fromHTML: html)
+        XCTAssertTrue(text.contains("Title"))
+        XCTAssertTrue(text.contains("Some text & more"))
+        XCTAssertFalse(text.contains("<h1>"))
+        XCTAssertFalse(text.contains("var x"))
+        XCTAssertFalse(text.contains("color:red"))
     }
 
     func testEmbeddedExamplePluginIsValidAndHasRealTools() throws {

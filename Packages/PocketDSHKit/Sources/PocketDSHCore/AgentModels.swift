@@ -185,4 +185,8 @@ public enum ToolNames {
     public static let scheduleAlert = "schedule_alert"
     public static let prepareMessage = "prepare_message"
     public static let prepareCall = "prepare_call"
+    /// Fetch a URL and return its text. The desktop harness has web_search and
+    /// web_fetch; this is the part of that which a phone can do without a
+    /// search API key.
+    public static let fetchURL = "fetch_url"
 }
