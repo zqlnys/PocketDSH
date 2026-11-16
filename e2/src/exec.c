@@ -375,7 +375,9 @@ e2_status e2_step(e2_machine *machine) {
             return E2_UNIMPL;
         }
 
-        const uint64_t a = e2_read_sp(cpu, rn) & (is64 ? ~0ULL : 0xFFFFFFFFULL);
+        // The source operand is a general register: Rn=31 is XZR, not SP. Only
+        // the destination (for AND/ORR/EOR) may be SP.
+        const uint64_t a = e2_read_xzr(cpu, rn) & (is64 ? ~0ULL : 0xFFFFFFFFULL);
         uint64_t result;
         switch (opc) {
             case 0: result = a & mask; break;   // AND
