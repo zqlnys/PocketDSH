@@ -93,6 +93,44 @@ static long sys_writev(e2_machine *m, e2_syscall_env *env, int fd, uint64_t iov_
     return total;
 }
 
+/// The read counterpart of `sys_writev`, filling each iovec in turn.
+///
+/// A read stops as soon as one entry returns short or zero: the buffer boundary
+/// is where the data ended, and continuing would read past it. `xxd` and `od`
+/// both reach the file through this.
+static long sys_readv(e2_machine *m, e2_syscall_env *env, int fd, uint64_t iov_addr,
+                      int iov_count) {
+    if (iov_count < 0 || iov_count > 1024) {
+        return -E2_EFAULT;
+    }
+    long total = 0;
+    for (int i = 0; i < iov_count; i++) {
+        struct {
+            uint64_t base;
+            uint64_t len;
+        } iov;
+        if (e2_memory_read(&m->mem, iov_addr + (uint64_t)i * sizeof(iov), &iov, sizeof(iov)) != 0) {
+            return -E2_EFAULT;
+        }
+        if (iov.len == 0) {
+            continue;
+        }
+        uint8_t *dst = e2_memory_host_ptr(&m->mem, iov.base, (size_t)iov.len, E2_PROT_WRITE);
+        if (dst == NULL) {
+            return -E2_EFAULT;
+        }
+        const long got = env->files->read(env->ctx, fd, dst, (size_t)iov.len, -1);
+        if (got < 0) {
+            return total > 0 ? total : got;
+        }
+        total += got;
+        if (got < (long)iov.len) {
+            break;
+        }
+    }
+    return total;
+}
+
 e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
     // One line per syscall, opt-in. Comparing this against qemu's -strace is the
     // fastest way to see which operation a program takes and where the two
@@ -130,6 +168,12 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
                 E2_RETURN(-E2_ENOSYS);
             }
             E2_RETURN(sys_writev(m, env, (int)a0, a1, (int)a2));
+        }
+        case 65: {  // readv
+            if (files == NULL) {
+                E2_RETURN(-E2_ENOSYS);
+            }
+            E2_RETURN(sys_readv(m, env, (int)a0, a1, (int)a2));
         }
         case E2_SYS_read: {
             if (files == NULL) {

@@ -36,6 +36,15 @@ while IFS= read -r cmd; do
         pass=$((pass + 1))
     fi
 done <<'EOF'
+printf 'x1\ny2\nz3\n' > /tmp/m2t; od -c /tmp/m2t
+printf 'x1\ny2\nz3\n' > /tmp/m2t; xxd /tmp/m2t
+printf 'x1\ny2\nz3\n' > /tmp/m2t; cut -c1 /tmp/m2t
+printf 'x1\ny2\nz3\n' > /tmp/m2t; tr -d 1 < /tmp/m2t
+printf 'x1\ny2\nz3\n' > /tmp/m2t; paste -s /tmp/m2t
+printf 'x1\ny2\nz3\n' > /tmp/m2t; sort -r /tmp/m2t
+printf 'x1\ny2\nz3\n' > /tmp/m2t; sort -u /tmp/m2t
+printf 'x1\ny2\nz3\n' > /tmp/m2t; wc -w /tmp/m2t
+printf 'x1\ny2\nz3\n' > /tmp/m2t; grep -E '[xy]' /tmp/m2t
 printf 'a\nb\na\n' > /tmp/m2in; uniq /tmp/m2in
 printf 'a\nb\na\n' > /tmp/m2in; sort /tmp/m2in
 printf 'a\nb\na\n' > /tmp/m2in; comm /tmp/m2in /tmp/m2in
