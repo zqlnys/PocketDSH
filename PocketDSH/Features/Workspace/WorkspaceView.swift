@@ -35,104 +35,43 @@ struct WorkspaceView: View {
     @State private var selection: WorkspaceTab = .agent
 
     var body: some View {
-        HStack(spacing: 0) {
-            rail
+        VStack(spacing: 0) {
+            topBar
             Divider()
                 .overlay(PocketTheme.stroke)
-            VStack(spacing: 0) {
-                topBar
-                Divider()
-                    .overlay(PocketTheme.stroke)
-                detail
-            }
+            detail
         }
         .background(PocketTheme.background)
         .tint(PocketTheme.accent)
     }
 
-    private var rail: some View {
-        VStack(spacing: 6) {
+    /// Project identity and runtime state, plus the way back out. The tier badge
+    /// used to be a bare "A"/"C" beside a 6pt dot in a side rail; it now carries
+    /// the words it always meant.
+    private var topBar: some View {
+        HStack(spacing: PocketSpacing.md) {
             Button {
                 appState.closeWorkspace()
             } label: {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(PocketTheme.primaryText)
-                    .frame(width: 44, height: 40)
+                    .frame(width: 32, height: 32)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close project")
 
             ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: PocketRadius.sm, style: .continuous)
                     .fill(PocketTheme.accent)
-                    .frame(width: 38, height: 38)
-                Text(String(session.project.name.prefix(1)).uppercased())
-                    .font(.system(size: 17, weight: .bold, design: .serif))
+                    .frame(width: 30, height: 30)
+                Text(String(session.project.name.prefix(1)))
+                    .font(PocketTheme.displayFont(size: 15))
                     .foregroundStyle(.white)
             }
-            .padding(.top, PocketSpacing.xs)
 
-            VStack(spacing: 4) {
-                railButton(.agent)
-                railButton(.files)
-                railButton(.changes)
-                railButton(.plugins)
-            }
-            .padding(.top, 14)
-
-            Spacer(minLength: 8)
-
-            Circle()
-                .fill(runtime.jit.isAvailable ? PocketTheme.accent : PocketTheme.amber)
-                .frame(width: 6, height: 6)
-                .padding(.bottom, PocketSpacing.xxs)
-            Text(runtime.activeTier == .tierA ? "A" : "C")
-                .font(.caption2.weight(.bold).monospaced())
-                .foregroundStyle(PocketTheme.secondaryText)
-                .padding(.bottom, PocketSpacing.sm)
-
-            railButton(.settings)
-        }
-        .frame(width: 76)
-        .padding(.top, PocketSpacing.sm)
-        .padding(.bottom, 10)
-        .background(PocketTheme.canvasElevated)
-    }
-
-    private func railButton(_ tab: WorkspaceTab) -> some View {
-        Button {
-            selection = tab
-        } label: {
-            VStack(spacing: 3) {
-                Image(systemName: tab.icon)
-                    .font(.system(size: 16, weight: selection == tab ? .semibold : .regular))
-                Text(NSLocalizedString(tab.title, comment: ""))
-                    .font(.system(size: 8, weight: .semibold))
-            }
-            .foregroundStyle(selection == tab ? PocketTheme.accent : PocketTheme.secondaryText)
-            .frame(width: 58, height: 48)
-            .background {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(selection == tab ? PocketTheme.accent.opacity(0.1) : Color.clear)
-            }
-            .overlay(alignment: .leading) {
-                if selection == tab {
-                    Capsule()
-                        .fill(PocketTheme.accent)
-                        .frame(width: 2, height: 22)
-                        .padding(.leading, PocketSpacing.xxs)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(NSLocalizedString(tab.title, comment: ""))
-    }
-
-    private var topBar: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(session.project.name)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(PocketTheme.primaryText)
@@ -143,33 +82,54 @@ struct WorkspaceView: View {
                     .lineLimit(1)
             }
 
-            Spacer(minLength: 8)
+            Spacer(minLength: PocketSpacing.sm)
+
+            HStack(spacing: PocketSpacing.xs) {
+                Circle()
+                    .fill(runtime.jit.isAvailable ? PocketTheme.accent : PocketTheme.amber)
+                    .frame(width: 6, height: 6)
+                Text(runtime.activeTier == .tierA ? "Tier A" : "Tier C")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(PocketTheme.secondaryText)
+            }
         }
         .padding(.horizontal, PocketSpacing.lg)
         .padding(.vertical, PocketSpacing.sm)
         .background(PocketTheme.surface)
     }
 
-    @ViewBuilder
+    /// A bottom tab bar rather than the 76pt side rail this used to have. On a
+    /// phone the rail consumed a fifth of the width and still had to set its
+    /// labels at 8pt to fit, which is well below what is legible; the tab bar
+    /// gives that width back to the content and labels at a readable size.
     private var detail: some View {
-        switch selection {
-        case .files:
-            FilesView(session: session)
-        case .agent:
+        TabView(selection: $selection) {
             AgentView(
                 session: session,
                 agent: session.agent,
                 onOpenSettings: { selection = .settings },
                 embedded: true
             )
-        case .changes:
+            .tabItem { Label("Agent", systemImage: "sparkles") }
+            .tag(WorkspaceTab.agent)
+
+            FilesView(session: session)
+                .tabItem { Label("Files", systemImage: "folder") }
+                .tag(WorkspaceTab.files)
+
             ChangesView(session: session)
-        case .plugins:
-            NavigationStack {
-                PluginsView()
-            }
-        case .settings:
+                .tabItem { Label("Changes", systemImage: "clock.arrow.circlepath") }
+                .tag(WorkspaceTab.changes)
+
+            // PluginsView has no NavigationStack of its own; it used to inherit
+            // the one wrapping it in the old layout.
+            NavigationStack { PluginsView() }
+                .tabItem { Label("Plugins", systemImage: "puzzlepiece.extension") }
+                .tag(WorkspaceTab.plugins)
+
             SettingsView()
+                .tabItem { Label("Settings", systemImage: "gearshape") }
+                .tag(WorkspaceTab.settings)
         }
     }
 }
