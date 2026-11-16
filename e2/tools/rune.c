@@ -489,6 +489,26 @@ static long p_wait4(void *ctx, int pid, uint64_t status_ptr, int options) {
 static int g_fault = 0;
 static char g_reason[512];
 
+// --- shadow call stack ------------------------------------------------------
+struct shadow_frame { uint64_t call_pc, ret_pc, x0; };
+static struct shadow_frame g_shadow[48];
+static int g_shadow_n;
+static bool g_shadow_on;
+
+static void dump_shadow(const char *why) {
+    if (g_shadow_n == 0) {
+        fprintf(stderr, "[stack] empty (%s)\n", why);
+        return;
+    }
+    fprintf(stderr, "[stack] %d frames at %s (outermost first):\n", g_shadow_n, why);
+    for (int i = 0; i < g_shadow_n; i++) {
+        fprintf(stderr, "   #%-2d caller=0x%llx ret=0x%llx x0_at_entry=0x%llx\n",
+                i, (unsigned long long)g_shadow[i].call_pc,
+                (unsigned long long)g_shadow[i].ret_pc,
+                (unsigned long long)g_shadow[i].x0);
+    }
+}
+
 static int run_proc(int idx) {
     proc_t *p = &procs[idx];
     e2_syscall_env env = {.exit = p_exit, .files = &FS, .ctx = p,
@@ -765,8 +785,71 @@ static int run_proc(int idx) {
                 }
             }
         }
+        if (getenv("E2_TRACE_BSS")) {
+            // .bss must read as zero throughout. Watching one field over time
+            // tells us whether it was never zeroed or written later.
+            static const uint64_t th[5] = {10ULL, 1000ULL, 100000ULL,
+                                           1000000ULL, 11500000ULL};
+            static int ti = 0;
+            while (ti < 5 && p->m.instructions >= th[ti]) {
+                uint64_t a = 0, b = 0;
+                e2_memory_read(&p->m.mem, 0x1062d028ULL, &a, 8);
+                e2_memory_read(&p->m.mem, 0x1062d030ULL, &b, 8);
+                fprintf(stderr, "[bss] instr=%llu +0=0x%llx +8=0x%llx\n",
+                        (unsigned long long)th[ti],
+                        (unsigned long long)a, (unsigned long long)b);
+                ti++;
+            }
+        }
+        if (getenv("E2_TRACE_WATCH") && p->m.instructions < 200000) {
+            // Compare around a single step: whoever changed the word is the
+            // instruction we just executed.
+            static uint64_t last_b = 0;
+            static int armed = 0;
+            static uint64_t prev_pc = 0;
+            static uint32_t prev_insn = 0;
+            uint64_t b = 0;
+            e2_memory_read(&p->m.mem, 0x1062d030ULL, &b, 8);
+            if (armed && b != last_b) {
+                fprintf(stderr, "[watch] instr=%llu executed_pc=0x%llx insn=0x%08x "
+                                "0x%llx -> 0x%llx syscall=%llu a0=0x%llx a1=0x%llx a2=0x%llx a3=0x%llx\n",
+                        (unsigned long long)p->m.instructions,
+                        (unsigned long long)prev_pc, prev_insn,
+                        (unsigned long long)last_b, (unsigned long long)b,
+                        (unsigned long long)p->m.cpu.x[8],
+                        (unsigned long long)p->m.cpu.x[0], (unsigned long long)p->m.cpu.x[1],
+                        (unsigned long long)p->m.cpu.x[2], (unsigned long long)p->m.cpu.x[3]);
+            }
+            last_b = b;
+            armed = 1;
+            prev_pc = p->m.cpu.pc;
+            e2_memory_read(&p->m.mem, p->m.cpu.pc, &prev_insn, 4);
+        }
         const uint64_t pre_pc = p->m.cpu.pc;
+        // Shadow call stack. Chasing a bad argument by re-running with a probe
+        // one frame up, over and over, was the slowest part of the last few
+        // rounds; a rough stack is enough to see who called whom in one run.
+        uint32_t pre_insn = 0;
+        if (g_shadow_on) {
+            if (e2_memory_read(&p->m.mem, pre_pc, &pre_insn, 4) != 0) pre_insn = 0;
+        }
         e2_status st = e2_step(&p->m);
+        if (g_shadow_on) {
+            const uint32_t w = pre_insn;
+            const bool is_bl = (w & 0xFC000000u) == 0x94000000u;
+            const bool is_blr = (w & 0xFFFFFC1Fu) == 0xD63F0000u;
+            const bool is_ret = (w & 0xFFFFFC1Fu) == 0xD65F0000u && ((w >> 5) & 0x1F) == 30;
+            if (is_bl || is_blr) {
+                if (g_shadow_n < 48) {
+                    g_shadow[g_shadow_n].call_pc = pre_pc;
+                    g_shadow[g_shadow_n].ret_pc = pre_pc + 4;
+                    g_shadow[g_shadow_n].x0 = p->m.cpu.x[0];
+                    g_shadow_n++;
+                }
+            } else if (is_ret && g_shadow_n > 0) {
+                g_shadow_n--;
+            }
+        }
         if (getenv("E2_TRACE_AFTER") && pre_pc == 0x50013e94) {
             unsigned char k[8] = {0};
             e2_memory_read(&p->m.mem, 0x1065c050ULL, k, 8);
@@ -850,6 +933,7 @@ static int run_proc(int idx) {
                      (unsigned long long)p->m.cpu.x[30],
                      (unsigned long long)p->m.cpu.sp);
             g_fault = 1;
+            if (getenv("E2_TRACE_STACK")) dump_shadow("fault");
             if (getenv("E2_TRACE_TABLE")) {
                 // Summarise the array the faulting code indexed: a table that is
                 // entirely zero was never filled, whereas a sparse one means a
@@ -928,6 +1012,7 @@ int main(int argc, char **argv) {
     procs[1].ppid = 0;
     procs[1].alive = 1;
     procs[1].m = m;
+    g_shadow_on = getenv("E2_TRACE_STACK") != NULL;
     const int status = run_proc(1);
     (void)status;
     printf("\n[exit %d] instructions=%ld%s%s\n", procs[1].exit_status,

@@ -443,6 +443,13 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
                     if (got < 0) {
                         E2_RETURN(got);
                     }
+                    // A mapping that runs past the end of the file reads as zero
+                    // there; the host read stops at EOF and would otherwise leave
+                    // whatever the region held. This bit the dynamic loader: it
+                    // maps whole files, and the tail must not look like data.
+                    if ((uint64_t)got < length) {
+                        memset(dst + got, 0, (size_t)(length - (uint64_t)got));
+                    }
                 }
             }
             E2_RETURN(base);
