@@ -8,7 +8,7 @@ struct TierCSmokeView: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Tier C smoke test")
                 .font(.system(size: 34, weight: .medium, design: .serif))
-            Text("iSH · Alpine · no JIT")
+            Text("iSH · Alpine · no JIT · persistent shell")
                 .font(.caption.monospaced())
                 .foregroundStyle(PocketTheme.secondaryText)
             ScrollView {
@@ -29,18 +29,16 @@ struct TierCSmokeView: View {
         }
     }
 
-    /// Two independent checks:
+    /// Verification has three layers, from weakest to strongest:
     ///
-    /// 1. stdout capture — what the guest printed inside the observation window.
-    ///    Under i686 emulation a single external command (uname, ls, cat) costs
-    ///    one to three seconds, so only the first command or two reliably make
-    ///    it into the window. The command is therefore ordered with the
-    ///    critical step first.
-    /// 2. host readback — the guest writes a file into /workspace, then the host
-    ///    reads the same path through FileManager. realfs shares inodes with the
-    ///    host, so a successful readback proves the mount is live and writable,
-    ///    independent of capture timing. Readback polls instead of reading once,
-    ///    because the guest shell keeps running after the window expires.
+    /// 1. The shell starts and answers several commands in a row — this is what
+    ///    the old one-shot bridge could not do (its fixed capture window dropped
+    ///    the tail, and it needed a fresh kernel per command).
+    /// 2. Command boundaries come from a sentinel the shell echoes itself, so the
+    ///    last command's output is captured rather than guessed at.
+    /// 3. The guest writes into /workspace and the host reads the same path back
+    ///    through FileManager. realfs shares inodes, so a matching readback
+    ///    proves the mount is a live two-way share.
     private func runSmokeTest() async {
         guard let workspaceURL = appState.activeSession?.rootURL else {
             let result = await appState.linuxRuntime.run(command: "uname -a; cat /etc/alpine-release")
@@ -51,31 +49,38 @@ struct TierCSmokeView: View {
         let probeURL = workspaceURL.appendingPathComponent(".tierc-probe.txt")
         try? FileManager.default.removeItem(at: probeURL)
 
-        // `echo` is a shell builtin, so the write completes without waiting on a
-        // fork/exec. Put it first so it lands even if later commands overrun.
-        let command = "echo tierc-write-ok > /workspace/.tierc-probe.txt; uname -m; ls -la /workspace"
-        let result = await appState.linuxRuntime.run(command: command, workspace: workspaceURL)
-
-        var text = result.content
-        var capacity = (try? FileManager.default.contentsOfDirectory(atPath: workspaceURL.path)) ?? []
-        if !capacity.contains(".tierc-probe.txt") {
-            // The guest shell outlives the capture window; give it room to finish.
-            for _ in 0..<12 {
-                try? await Task.sleep(nanoseconds: 500_000_000)
-                capacity = (try? FileManager.default.contentsOfDirectory(atPath: workspaceURL.path)) ?? []
-                if capacity.contains(".tierc-probe.txt") { break }
-            }
+        let (session, error) = appState.linuxRuntime.makePersistentSession(workspace: workspaceURL)
+        guard let session else {
+            output = "Persistent shell failed to start: \(error)"
+            return
         }
+
+        var text = "Persistent shell started.\n\n"
+        let commands = [
+            "pwd",
+            "echo persistent-shell-alive",
+            "echo tierc-write-ok > /workspace/.tierc-probe.txt",
+            "cat /workspace/.tierc-probe.txt",
+            "uname -m",
+            "ls -la /workspace"
+        ]
+
+        for command in commands {
+            let result = await Task.detached { session.run(command) }.value
+            text += "$ \(command)\n\(result)\n\n"
+        }
+
+        text += "still running: \(session.isRunning ? "yes" : "no")\n"
+        await Task.detached { session.stop() }.value
 
         if let written = try? String(contentsOf: probeURL, encoding: .utf8) {
             let value = written.trimmingCharacters(in: .whitespacesAndNewlines)
-            text += "\n\n[host readback] \(probeURL.lastPathComponent) = \(value)"
+            text += "\n[host readback] \(probeURL.lastPathComponent) = \(value)"
             text += value == "tierc-write-ok"
                 ? "\n[host readback] workspace mount verified: guest write reached the host directory."
                 : "\n[host readback] unexpected content."
         } else {
             text += "\n\n[host readback] \(probeURL.lastPathComponent) missing — guest write did not reach the host directory."
-            text += "\n[host readback] host directory listing: \(capacity.sorted().joined(separator: ", "))"
         }
         try? FileManager.default.removeItem(at: probeURL)
         output = text

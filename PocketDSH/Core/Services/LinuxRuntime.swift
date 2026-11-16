@@ -56,6 +56,17 @@ final class LinuxRuntime {
         )
     }
 
+    /// Opens a long-lived shell on the same prepared rootfs. The caller owns the
+    /// session and must call `stop()`; emulated work blocks, so call off-main.
+    func makePersistentSession(workspace: URL?) -> (session: PersistentShellSession?, error: String) {
+        guard let root = prepareRootfs() else {
+            return (nil, "Tier C rootfs is not available in this build.")
+        }
+        var error = ""
+        let session = PersistentShellSession(rootfs: root, workspace: workspace, error: &error)
+        return (session, error)
+    }
+
     private func prepareRootfs() -> URL? {
         if prepared, let rootfsURL {
             return rootfsURL
