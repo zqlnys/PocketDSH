@@ -908,12 +908,37 @@ ls / cat / wc -c / wc -l / sed -n 1p / grep -F / head -1 / sort / echo
 cat file | grep -F pattern
 ```
 
-### M3 剩余两处缺口
+### M3 完成：描述符生命周期是最后一道坎
+
+管道不通的根因有两处，互相叠加：
+
+1. **fd 0/1/2 被排除在引用计数之外**——而 shell 恰恰把重定向落在这些描述符上，计数永远配不平。
+2. **进程退出时没有释放描述符**——于是管道的写端一直被引用，读端等一个永远不会到来的 EOF。
+
+正确模型是：`fork` 共享打开文件描述并递增引用计数（不是 `dup()`），`close` 递减，`execve` 关闭所有标记 `FD_CLOEXEC` 的描述符——这正是 shell 丢弃不想让子进程保留的那一端的方式。`F_DUPFD_CLOEXEC` 设置该标志，而普通 `F_DUPFD` 不设置，因为 shell 依赖后者跨越 exec 来恢复保存的 stdout。
+
+十四种 shell 形式全部验证通过、输出正确：
+
+```
+echo hello / x=5; echo $x / for-do-done / if-then-fi / case / 函数定义
+echo hi > f; cat f            hi
+echo hi | cat                 hi
+printf 'a\nb\n' | wc -l       2
+ls | wc -l                    17
+ls | head -2                  bin, dev
+ls | sort | head -3           bin, dev, etc
+cat f | grep -F h             h
+printf 'x\ny\n' | sort        x
+```
+
+产生这些结果的测试台已收入仓库：`tools/rune.c`（`make tools/rune`），各调试开关有注释。顺手修正了它与 `e2_file_ops` 不一致的函数签名——**这类签名漂移正是先前静默丢弃 exec 参数的那种错误**。
+
+### 仍未解决
 
 | 现象 | 定位 |
 | --- | --- |
-| `grep PATTERN`（不带 `-F`）在 `0x4c4408` fault | **正则引擎**；`grep -F` 正常，说明不在管道或文件层 |
-| `... \| wc -l` 不打印计数（`wc -l file` 正常） | 该管道形态里只 fork 出一个子进程（35948 条指令、exit 0），另一侧由 shell 自身执行，输出路径待查 |
+| `grep PATTERN`（不带 `-F`）在 `0x4c4408` fault | **正则引擎**内部；`grep -F` 正常，说明不在管道或文件层 |
+| `while read l; do ...; done < file` 无输出 | `read` 内建 + stdin 重定向，尚未定位 |
 
 `ioctl(0, ...)` 在管道上返回 `ENOTTY`（-25）是**正确**行为，不是缺陷。
 
