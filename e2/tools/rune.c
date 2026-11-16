@@ -59,6 +59,7 @@ static long proc_quantum(void) {
 static long g_proc_budget = -1;
 
 static int pump_children_for_tab(int tab);
+static void trace_flush(void);
 // Writing to a pipe whose reader has gone raises SIGPIPE on a real system, and
 // the default action terminates the writer. Without that, `yes | head -1` runs
 // forever: the writer never learns the reader left.
@@ -462,6 +463,7 @@ static void p_exit(void *ctx, int status) {
     fd_table_release(((proc_t *)ctx)->pc.fdtab);
     proc_t *p = ctx;
     p->alive = 0;
+    trace_flush();
     p->exit_status = status;
 }
 
@@ -642,6 +644,24 @@ static void dump_shadow(const char *why) {
                 (unsigned long long)g_shadow[i].ret_pc,
                 (unsigned long long)g_shadow[i].x0);
     }
+}
+
+// Trace capture state lives at file scope so the exit path can flush a
+// partial recording. Making it depend on reaching an exact length meant a
+// run shorter than the requested limit printed nothing at all.
+static uint64_t g_trace_buf[65536];
+static int g_trace_n = 0;
+static int g_trace_recording = 0;
+
+static void trace_flush(void) {
+    if (g_trace_recording != 1) {
+        return;
+    }
+    g_trace_recording = 2;
+    for (int q = 0; q < g_trace_n; q++) {
+        fprintf(stdout, "%llx\n", (unsigned long long)g_trace_buf[q]);
+    }
+    fflush(stdout);
 }
 
 static int run_proc(int idx) {
@@ -1242,26 +1262,24 @@ static int run_proc(int idx) {
                 fprintf(stderr, "\"\n");
             }
         }
-        if (getenv("E2_TRACE_PCS")) {
-            // Record the instruction path from a chosen address, so it can be
-            // diffed against the same window taken from qemu's single-step.
-            static int recording = 0;
-            static uint64_t buf[8192];
-            static int n = 0;
+        if (getenv("E2_TRACE_PCS") && g_trace_recording != 2) {
+            // Record the instruction path from a chosen address so it can be
+            // compared with the same window taken from qemu.
             const uint64_t from = strtoull(getenv("E2_TRACE_PCS"), NULL, 0);
-            if (!recording && p->m.cpu.pc == from) recording = 1;
-            if (recording && n < (int)(sizeof(buf) / sizeof(buf[0]))) {
-                // Dumping registers from inside the recording pass keeps them on
-                // the same iteration as the trace index, which a separate probe
-                // does not: it fires on whichever visit happens to come first.
+            if (g_trace_recording == 0 && p->m.cpu.pc == from) {
+                g_trace_recording = 1;
+            }
+            if (g_trace_recording == 1) {
+                static int limit = -1;
+                if (limit < 0) {
+                    const char *ls = getenv("E2_TRACE_PCS_LIMIT");
+                    limit = ls ? atoi(ls) : 512;
+                    if (limit <= 0 || limit > (int)(sizeof(g_trace_buf) / sizeof(g_trace_buf[0]))) {
+                        limit = (int)(sizeof(g_trace_buf) / sizeof(g_trace_buf[0]));
+                    }
+                }
                 const char *watch = getenv("E2_TRACE_AT2");
-                // E2_TRACE_AT2 pins a register dump to the trace index, which is the only
-                // way to be sure it is the same iteration the path trace recorded.
-                // The window is a guard against noise, not a fixed range.
-                if (watch && p->m.cpu.pc == strtoull(watch, NULL, 0) && n < 512) {
-                    // The pointers matter as much as the registers: comparing
-                    // two implementations is mostly comparing what they point
-                    // at, and a bare address tells you nothing.
+                if (watch && p->m.cpu.pc == strtoull(watch, NULL, 0)) {
                     char ta[32] = {0}, tb[32] = {0};
                     e2_memory_read(&p->m.mem, p->m.cpu.x[0], ta, sizeof(ta) - 1);
                     e2_memory_read(&p->m.mem, p->m.cpu.x[1], tb, sizeof(tb) - 1);
@@ -1269,13 +1287,10 @@ static int run_proc(int idx) {
                         if (ta[q] && (ta[q] < 0x20 || ta[q] > 0x7e)) ta[q] = '.';
                         if (tb[q] && (tb[q] < 0x20 || tb[q] > 0x7e)) tb[q] = '.';
                     }
-                    char sa[25], sb[25];
-                    snprintf(sa, sizeof(sa), "%s", ta);
-                    snprintf(sb, sizeof(sb), "%s", tb);
                     fprintf(stderr,
-                            "[at2] idx=%d x0=\"%s\" x1=\"%s\" "
-                            "x2=0x%llx x3=0x%llx x4=0x%llx x5=0x%llx x6=0x%llx x7=0x%llx\n",
-                            n, sa, sb,
+                            "[at2] idx=%d x0=\"%s\" x1=\"%s\" x2=0x%llx x3=0x%llx "
+                            "x4=0x%llx x5=0x%llx x6=0x%llx x7=0x%llx\n",
+                            g_trace_n, ta, tb,
                             (unsigned long long)p->m.cpu.x[2],
                             (unsigned long long)p->m.cpu.x[3],
                             (unsigned long long)p->m.cpu.x[4],
@@ -1283,43 +1298,13 @@ static int run_proc(int idx) {
                             (unsigned long long)p->m.cpu.x[6],
                             (unsigned long long)p->m.cpu.x[7]);
                 }
-                if (0)
-                    fprintf(stderr,
-                            "[at2] idx=%d x1=0x%llx x2=0x%llx x3=0x%llx x4=0x%llx "
-                            "x5=0x%llx x6=0x%llx x7=0x%llx\n",
-                            n, (unsigned long long)p->m.cpu.x[1],
-                            (unsigned long long)p->m.cpu.x[2],
-                            (unsigned long long)p->m.cpu.x[3],
-                            (unsigned long long)p->m.cpu.x[4],
-                            (unsigned long long)p->m.cpu.x[5],
-                            (unsigned long long)p->m.cpu.x[6],
-                            (unsigned long long)p->m.cpu.x[7]);
-                buf[n++] = p->m.cpu.pc;
+                if (g_trace_n < limit) {
+                    g_trace_buf[g_trace_n++] = p->m.cpu.pc;
+                }
+                if (g_trace_n == limit) {
+                    trace_flush();
+                }
             }
-            // Stop before printing: leaving `recording` set made the dump run
-            // again on every following instruction, so everything past the
-            // buffer length was the buffer repeating and every trace comparison
-            // beyond that point was meaningless.
-            // E2_TRACE_PCS_LIMIT sets how many entries to keep; the buffer is
-            // large enough that running out of it is a mistake, not a design.
-            static int limit = -1;
-            if (limit < 0) {
-                const char *ls = getenv("E2_TRACE_PCS_LIMIT");
-                limit = ls ? atoi(ls) : 512;
-                if (limit <= 0 || limit > (int)(sizeof(buf) / sizeof(buf[0])))
-                    limit = (int)(sizeof(buf) / sizeof(buf[0]));
-            }
-            if (recording > 0 && n == limit) {
-                recording = -1;
-                for (int q = 0; q < n; q++) fprintf(stdout, "%llx\n",
-                                                    (unsigned long long)buf[q]);
-                fflush(stdout);
-            }
-        }
-        if (getenv("E2_TRACE_HIT") &&
-            p->m.cpu.pc == strtoull(getenv("E2_TRACE_HIT"), NULL, 0)) {
-            static int hits = 0;
-            if (++hits <= 1) fprintf(stderr, "[hit] reached\n");
         }
         const uint64_t pre_pc = p->m.cpu.pc;
         // Shadow call stack. Chasing a bad argument by re-running with a probe
