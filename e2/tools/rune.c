@@ -493,7 +493,7 @@ static int run_proc(int idx) {
     // Ring buffer of recent steps: when execution stops on a bad access, the
     // useful question is "how did this register get here", and that needs the
     // preceding instructions rather than the faulting one.
-    struct { uint64_t pc, insn, x0, x1, x19, x20, x23; } hist[32];
+    struct { uint64_t pc, insn, x0, x1, x19, x20, x23; } hist[256];
     unsigned hist_at = 0, hist_n = 0;
     long guard = 0;
     while (p->alive) {
@@ -512,8 +512,8 @@ static int run_proc(int idx) {
         hist[hist_at].x19 = p->m.cpu.x[19];
         hist[hist_at].x20 = p->m.cpu.x[20];
         hist[hist_at].x23 = p->m.cpu.x[23];
-        hist_at = (hist_at + 1) % 32;
-        if (hist_n < 32) hist_n++;
+        hist_at = (hist_at + 1) % 256;
+        if (hist_n < 256) hist_n++;
         if (++guard > 40000000L) { snprintf(g_reason, sizeof(g_reason), "instruction cap"); g_fault = 1; break; }
         if (getenv("E2_TRACE_GREP") && p->m.cpu.pc == 0x4c4408) {
             static int ng = 0;
@@ -561,7 +561,7 @@ static int run_proc(int idx) {
                     fprintf(stderr, "[hist] last %u steps before 0x%llx:\n", hist_n,
                             (unsigned long long)p->m.cpu.pc);
                     for (unsigned k = 0; k < hist_n; k++) {
-                        const unsigned idx = (hist_at + 32 - hist_n + k) % 32;
+                        const unsigned idx = (hist_at + 256 - hist_n + k) % 256;
                         fprintf(stderr, "  pc=0x%llx insn=0x%08llx x0=0x%llx x1=0x%llx x19=0x%llx x20=0x%llx x23=0x%llx\n",
                                 (unsigned long long)hist[idx].pc,
                                 (unsigned long long)hist[idx].insn,
@@ -591,10 +591,25 @@ static int run_proc(int idx) {
                      (unsigned long long)p->m.cpu.x[0], (unsigned long long)p->m.cpu.x[1],
                      (unsigned long long)p->m.cpu.x[2], (unsigned long long)p->m.cpu.sp);
             g_fault = 1;
+            if (getenv("E2_TRACE_TABLE")) {
+                // Summarise the array the faulting code indexed: a table that is
+                // entirely zero was never filled, whereas a sparse one means a
+                // specific slot is missing.
+                const uint64_t base = p->m.cpu.x[19];
+                unsigned nonzero = 0, total = 0;
+                for (uint64_t off = 0; off < 4096; off += 8) {
+                    uint64_t w = 0;
+                    if (e2_memory_read(&p->m.mem, base + off, &w, 8) != 0) break;
+                    total++;
+                    if (w) nonzero++;
+                }
+                fprintf(stderr, "[table] base=0x%llx words=%u nonzero=%u\n",
+                        (unsigned long long)base, total, nonzero);
+            }
             if (getenv("E2_TRACE_HIST")) {
                 fprintf(stderr, "[hist] last %u steps:\n", hist_n);
                 for (unsigned k = 0; k < hist_n; k++) {
-                    const unsigned hidx = (hist_at + 32 - hist_n + k) % 32;
+                    const unsigned hidx = (hist_at + 256 - hist_n + k) % 256;
                     fprintf(stderr, "  pc=0x%llx insn=0x%08llx x0=0x%llx x1=0x%llx x19=0x%llx x20=0x%llx x23=0x%llx\n",
                             (unsigned long long)hist[hidx].pc,
                             (unsigned long long)hist[hidx].insn,
