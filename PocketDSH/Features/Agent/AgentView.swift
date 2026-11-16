@@ -322,16 +322,94 @@ private struct AgentEventRow: View {
     let event: AgentEvent
     let showsDetails: Bool
 
+    /// User turns, tool activity and assistant replies all used to render as the
+    /// same card, which left the conversation with no shape: the question, the
+    /// answer and a log line about a file read all carried equal weight. They
+    /// are now three distinct treatments.
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        Group {
+            if event.kind == .user {
+                userBubble
+            } else if event.kind == .toolStarted || event.kind == .toolFinished {
+                toolRow
+            } else {
+                messageCard
+            }
+        }
+    }
+
+    private var userText: String {
+        event.detail.isEmpty ? event.title : event.detail
+    }
+
+    /// Right-aligned and tinted, so a turn reads as something the person said
+    /// rather than as another machine event.
+    private var userBubble: some View {
+        HStack {
+            Spacer(minLength: PocketSpacing.xxl)
+            VStack(alignment: .trailing, spacing: PocketSpacing.xxs) {
+                Text(userText)
+                    .font(.subheadline)
+                    .foregroundStyle(PocketTheme.primaryText)
+                    .multilineTextAlignment(.leading)
+                    .textSelection(.enabled)
+                Text(event.timestamp.formatted(date: .omitted, time: .shortened))
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(PocketTheme.secondaryText.opacity(0.7))
+            }
+            .padding(.horizontal, PocketSpacing.md)
+            .padding(.vertical, PocketSpacing.sm)
+            .background {
+                RoundedRectangle(cornerRadius: PocketRadius.lg, style: .continuous)
+                    .fill(PocketTheme.accent.opacity(0.10))
+            }
+        }
+    }
+
+    /// Tool traffic is supporting detail, not conversation, so it loses the card
+    /// and keeps a single compact line unless the user asked for details.
+    private var toolRow: some View {
+        VStack(alignment: .leading, spacing: PocketSpacing.xxs) {
+            HStack(spacing: PocketSpacing.xs) {
+                Image(systemName: icon)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(tint)
+                Text(event.title)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(PocketTheme.secondaryText)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Text(event.timestamp.formatted(date: .omitted, time: .shortened))
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(PocketTheme.secondaryText.opacity(0.6))
+            }
+            if showsDetails && !event.detail.isEmpty {
+                Text(event.detail)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(PocketTheme.secondaryText)
+                    .lineLimit(6)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(PocketSpacing.sm)
+                    .background {
+                        RoundedRectangle(cornerRadius: PocketRadius.xs, style: .continuous)
+                            .fill(PocketTheme.codeSurface)
+                    }
+            }
+        }
+        .padding(.leading, 34)
+    }
+
+    private var messageCard: some View {
+        HStack(alignment: .top, spacing: PocketSpacing.sm) {
             Image(systemName: icon)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(tint)
                 .frame(width: 26, height: 26)
                 .background(Circle().fill(tint.opacity(0.12)))
 
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: PocketSpacing.xs) {
+                HStack(spacing: PocketSpacing.xs) {
                     Text(event.title)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(tint)
@@ -345,12 +423,12 @@ private struct AgentEventRow: View {
                     Text(event.detail)
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(PocketTheme.primaryText.opacity(0.92))
-                        .lineLimit(event.kind == .assistant || event.kind == .user ? nil : 12)
+                        .lineLimit(event.kind == .assistant ? nil : 12)
                         .textSelection(.enabled)
-                        .padding(10)
+                        .padding(PocketSpacing.sm)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background {
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            RoundedRectangle(cornerRadius: PocketRadius.xs, style: .continuous)
                                 .fill(PocketTheme.codeSurface)
                         }
                 }
@@ -358,11 +436,11 @@ private struct AgentEventRow: View {
         }
         .padding(PocketSpacing.md)
         .background {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: PocketRadius.lg, style: .continuous)
                 .fill(PocketTheme.surface)
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: PocketRadius.lg, style: .continuous)
                 .stroke(PocketTheme.stroke.opacity(0.55), lineWidth: 1)
         }
     }
