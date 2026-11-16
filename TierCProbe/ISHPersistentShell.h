@@ -14,6 +14,11 @@
 /// Only one shell may be active at a time; iSH keeps global mount and pid state.
 typedef struct pocket_shell pocket_shell;
 
+/// Returned by pocket_shell_exec when the timeout expired before the sentinel.
+/// A timed-out command leaves the shell in an unknown state, so callers should
+/// discard the session rather than reuse it.
+#define POCKET_SHELL_TIMEOUT (-1000L)
+
 /// Starts a shell. `workspace` may be NULL to skip the /workspace mount.
 /// Returns NULL on failure and writes a reason into `error` when provided.
 pocket_shell *pocket_shell_start(const char *rootfs, const char *workspace,

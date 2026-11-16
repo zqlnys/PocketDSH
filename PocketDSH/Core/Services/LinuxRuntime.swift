@@ -52,11 +52,18 @@ final class LinuxRuntime: ObservableObject {
 
         if let active = await ensureSession(workspace: workspace) {
             let result = await Task.detached { active.run(command, timeout: 30) }.value
-            if result.hasPrefix("<shell error") {
-                // The session died mid-command; drop it so the next call rebuilds.
+            if result.hasPrefix("<shell error") || result.hasPrefix("<shell timeout>") {
+                // Either the session died, or the command outran its deadline and
+                // left unread output in the pipe. Both leave the session in an
+                // unknown state, so drop it; the next call rebuilds cleanly.
+                let wasTimeout = result.hasPrefix("<shell timeout>")
                 await discardSession()
-                state = .failed("session ended while running the command")
-                return .failure("Tier C session ended while running the command.\n\(result)")
+                state = .failed(wasTimeout ? "command timed out" : "session ended")
+                return .failure(
+                    wasTimeout
+                        ? "Tier C command timed out and the session was reset.\n\(result)"
+                        : "Tier C session ended while running the command.\n\(result)"
+                )
             }
             return .success(result.isEmpty ? "(no output)" : result)
         }

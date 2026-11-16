@@ -48,6 +48,9 @@ final class PersistentShellSession: @unchecked Sendable {
             pocket_shell_exec(handle, pointer, &out, out.count, milliseconds, &truncated)
         }
         guard written > 0 else {
+            if written == POCKET_SHELL_TIMEOUT {
+                return "<shell timeout>"
+            }
             return written == 0 ? "" : "<shell error \(written)>"
         }
         var text = String(cString: out)

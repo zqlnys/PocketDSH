@@ -290,6 +290,7 @@ long pocket_shell_exec(pocket_shell *shell, const char *command,
 
     size_t used = 0;
     int found_sentinel = 0;
+    int timed_out = 0;
     struct timespec start, now;
     clock_gettime(CLOCK_MONOTONIC, &start);
 
@@ -324,6 +325,7 @@ long pocket_shell_exec(pocket_shell *shell, const char *command,
                      + (now.tv_nsec - start.tv_nsec) / 1000000L;
         if (elapsed >= timeout_ms) {
             if (truncated != NULL) *truncated = 1;
+            timed_out = 1;
             break;
         }
     }
@@ -339,6 +341,13 @@ long pocket_shell_exec(pocket_shell *shell, const char *command,
     }
 
     pthread_mutex_unlock(&shell->io_lock);
+
+    if (timed_out) {
+        // The command may still be running and its output will land in the pipe
+        // later, which would corrupt the next command's boundaries. Report the
+        // timeout so the caller can rebuild the session.
+        return POCKET_SHELL_TIMEOUT;
+    }
     return (long)used;
 }
 
