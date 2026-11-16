@@ -55,7 +55,10 @@ struct TierCSmokeView: View {
             return
         }
 
+        // Update on every command so a screenshot taken mid-run still shows
+        // progress instead of the initial placeholder.
         var text = "Persistent shell started.\n\n"
+        output = text
         let commands = [
             "pwd",
             "echo persistent-shell-alive",
@@ -65,12 +68,16 @@ struct TierCSmokeView: View {
             "ls -la /workspace"
         ]
 
-        for command in commands {
+        let began = Date()
+        for (index, command) in commands.enumerated() {
             let result = await Task.detached { session.run(command) }.value
-            text += "$ \(command)\n\(result)\n\n"
+            let elapsed = String(format: "%.1fs", Date().timeIntervalSince(began))
+            text += "[\(index + 1)/\(commands.count) +\(elapsed)] $ \(command)\n\(result)\n\n"
+            output = text
         }
 
         text += "still running: \(session.isRunning ? "yes" : "no")\n"
+        output = text
         await Task.detached { session.stop() }.value
 
         if let written = try? String(contentsOf: probeURL, encoding: .utf8) {
