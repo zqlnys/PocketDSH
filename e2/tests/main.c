@@ -475,6 +475,78 @@ static void test_simd_memset_elf(void) {
     free(image);
 }
 
+/// Builds a synthetic ET_DYN image with one RELATIVE relocation and checks the
+/// loader applies the bias. Kept synthetic so the test does not depend on a
+/// downloaded libc.
+static void test_pie_relocation(void) {
+    printf("PIE load bias and RELATIVE relocation\n");
+    e2_machine m;
+    e2_machine_init(&m, 0, 8192);
+
+    // Layout at bias 0: one LOAD (R+W+X, 0x200 bytes), PT_DYNAMIC at 0x100.
+    // The dynamic table holds DT_RELA -> 0x180, DT_RELASZ -> 24, DT_RELAENT -> 24.
+    // One RELA entry rewrites [0x200] with bias + 0x2A.
+    enum { kImageSize = 0x400, kPhdrOff = 64, kLoadOff = 0x0, kDynOff = 0x100,
+           kRelaOff = 0x180, kTargetOff = 0x200 };
+    static uint8_t image[kImageSize];
+    memset(image, 0, sizeof(image));
+    image[0] = 0x7f; image[1] = 'E'; image[2] = 'L'; image[3] = 'F';
+    image[4] = 2;    // 64-bit
+    image[5] = 1;    // little endian
+    image[6] = 1;
+    image[16] = 3;   // ET_DYN
+    image[18] = 183; // EM_AARCH64
+    image[32] = kPhdrOff;
+    image[54] = 56;  // e_phentsize
+    image[56] = 2;   // e_phnum
+
+    // phdr 0: PT_LOAD covering the whole image
+    uint8_t *ph0 = image + kPhdrOff;
+    ph0[0] = 1;                       // PT_LOAD
+    ph0[4] = 7;                       // R|W|X
+    *(uint64_t *)(ph0 + 8) = kLoadOff;
+    *(uint64_t *)(ph0 + 16) = 0;      // vaddr
+    *(uint64_t *)(ph0 + 32) = kImageSize;
+    *(uint64_t *)(ph0 + 40) = kImageSize;
+
+    // phdr 1: PT_DYNAMIC
+    uint8_t *ph1 = ph0 + 56;
+    ph1[0] = 2;                       // PT_DYNAMIC
+    ph1[4] = 6;                       // R|W
+    *(uint64_t *)(ph1 + 16) = kDynOff;
+    *(uint64_t *)(ph1 + 32) = 0x40;
+    *(uint64_t *)(ph1 + 40) = 0x40;
+
+    // dynamic entries
+    typedef struct { int64_t tag; uint64_t val; } dyn_entry;
+    typedef struct { uint64_t off; uint64_t info; int64_t addend; } rela_entry;
+    dyn_entry *dyn = (dyn_entry *)(image + kDynOff);
+    dyn[0].tag = 7;  dyn[0].val = kRelaOff;   // DT_RELA
+    dyn[1].tag = 8;  dyn[1].val = 24;         // DT_RELASZ
+    dyn[2].tag = 9;  dyn[2].val = 24;         // DT_RELAENT
+    dyn[3].tag = 0;  dyn[3].val = 0;          // DT_NULL
+
+    rela_entry *rela = (rela_entry *)(image + kRelaOff);
+    rela[0].off = kTargetOff;
+    rela[0].info = 1027;              // R_AARCH64_RELATIVE
+    rela[0].addend = 0x2A;
+
+    e2_loaded_image info = {0};
+    e2_load_result lr = e2_load_elf_full(&m, image, kImageSize, true, &info);
+    CHECK(lr == E2_LOAD_OK, "load: %s", e2_load_result_name(lr));
+    CHECK(info.load_bias == E2_PIE_BASE, "bias 0x%llx", (unsigned long long)info.load_bias);
+
+    e2_load_result rr = e2_apply_relative_relocations(&m, image, kImageSize, &info);
+    CHECK(rr == E2_LOAD_OK, "relocations: %s", e2_load_result_name(rr));
+
+    uint64_t got = 0;
+    e2_memory_read(&m.mem, E2_PIE_BASE + kTargetOff, &got, 8);
+    CHECK(got == E2_PIE_BASE + 0x2A, "relocated value 0x%llx, want 0x%llx",
+          (unsigned long long)got, (unsigned long long)(E2_PIE_BASE + 0x2A));
+
+    e2_machine_destroy(&m);
+}
+
 static void test_reject_dynamic(void) {
     printf("dynamic executables are refused with a clear reason\n");
     // A crafted header: valid ELF64 aarch64 EXEC with one PT_INTERP segment.
@@ -537,6 +609,7 @@ int main(void) {
     test_load_real_elf();
     test_recursive_fib_elf();
     test_simd_memset_elf();
+    test_pie_relocation();
     test_reject_dynamic();
     test_reject_wrong_machine();
 

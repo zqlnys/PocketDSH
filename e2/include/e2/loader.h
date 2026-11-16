@@ -41,6 +41,18 @@ e2_load_result e2_load_elf_full(e2_machine *machine, const uint8_t *image, size_
 /// Convenience wrapper that refuses dynamic executables.
 e2_load_result e2_load_elf(e2_machine *machine, const uint8_t *image, size_t size);
 
+/// Applies the relocations a position-independent image needs before it can run.
+///
+/// Handles R_AARCH64_RELATIVE (the bulk of what a static-pie needs) and ignores
+/// R_AARCH64_NONE. Symbol-based relocations are reported as unsupported for now:
+/// silently skipping them would produce a link that fails somewhere far away.
+///
+/// The image bytes must be the same buffer that was loaded, because relocation
+/// targets are addressed through the bias.
+e2_load_result e2_apply_relative_relocations(e2_machine *machine,
+                                             const uint8_t *image, size_t size,
+                                             const e2_loaded_image *image_info);
+
 /// Human-readable name, for tests and logs.
 const char *e2_load_result_name(e2_load_result result);
 

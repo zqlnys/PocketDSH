@@ -205,3 +205,140 @@ e2_load_result e2_load_elf_full(e2_machine *machine, const uint8_t *image, size_
 e2_load_result e2_load_elf(e2_machine *machine, const uint8_t *image, size_t size) {
     return e2_load_elf_full(machine, image, size, false, NULL);
 }
+
+// --- Relocation ---------------------------------------------------------------
+
+#define DT_NULL 0
+#define DT_SYMTAB 6
+#define DT_RELA 7
+#define DT_RELASZ 8
+#define DT_RELAENT 9
+#define DT_SYMENT 11
+
+#define R_AARCH64_NONE 0
+#define R_AARCH64_GLOB_DAT 1025
+#define R_AARCH64_JUMP_SLOT 1026
+#define R_AARCH64_RELATIVE 1027
+
+typedef struct {
+    uint32_t st_name;
+    uint8_t st_info;
+    uint8_t st_other;
+    uint16_t st_shndx;
+    uint64_t st_value;
+    uint64_t st_size;
+} e2_elf64_sym;
+
+typedef struct {
+    int64_t d_tag;
+    uint64_t d_val;
+} e2_elf64_dyn;
+
+typedef struct {
+    uint64_t r_offset;
+    uint64_t r_info;
+    int64_t r_addend;
+} e2_elf64_rela;
+
+/// Locates a DT_ entry value inside the PT_DYNAMIC table.
+static bool find_dynamic(e2_machine *machine, const e2_loaded_image *info, int64_t tag,
+                         uint64_t *value_out) {
+    if (info->dynamic_addr == 0) {
+        return false;
+    }
+    for (uint64_t offset = 0; offset + sizeof(e2_elf64_dyn) <= info->dynamic_size;
+         offset += sizeof(e2_elf64_dyn)) {
+        e2_elf64_dyn entry;
+        if (e2_memory_read(&machine->mem, info->dynamic_addr + offset, &entry,
+                           sizeof(entry)) != 0) {
+            return false;
+        }
+        if (entry.d_tag == DT_NULL) {
+            break;
+        }
+        if (entry.d_tag == tag && value_out != NULL) {
+            *value_out = entry.d_val;
+        }
+    }
+    return false;
+}
+
+e2_load_result e2_apply_relative_relocations(e2_machine *machine,
+                                             const uint8_t *image, size_t size,
+                                             const e2_loaded_image *image_info) {
+    (void)image;
+    (void)size;
+    if (image_info == NULL || image_info->dynamic_addr == 0) {
+        return E2_LOAD_OK;
+    }
+
+    uint64_t rela = 0;
+    uint64_t relasz = 0;
+    uint64_t relaent = sizeof(e2_elf64_rela);
+    find_dynamic(machine, image_info, DT_RELA, &rela);
+    find_dynamic(machine, image_info, DT_RELASZ, &relasz);
+    find_dynamic(machine, image_info, DT_RELAENT, &relaent);
+
+    if (rela == 0 || relasz == 0) {
+        return E2_LOAD_OK;  // nothing to do
+    }
+    if (relaent != sizeof(e2_elf64_rela)) {
+        return E2_LOAD_UNSUPPORTED;
+    }
+
+    const uint64_t base = image_info->load_bias;
+    const uint64_t table = base + rela;
+
+    for (uint64_t offset = 0; offset + relaent <= relasz; offset += relaent) {
+        e2_elf64_rela entry;
+        if (e2_memory_read(&machine->mem, table + offset, &entry, sizeof(entry)) != 0) {
+            return E2_LOAD_TRUNCATED;
+        }
+        const unsigned type = (unsigned)(entry.r_info & 0xFFFFFFFFu);
+        switch (type) {
+            case R_AARCH64_NONE:
+                break;
+            case R_AARCH64_RELATIVE: {
+                const uint64_t target = base + entry.r_offset;
+                const uint64_t value = base + (uint64_t)entry.r_addend;
+                if (e2_memory_write(&machine->mem, target, &value, sizeof(value)) != 0) {
+                    return E2_LOAD_NO_MEMORY;
+                }
+                break;
+            }
+            case R_AARCH64_GLOB_DAT:
+            case R_AARCH64_JUMP_SLOT: {
+                // A self-contained interpreter binds these to its own symbols.
+                // External binding needs a full resolver, which this backend does
+                // not have yet, so an undefined symbol is a hard error rather than
+                // a silently wrong address.
+                const unsigned sym_index = (unsigned)(entry.r_info >> 32);
+                uint64_t symtab = 0;
+                uint64_t syment = sizeof(e2_elf64_sym);
+                find_dynamic(machine, image_info, DT_SYMTAB, &symtab);
+                find_dynamic(machine, image_info, DT_SYMENT, &syment);
+                if (symtab == 0 || syment != sizeof(e2_elf64_sym)) {
+                    return E2_LOAD_UNSUPPORTED;
+                }
+                e2_elf64_sym sym;
+                if (e2_memory_read(&machine->mem,
+                                   base + symtab + (uint64_t)sym_index * syment,
+                                   &sym, sizeof(sym)) != 0) {
+                    return E2_LOAD_TRUNCATED;
+                }
+                if (sym.st_shndx == 0) {
+                    return E2_LOAD_UNSUPPORTED;  // undefined: needs an external resolver
+                }
+                const uint64_t value = base + sym.st_value;
+                if (e2_memory_write(&machine->mem, base + entry.r_offset, &value,
+                                    sizeof(value)) != 0) {
+                    return E2_LOAD_NO_MEMORY;
+                }
+                break;
+            }
+            default:
+                return E2_LOAD_UNSUPPORTED;
+        }
+    }
+    return E2_LOAD_OK;
+}
