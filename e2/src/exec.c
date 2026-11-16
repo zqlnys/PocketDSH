@@ -1,5 +1,7 @@
 #include "e2/exec.h"
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 // This interpreter is written from the ARM Architecture Reference Manual and the
@@ -499,6 +501,7 @@ e2_status e2_step(e2_machine *machine) {
         return E2_OK;
     }
 
+
     // --- SIMD: DUP (general) ---
     // `dup v0.16b, w1` is the first instruction of musl's memset, so this is the
     // entry point for vector support.
@@ -536,7 +539,9 @@ e2_status e2_step(e2_machine *machine) {
         const bool is_load = BIT(insn, 22) != 0;
         const unsigned size_code = BITS(insn, 31, 30);
         const unsigned q = BIT(insn, 23);
-        const unsigned bytes = (size_code == 0 ? 16u : (1u << size_code)) * (q ? 2u : 1u);
+        // Q=1 selects a 128-bit access (with size=00); size alone covers the
+        // narrower forms. They are alternatives, not factors.
+        const unsigned bytes = q ? 16u : (1u << size_code);
         const uint64_t offset = (uint64_t)BITS(insn, 21, 10) * bytes;
         const uint64_t addr = e2_read_sp(cpu, rn) + offset;
         const unsigned rt_v = BITS(insn, 4, 0);
