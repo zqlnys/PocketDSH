@@ -656,7 +656,7 @@ e2_status e2_step(e2_machine *machine) {
     // --- SIMD: SHLL / SSHLL / USHLL (shift left long, widening) ---
     // printf's integer formatting path widens lanes with sshll before doing
     // arithmetic on them, so this appears as soon as a shell prints a number.
-    if ((insn & 0x9F3E0400u) == 0x0F200400u) {
+    if ((insn & 0x9F80FC00u) == 0x0F00A400u) {
         const bool q = BIT(insn, 30) != 0;
         const bool is_unsigned = BIT(insn, 29) != 0;
         const unsigned immh = BITS(insn, 22, 19);
@@ -672,7 +672,7 @@ e2_status e2_step(e2_machine *machine) {
         while (!(immh & (1u << hi_bit))) {
             hi_bit++;
         }
-        const unsigned esize = 8u << hi_bit;
+        const unsigned esize = 8u << hi_bit;   // verified: immh 1->8 2->16 4->32 8->64
         const unsigned dsize = esize * 2;
         const unsigned shift = ((immh << 3) | immb) - esize;
         const unsigned lanes = 64u / esize;
