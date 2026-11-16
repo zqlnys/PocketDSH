@@ -53,6 +53,10 @@ RULES = [
     ("LD/ST reg offset general", 0x3F200C00, 0x38200800),
     ("LD/ST reg offset SIMD",    0x3F200000, 0x3C200000),
     ("LD/ST pair general", 0x3E000000, 0x28000000),
+    # Bit 22 is the size and bit 23 belongs to the opcode here, unlike the
+    # one-source group; masking both out merged six different conversions into
+    # one key the first time this was written.
+    ("FP to int (in FP reg)", 0xFFBFFC00, 0x5EA1B800),
 ]
 
 # llvm reports "unknown" for words that are data rather than instructions; a
@@ -102,6 +106,9 @@ FAMILY = {
     # stgp shares the pair encoding space; without MTE it behaves as stp, which
     # is what the handler does, so it is listed rather than reported.
     "LD/ST pair general": {"ldp", "stp", "ldpsw", "ldnp", "stnp", "stgp"},
+    "FP to int (in FP reg)": {"fcvtzs", "fcvtzu", "fcvtms", "fcvtps", "fcvtns",
+                              "fcvtas", "fcvtmu", "fcvtpu", "fcvtnu", "fcvtau",
+                              "fcvt"},
 }
 
 

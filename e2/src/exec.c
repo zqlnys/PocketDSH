@@ -855,6 +855,74 @@ e2_status e2_step(e2_machine *machine) {
     // Python's number formatting does its arithmetic through these. Host float
     // and double arithmetic follows the same IEEE rules including NaN and
     // signed zero, so the operands are converted and the result stored back.
+    // --- FP to integer, written back into an FP register ---
+    // Distinct from `fcvtzs x0, d0` (which targets a general register): these
+    // convert to an integer and store the result as a floating-point value.
+    // `sleep` reaches them turning a double into whole seconds. Rounding mode
+    // comes from the opcode, so they are matched by complete key again.
+    {
+        const uint32_t fkey = insn & 0xFFBFFC00u;
+        enum { FCVTZ_S, FCVTZ_U, FCVTM_S, FCVTP_S, FCVTN_S, FCVTA_S };
+        static const struct { uint32_t key; int op; } conv[] = {
+            {0x5EA1B800u, FCVTZ_S},   // toward zero, signed
+            {0x7EA1B800u, FCVTZ_U},   // toward zero, unsigned
+            {0x5E21B800u, FCVTM_S},   // toward -inf
+            {0x5EA1A800u, FCVTP_S},   // toward +inf
+            {0x5E21A800u, FCVTN_S},   // to nearest, ties to even
+            {0x5E21C800u, FCVTA_S},   // to nearest, ties away from zero
+        };
+        for (unsigned ci = 0; ci < sizeof(conv) / sizeof(conv[0]); ci++) {
+            if (conv[ci].key != fkey) continue;
+            // Bit 22 is the size here; bit 23 is part of the opcode, unlike
+            // the one-source group where 23-22 is the type field.
+            const bool single = (BIT(insn, 22) == 0);
+            const unsigned rn2 = BITS(insn, 9, 5);
+            const unsigned rd2 = BITS(insn, 4, 0);
+            double v;
+            if (single) {
+                const uint32_t raw = (uint32_t)cpu->v[rn2][0];
+                float f;
+                memcpy(&f, &raw, 4);
+                v = (double)f;
+            } else {
+                memcpy(&v, &cpu->v[rn2][0], 8);
+            }
+            // NaN and overflow saturate rather than trapping; that is what the
+            // architecture says and what formatting code expects.
+            double out;
+            if (v != v) {
+                out = 0.0;
+            } else if (conv[ci].op == FCVTZ_U) {
+                if (v <= 0.0) out = 0.0;
+                else if (v >= 18446744073709551615.0) out = (double)(int64_t)-1;
+                else out = (double)(uint64_t)trunc(v);
+            } else {
+                double r;
+                switch (conv[ci].op) {
+                    case FCVTZ_S: r = trunc(v); break;
+                    case FCVTM_S: r = floor(v); break;
+                    case FCVTP_S: r = ceil(v); break;
+                    case FCVTN_S: r = rint(v); break;
+                    default: r = round(v); break;
+                }
+                if (r > 9.2233720368547758e18) r = 9.2233720368547758e18;
+                if (r < -9.2233720368547758e18) r = -9.2233720368547758e18;
+                out = (double)(int64_t)r;
+            }
+            if (single) {
+                const float f2 = (float)out;
+                uint32_t raw;
+                memcpy(&raw, &f2, 4);
+                cpu->v[rd2][0] = (cpu->v[rd2][0] & ~0xFFFFFFFFULL) | raw;
+            } else {
+                memcpy(&cpu->v[rd2][0], &out, 8);
+            }
+            cpu->pc = next_pc;
+            machine->instructions++;
+            return E2_OK;
+        }
+    }
+
     // --- Floating-point, three sources: FMADD / FMSUB / FNMADD / FNMSUB ---
     // One group, selected by two bits: bit 21 subtracts the addend and bit 15
     // negates the product. The multiply and the add are fused, so the product is

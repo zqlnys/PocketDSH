@@ -1060,6 +1060,33 @@ static void test_scalar_immediates(void) {
         e2_memory_destroy(&m.mem);
     }
 
+    {
+        // fcvtzs d0, d0 - FP to integer, result kept as a float. `sleep`
+        // converts a double to whole seconds through this.
+        static const struct { uint32_t insn; double in; double want; const char *what; } cv[] = {
+            {0x5EE1B800u,  3.7,  3.0, "fcvtzs truncates toward zero"},
+            {0x5EE1B800u, -3.7, -3.0, "fcvtzs truncates toward zero (negative)"},
+            {0x5E61B800u, -3.2, -4.0, "fcvtms rounds toward -inf"},
+            {0x5EE1A800u,  3.2,  4.0, "fcvtps rounds toward +inf"},
+            {0x5E61A800u,  2.5,  2.0, "fcvtns rounds to even"},
+            {0x5E61C800u,  2.5,  3.0, "fcvtas rounds half away from zero"},
+        };
+        for (unsigned i = 0; i < sizeof(cv) / sizeof(cv[0]); i++) {
+            e2_machine m;
+            e2_machine_init(&m, 0, 1 << 20);
+            const uint64_t at = 0x30000000ULL;
+            e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+            e2_memory_write(&m.mem, at, &cv[i].insn, 4);
+            m.cpu.pc = at;
+            memcpy(&m.cpu.v[0][0], &cv[i].in, 8);
+            const e2_status st = e2_step(&m);
+            double got;
+            memcpy(&got, &m.cpu.v[0][0], 8);
+            CHECK(st == E2_OK && got == cv[i].want, "%s", cv[i].what);
+            e2_memory_destroy(&m.mem);
+        }
+    }
+
     // UMOV moves a vector element into a general register. musl's memset does
     // `mov x1, v0.d[0]` to materialise the replicated byte pattern, so a broken
     // UMOV silently turned every memset into a zero fill. It used to decode as

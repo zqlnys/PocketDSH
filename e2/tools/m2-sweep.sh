@@ -46,6 +46,7 @@ wc -l /dev/null
 wc -c /dev/null
 true
 false
+sleep 0
 pwd
 basename /a/b.c
 dirname /a/b.c
