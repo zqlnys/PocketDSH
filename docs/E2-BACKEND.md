@@ -2439,3 +2439,44 @@ const uint64_t src_hi = cpu->v[rn2][1];
 **剩下的**：`awk` 仍有一个独立缺陷（`BEGIN`/`END` 里 `print` 时 FILE* 为 NULL），
 与正则无关，是另一条线。
 
+### awk 的独立缺陷：追踪到 FILE* 为 NULL
+
+BRE 修好后，`awk` 仍然失败，但这是另一条线：
+
+| 调用 | 结果 |
+| --- | --- |
+| `awk 'BEGIN{print 1+2}'` | fault（`0x4cbf60`，`ldr w1,[x3,#140]`，x3 = 0）|
+| `awk 'END{print NR}' file` | 同上 |
+| `awk '{print}' file` | 不 crash，但无输出 |
+
+崩溃在 `fwrite` 的第一条内存访问，`x3`（FILE*）是 NULL。
+
+#### 调用链
+
+```
+0x4944c4  →  0x4cb8c0   （printf 包装：strlen + fwrite）
+              └→ 0x4d0a9c (strlen)
+              └→ 0x4cbf40 (fwrite)   ← x3 = 该函数的第 2 个参数
+```
+
+包装函数把**第 2 个参数**原样传给 `fwrite` 作 `FILE*`。调用点是：
+
+```asm
+0x4944c0: ldr x1, [sp]        ; FILE* 来自栈首槽
+0x4944c4: bl  printf-wrapper
+```
+
+#### 两侧对比
+
+| | qemu | 本实现 |
+| --- | --- | --- |
+| 调用点的 `x1` | **`0x520200`**（有效 stdout）| **`0`** |
+
+`0x520200` 正是 musl 的 `stdout` 对象——和之前 stdio 那轮看到的是同一个。
+
+**当前进展**：本实现里 `0x494408` 的 `str x0, [sp]`（x0 = `0x520200`）确实被执行，
+但之后 `[sp]` 读到的是 0。栈槽地址会被多个帧复用，逐层追踪还需要更精确的手段
+（同一进程内同时观察地址与写入），这条留待下一轮。
+
+**注**：这条与正则无关，是 awk 自己的初始化路径。
+
