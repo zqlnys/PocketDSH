@@ -627,6 +627,76 @@ e2_status e2_step(e2_machine *machine) {
         return E2_OK;
     }
 
+    // --- FMOV between a general register and a scalar FP register ---
+    // Shells and printf format float output through these, so they show up as
+    // soon as a program that prints a number runs.
+    if ((insn & 0xFFFFFC00u) == 0x1E270000u) {      // fmov Sd, Wn
+        const unsigned rn2 = BITS(insn, 9, 5);
+        cpu->v[rd][0] = e2_read_xzr(cpu, rn2) & 0xFFFFFFFFULL;
+        cpu->v[rd][1] = 0;
+        cpu->pc = next_pc; machine->instructions++; return E2_OK;
+    }
+    if ((insn & 0xFFFFFC00u) == 0x1E260000u) {      // fmov Wd, Sn
+        const unsigned rn2 = BITS(insn, 9, 5);
+        write_reg(cpu, rd, cpu->v[rn2][0] & 0xFFFFFFFFULL, false);
+        cpu->pc = next_pc; machine->instructions++; return E2_OK;
+    }
+    if ((insn & 0xFFFFFC00u) == 0x9E270000u) {      // fmov Dd, Xn
+        const unsigned rn2 = BITS(insn, 9, 5);
+        cpu->v[rd][0] = e2_read_xzr(cpu, rn2);
+        cpu->v[rd][1] = 0;
+        cpu->pc = next_pc; machine->instructions++; return E2_OK;
+    }
+    if ((insn & 0xFFFFFC00u) == 0x9E260000u) {      // fmov Xd, Dn
+        const unsigned rn2 = BITS(insn, 9, 5);
+        write_reg(cpu, rd, cpu->v[rn2][0], true);
+        cpu->pc = next_pc; machine->instructions++; return E2_OK;
+    }
+
+    // --- SIMD: SHLL / SSHLL / USHLL (shift left long, widening) ---
+    // printf's integer formatting path widens lanes with sshll before doing
+    // arithmetic on them, so this appears as soon as a shell prints a number.
+    if ((insn & 0x9F3E0400u) == 0x0F200400u) {
+        const bool q = BIT(insn, 30) != 0;
+        const bool is_unsigned = BIT(insn, 29) != 0;
+        const unsigned immh = BITS(insn, 22, 19);
+        const unsigned immb = BITS(insn, 18, 16);
+        const unsigned rn2 = BITS(insn, 9, 5);
+        if (immh == 0) {
+            machine->ctx.reason = "invalid SHLL immh";
+            return E2_UNIMPL;
+        }
+        // The highest set bit of immh picks the source element width: 1->8,
+        // 2->16, 4->32, 8->64. The 7-bit immh:immb is the shift plus that width.
+        unsigned hi_bit = 0;
+        while (!(immh & (1u << hi_bit))) {
+            hi_bit++;
+        }
+        const unsigned esize = 8u << hi_bit;
+        const unsigned dsize = esize * 2;
+        const unsigned shift = ((immh << 3) | immb) - esize;
+        const unsigned lanes = 64u / esize;
+        const uint64_t emask = (esize >= 64) ? ~0ULL : ((1ULL << esize) - 1);
+        // Q selects the upper half of the source; every destination lane is
+        // twice as wide as its source lane.
+        for (unsigned i = 0; i < lanes; i++) {
+            const unsigned src_idx = (q ? lanes : 0u) + i;
+            uint64_t v = (cpu->v[rn2][0] >> (src_idx * esize)) & emask;
+            if (!is_unsigned && (v & (1ULL << (esize - 1))) != 0) {
+                v |= ~emask;   // sign-extend to 64 bits before shifting
+            }
+            const uint64_t wide = v << shift;   // v is already 64-bit signed here
+            const int half = (src_idx * dsize) / 64;
+            const unsigned off = (src_idx * dsize) % 64;
+            const uint64_t keep = (dsize >= 64) ? 0 : ~(((1ULL << dsize) - 1) << off);
+            cpu->v[rd][half] = (cpu->v[rd][half] & keep) |
+                               ((wide & ((dsize >= 64) ? ~0ULL : ((1ULL << dsize) - 1))) << off);
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     // --- SIMD: MOVI (immediate) ---
     // libc clears vector registers with `movi vD.16b, #0` before using them, so
     // this appears before any vector arithmetic.
