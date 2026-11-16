@@ -37,7 +37,7 @@ static void str_copy(char *dst, const char *src) {
     *dst = 0;
 }
 
-static int checksum(const unsigned char *p, usize n) {
+__attribute__((noinline)) static int checksum(const unsigned char *p, usize n) {
     int sum = 0;
     for (usize i = 0; i < n; i++) {
         sum = (sum * 31 + p[i]) & 0xFFFF;

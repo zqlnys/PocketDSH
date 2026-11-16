@@ -758,6 +758,23 @@ e2_status e2_step(e2_machine *machine) {
         return E2_OK;
     }
 
+    // --- TBZ / TBNZ ---
+    // Single-bit test and branch. Bit 24 selects test-zero vs test-nonzero; the
+    // tested bit number is split across bits 31 and 23-19.
+    if ((insn & 0x7E000000u) == 0x36000000u) {
+        const bool branch_if_set = BIT(insn, 24) != 0;
+        const unsigned bit_pos = (BIT(insn, 31) << 5) | BITS(insn, 23, 19);
+        const int64_t offset = (int64_t)sign_extend(BITS(insn, 18, 5), 14) << 2;
+        const uint64_t value = is64 ? cpu->x[rd] : (cpu->x[rd] & 0xFFFFFFFFu);
+        const bool bit_is_set = ((value >> bit_pos) & 1u) != 0;
+        if (bit_is_set == branch_if_set) {
+            next_pc = (uint64_t)((int64_t)cpu->pc + offset);
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     // --- BR / BLR / RET ---
     if ((insn & 0xFFFFFC1Fu) == 0xD61F0000u ||   // BR
         (insn & 0xFFFFFC1Fu) == 0xD63F0000u ||   // BLR

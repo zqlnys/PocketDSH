@@ -517,6 +517,9 @@ static void test_compiled_c_program(void) {
         // two-int struct in registers and point_sum receives it back.
         CHECK(strstr(cap.out, "sum=42") != NULL, "output was \"%s\"", cap.out);
         CHECK(strstr(cap.out, "idx=3568") != NULL, "output was \"%s\"", cap.out);
+        CHECK(strstr(cap.out, "checksum=58992") != NULL, "output was \"%s\"", cap.out);
+        CHECK(strstr(cap.out, "d0=3") != NULL, "output was \"%s\"", cap.out);
+        CHECK(strstr(cap.out, "d1=10") != NULL, "output was \"%s\"", cap.out);
     }
 
     e2_machine_destroy(&m);
