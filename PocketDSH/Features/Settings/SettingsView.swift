@@ -76,7 +76,7 @@ struct SettingsView: View {
                 .font(.system(.body, design: .monospaced))
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-                .padding(12)
+                .padding(PocketSpacing.md)
                 .background {
                     RoundedRectangle(cornerRadius: 13, style: .continuous)
                         .fill(PocketTheme.elevatedSurface)

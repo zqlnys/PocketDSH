@@ -37,7 +37,7 @@ struct EditorView: View {
                         .foregroundStyle(PocketTheme.primaryText)
                         .scrollContentBackground(.hidden)
                         .background(PocketTheme.codeSurface)
-                        .padding(8)
+                        .padding(PocketSpacing.sm)
                 }
             }
         }
@@ -159,7 +159,7 @@ struct EditorView: View {
             }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.vertical, PocketSpacing.sm)
         .background(PocketTheme.surface)
     }
 

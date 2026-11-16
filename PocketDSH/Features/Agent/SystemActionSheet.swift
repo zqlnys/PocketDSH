@@ -49,7 +49,7 @@ struct SystemActionSheet: View {
                     .frame(maxWidth: .infinity, maxHeight: 420)
                 }
             }
-            .padding(24)
+            .padding(PocketSpacing.xl)
             .background(PocketTheme.background)
             .navigationTitle("System action")
             .navigationBarTitleDisplayMode(.inline)

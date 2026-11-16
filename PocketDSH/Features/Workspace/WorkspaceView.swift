@@ -72,7 +72,7 @@ struct WorkspaceView: View {
                     .font(.system(size: 17, weight: .bold, design: .serif))
                     .foregroundStyle(.white)
             }
-            .padding(.top, 4)
+            .padding(.top, PocketSpacing.xs)
 
             VStack(spacing: 4) {
                 railButton(.agent)
@@ -87,16 +87,16 @@ struct WorkspaceView: View {
             Circle()
                 .fill(runtime.jit.isAvailable ? PocketTheme.accent : PocketTheme.amber)
                 .frame(width: 6, height: 6)
-                .padding(.bottom, 2)
+                .padding(.bottom, PocketSpacing.xxs)
             Text(runtime.activeTier == .tierA ? "A" : "C")
                 .font(.caption2.weight(.bold).monospaced())
                 .foregroundStyle(PocketTheme.secondaryText)
-                .padding(.bottom, 8)
+                .padding(.bottom, PocketSpacing.sm)
 
             railButton(.settings)
         }
         .frame(width: 76)
-        .padding(.top, 8)
+        .padding(.top, PocketSpacing.sm)
         .padding(.bottom, 10)
         .background(PocketTheme.canvasElevated)
     }
@@ -122,7 +122,7 @@ struct WorkspaceView: View {
                     Capsule()
                         .fill(PocketTheme.accent)
                         .frame(width: 2, height: 22)
-                        .padding(.leading, 2)
+                        .padding(.leading, PocketSpacing.xxs)
                 }
             }
         }
@@ -145,8 +145,8 @@ struct WorkspaceView: View {
 
             Spacer(minLength: 8)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(.horizontal, PocketSpacing.lg)
+        .padding(.vertical, PocketSpacing.sm)
         .background(PocketTheme.surface)
     }
 

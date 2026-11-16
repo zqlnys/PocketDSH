@@ -18,11 +18,11 @@ struct TierCSmokeView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
             }
-            .padding(12)
+            .padding(PocketSpacing.md)
             .background(PocketTheme.codeSurface)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
-        .padding(24)
+        .padding(PocketSpacing.xl)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(PocketTheme.background)
         .task {
@@ -124,7 +124,7 @@ struct TierCSmokeView: View {
                 .foregroundStyle(PocketTheme.secondaryText)
             Spacer()
         }
-        .padding(24)
+        .padding(PocketSpacing.xl)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(PocketTheme.background)
     }

@@ -25,8 +25,8 @@ struct AgentView: View {
                         message: "The key is stored in the iOS Keychain, not in the project or conversation.",
                         tint: PocketTheme.amber
                     )
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
+                    .padding(.horizontal, PocketSpacing.lg)
+                    .padding(.bottom, PocketSpacing.sm)
                     .onTapGesture(perform: onOpenSettings)
                 }
 
@@ -37,8 +37,8 @@ struct AgentView: View {
                         message: error,
                         tint: PocketTheme.red
                     )
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
+                    .padding(.horizontal, PocketSpacing.lg)
+                    .padding(.bottom, PocketSpacing.sm)
                 }
 
                 Divider()
@@ -133,7 +133,7 @@ struct AgentView: View {
                 Text(modelLabel)
                     .font(.caption2.monospaced())
                     .foregroundStyle(PocketTheme.secondaryText)
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, PocketSpacing.sm)
                     .padding(.vertical, 5)
                     .background {
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -158,7 +158,7 @@ struct AgentView: View {
                 Text(settings.reasoningEffort.title)
                     .font(.caption2.monospaced())
                     .foregroundStyle(PocketTheme.secondaryText)
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, PocketSpacing.sm)
                     .padding(.vertical, 5)
                     .background {
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -183,7 +183,7 @@ struct AgentView: View {
                 StatusPill(text: "Idle", tint: PocketTheme.secondaryText)
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, PocketSpacing.lg)
         .padding(.vertical, 10)
         .background(PocketTheme.surface)
     }
@@ -198,7 +198,7 @@ struct AgentView: View {
                             title: "Ask for a real change",
                             message: "Try: “Inspect this project and add a small README section explaining how to run it.” The agent will use file tools on this iPhone."
                         )
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, PocketSpacing.lg)
                         .padding(.top, 20)
                     } else {
                         ForEach(agent.events) { event in
@@ -206,7 +206,7 @@ struct AgentView: View {
                                 event: event,
                                 showsDetails: settings.showsToolDetails
                             )
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, PocketSpacing.lg)
                         }
                     }
 
@@ -283,9 +283,9 @@ struct AgentView: View {
                     .foregroundStyle(PocketTheme.secondaryText)
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, PocketSpacing.lg)
         .padding(.top, 9)
-        .padding(.bottom, 8)
+        .padding(.bottom, PocketSpacing.sm)
         .background(PocketTheme.surface)
     }
 
@@ -356,7 +356,7 @@ private struct AgentEventRow: View {
                 }
             }
         }
-        .padding(12)
+        .padding(PocketSpacing.md)
         .background {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(PocketTheme.surface)

@@ -171,9 +171,9 @@ private struct ChangeRow: View {
             Image(systemName: "chevron.right")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(PocketTheme.secondaryText.opacity(0.7))
-                .padding(.top, 4)
+                .padding(.top, PocketSpacing.xs)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, PocketSpacing.xs)
     }
 
     private var icon: String {

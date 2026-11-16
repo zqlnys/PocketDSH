@@ -73,7 +73,7 @@ struct ExecProbeView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(12)
+            .padding(PocketSpacing.md)
             .background(PocketTheme.codeSurface)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
@@ -94,7 +94,7 @@ struct ExecProbeView: View {
             }
             .buttonStyle(SecondaryButtonStyle())
         }
-        .padding(24)
+        .padding(PocketSpacing.xl)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(PocketTheme.background)
         .task {

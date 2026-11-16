@@ -20,8 +20,8 @@ struct OnboardingView: View {
                     actions
                     localOnly
                 }
-                .padding(24)
-                .padding(.top, 12)
+                .padding(PocketSpacing.xl)
+                .padding(.top, PocketSpacing.md)
             }
             .background(PocketTheme.background)
             .navigationBarTitleDisplayMode(.inline)
@@ -154,7 +154,7 @@ struct OnboardingView: View {
                 .font(.caption2)
                 .foregroundStyle(PocketTheme.secondaryText)
         }
-        .padding(.top, 4)
+        .padding(.top, PocketSpacing.xs)
     }
 
     private func save() {

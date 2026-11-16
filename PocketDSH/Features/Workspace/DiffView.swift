@@ -20,20 +20,20 @@ struct LineDiffView: View {
                         .foregroundStyle(PocketTheme.accent)
                 }
                 .font(.caption.monospaced())
-                .padding(.bottom, 8)
+                .padding(.bottom, PocketSpacing.sm)
 
                 if diff.truncated {
                     Text("Large file: diff preview is limited.")
                         .font(.caption)
                         .foregroundStyle(PocketTheme.amber)
-                        .padding(.bottom, 8)
+                        .padding(.bottom, PocketSpacing.sm)
                 }
 
                 ForEach(diff.lines) { line in
                     DiffLineRow(line: line)
                 }
             }
-            .padding(16)
+            .padding(PocketSpacing.lg)
         }
         .background(PocketTheme.codeSurface)
         .navigationTitle("Diff")
@@ -64,7 +64,7 @@ struct RawDiffView: View {
                         .textSelection(.enabled)
                 }
             }
-            .padding(16)
+            .padding(PocketSpacing.lg)
         }
         .background(PocketTheme.codeSurface)
         .navigationTitle("Change")
@@ -100,7 +100,7 @@ private struct DiffLineRow: View {
             Spacer(minLength: 0)
         }
         .font(.system(.caption, design: .monospaced))
-        .padding(.vertical, 2)
+        .padding(.vertical, PocketSpacing.xxs)
         .padding(.horizontal, 6)
         .background(background)
         .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))

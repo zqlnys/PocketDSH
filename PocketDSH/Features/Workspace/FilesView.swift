@@ -201,7 +201,7 @@ struct FilesView: View {
                 }
             }
         }
-        .padding(16)
+        .padding(PocketSpacing.lg)
         .background {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(PocketTheme.surface)
@@ -330,7 +330,7 @@ private struct FileTreeRows: View {
 
             Spacer(minLength: 0)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, PocketSpacing.xxs)
     }
 
     private func icon(for name: String) -> String {

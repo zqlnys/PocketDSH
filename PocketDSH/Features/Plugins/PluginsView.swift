@@ -79,7 +79,7 @@ struct PluginsView: View {
                                     tint: plugin.enabled ? PocketTheme.accent : PocketTheme.secondaryText
                                 )
                             }
-                            .padding(.vertical, 2)
+                            .padding(.vertical, PocketSpacing.xxs)
                         }
                     }
                 }
@@ -188,7 +188,7 @@ struct PluginDetailView: View {
                                     .font(.caption)
                                     .foregroundStyle(PocketTheme.secondaryText)
                             }
-                            .padding(.vertical, 2)
+                            .padding(.vertical, PocketSpacing.xxs)
                         }
                     }
 
