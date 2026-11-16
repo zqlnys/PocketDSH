@@ -1521,6 +1521,9 @@ static int run_proc(int idx) {
             break;
         }
     }
+    // A run that faults never reaches p_exit, so a partial recording would be
+    // lost exactly when it is most wanted - the trace up to the fault.
+    trace_flush();
     return p->exit_status;
 }
 
