@@ -597,7 +597,32 @@ if (off) { p += UNIT*off; ... }        // slack=0 时 off 必须为 0
 | `n + IB` | `0x64` | 否 |
 | 从 group 跨度反推（`0x190/4`） | `0x64` | 否 |
 
-下一轮：直接读 `p[-2]` 的实际值（而不是我推算的 `(p-storage)/UNIT`），以及 block 所属 meta 的 `sizeclass` / `last_idx`，用观测替代推算。
+**直接读块头后，参数完全对上了，问题定位到 group 尺寸。**
+
+```
+ret=0x10000690  slot=0  off=0    calc=0
+ret=0x10000700  slot=1  off=7    calc=7
+ret=0x10000770  slot=2  off=14   calc=14
+ret=0x100007e0  slot=3  off=21   calc=21
+ret=0x10000820  slot=0  off=0    calc=25   ← 新 group 的 storage
+```
+
+`off` 与 `(p − 0x690)/16` **逐项精确吻合**，所以：
+
+| 量 | 值 |
+| --- | --- |
+| group 起点（storage） | `0x10000690` |
+| 下一个 group 起点 | `0x10000820` |
+| **group 跨度** | **`0x190` = 400 字节** |
+| slot 数 | 4（索引 0-3） |
+| stride（`UNIT × size_classes[6]` = `16 × 7`） | `0x70` = 112 字节 |
+| **4 个 slot 需要的空间** | **`4 × 112` = 448 字节** |
+
+**group 只有 400 字节，却要装 448 字节的 slot。少 48 字节。**
+
+slot 3 落在 `0x7e0`，占 `[0x7e0, 0x850)`——而 group 在 `0x820` 就结束了，**越界 0x30**。越界部分正好覆盖下一个 group 的 storage 头部，也就是链表节点的 `next` 字段。
+
+`alloc_group()` 里 `size*cnt+UNIT > pagesize/2` 那条分支决定是整页分配还是嵌套小映射，`cnt` 来自 `small_cnt_tab[sc][i]`。下一轮查 `cnt` 的实际取值与 `maplen` 是否一致——**400 = 25 × UNIT** 这个数字很可疑，像是某个计数少算了。
 
 另一个纠正：被拒绝的字符是 **`0xff`**，不是空格——终端把它渲染成了不可见字符，导致前一轮在字符串里找一个根本不存在的空格。
 
