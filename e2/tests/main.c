@@ -1221,6 +1221,34 @@ static void test_scalar_immediates(void) {
         e2_memory_destroy(&m.mem);
     }
 
+    {
+        // subs x2, x2, #64 - the borrow must clear C, which is what terminates
+        // musl's 64-byte memset loop with `b.hi`. If C stayed set the loop would
+        // run past the end of the buffer.
+        static const struct { uint64_t a; uint64_t want; bool want_c; const char *what; } cases[] = {
+            {0xE0, 0xA0, true,  "224 - 64 = 160, no borrow"},
+            {0x20, 0xFFFFFFFFFFFFFFE0ULL, false, "32 - 64 = -32, borrow clears C"},
+            {0x40, 0x00, true, "64 - 64 = 0, no borrow"},
+        };
+        for (unsigned i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+            e2_machine m;
+            e2_machine_init(&m, 0, 1 << 20);
+            const uint64_t at = 0x30000000ULL;
+            e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+            // subs x2, x2, #64 - the encoding the assembler produces, not a
+            // guess: getting the immediate field wrong here would have made the
+            // test agree with a wrong decoder.
+            uint32_t insn = 0xF1010042u;
+            e2_memory_write(&m.mem, at, &insn, 4);
+            m.cpu.pc = at;
+            m.cpu.x[2] = cases[i].a;
+            e2_step(&m);
+            CHECK(m.cpu.x[2] == cases[i].want && m.cpu.flags.c == cases[i].want_c,
+                  "%s", cases[i].what);
+            e2_memory_destroy(&m.mem);
+        }
+    }
+
     // UMOV moves a vector element into a general register. musl's memset does
     // `mov x1, v0.d[0]` to materialise the replicated byte pattern, so a broken
     // UMOV silently turned every memset into a zero fill. It used to decode as
