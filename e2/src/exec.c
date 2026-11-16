@@ -1,5 +1,7 @@
 #include "e2/exec.h"
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 // This interpreter is written from the ARM Architecture Reference Manual and the
@@ -56,6 +58,32 @@ void e2_machine_init(e2_machine *machine, uint64_t entry, size_t stack_size) {
 
 void e2_machine_destroy(e2_machine *machine) {
     e2_memory_destroy(&machine->mem);
+}
+
+/// Applies the opc field of a load to the value read from memory.
+///
+/// opc is two bits: 00 store, 01 zero-extend, 10 sign-extend to 64,
+/// 11 sign-extend to 32. Bit 22 alone is not enough - LDRSW has it clear and
+/// was being decoded as a store, writing a register into unrelated memory.
+static uint64_t apply_load_opc(uint64_t value, unsigned opc, unsigned bytes, bool is64) {
+    if (opc == 2) {
+        const unsigned bits = bytes * 8;
+        if (bits < 64) {
+            const uint64_t sign = 1ULL << (bits - 1);
+            value = (value ^ sign) - sign;
+        }
+    } else if (opc == 3) {
+        const unsigned bits = bytes * 8;
+        uint64_t extended = value;
+        if (bits < 32) {
+            const uint64_t sign = 1ULL << (bits - 1);
+            extended = (value ^ sign) - sign;
+        }
+        value = (uint64_t)(int64_t)(int32_t)extended & 0xFFFFFFFFu;
+    } else if (!is64) {
+        value &= 0xFFFFFFFFu;
+    }
+    return value;
 }
 
 static void write_reg(e2_cpu *cpu, unsigned reg, uint64_t value, bool is64) {
@@ -826,7 +854,8 @@ e2_status e2_step(e2_machine *machine) {
     // --- LDR / STR (unsigned immediate offset) ---
     if ((insn & 0x3B000000u) == 0x39000000u) {
         const unsigned size_code = BITS(insn, 31, 30);
-        const bool is_load = BIT(insn, 22) != 0;
+        const unsigned opc = BITS(insn, 23, 22);
+        const bool is_load = opc != 0;
         const uint64_t offset = (uint64_t)BITS(insn, 21, 10) * (1u << size_code);
         const uint64_t addr = cpu->x[rn] + offset;
         const unsigned bytes = 1u << size_code;
@@ -837,6 +866,7 @@ e2_status e2_step(e2_machine *machine) {
                 machine->ctx.reason = "load outside mapped memory";
                 return E2_FAULT;
             }
+            value = apply_load_opc(value, opc, bytes, size_code == 3);
             write_reg(cpu, rd, value, size_code == 3);
         } else {
             // Storing XZR is legal and common (zero-init loops); reading x[31]
@@ -856,7 +886,8 @@ e2_status e2_step(e2_machine *machine) {
     // Compilers use the signed-offset form for struct and stack slot access, so
     // it shows up as soon as real code runs.
     if ((insn & 0x3B200000u) == 0x38000000u && BIT(insn, 26) == 0) {
-        const bool is_load = BIT(insn, 22) != 0;
+        const unsigned opc = BITS(insn, 23, 22);
+        const bool is_load = opc != 0;
         const unsigned size_code = BITS(insn, 31, 30);
         const unsigned mode = BITS(insn, 11, 10);   // 00 unscaled, 01 post, 11 pre
         const int64_t imm9 = (int64_t)sign_extend(BITS(insn, 20, 12), 9);
@@ -876,6 +907,7 @@ e2_status e2_step(e2_machine *machine) {
                 machine->ctx.reason = "unscaled load outside mapped memory";
                 return E2_FAULT;
             }
+            value = apply_load_opc(value, opc, bytes, size_code == 3);
             write_reg(cpu, rd, value, size_code == 3);
         } else {
             uint64_t value = e2_read_xzr(cpu, rd);
@@ -899,7 +931,8 @@ e2_status e2_step(e2_machine *machine) {
     // Byte-at-a-time loops over a pointer index compile to this form, so it shows
     // up immediately in any libc string routine.
     if ((insn & 0x3B200C00u) == 0x38200800u) {
-        const bool is_load = BIT(insn, 22) != 0;
+        const unsigned opc = BITS(insn, 23, 22);
+        const bool is_load = opc != 0;
         const unsigned size_code = BITS(insn, 31, 30);
         const unsigned rm = BITS(insn, 20, 16);
         const unsigned option = BITS(insn, 15, 13);
