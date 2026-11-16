@@ -490,8 +490,20 @@ static int run_proc(int idx) {
     if (getenv("E2_TRACE_WAIT"))
         fprintf(stderr, "[run] pid=%d pc=0x%llx alive=%d\n", p->pid,
                 (unsigned long long)p->m.cpu.pc, p->alive);
+    // Ring buffer of recent steps: when execution stops on a bad access, the
+    // useful question is "how did this register get here", and that needs the
+    // preceding instructions rather than the faulting one.
+    struct { uint64_t pc, insn, x0, x1, x2; } hist[32];
+    unsigned hist_at = 0, hist_n = 0;
     long guard = 0;
     while (p->alive) {
+        hist[hist_at].pc = p->m.cpu.pc;
+        hist[hist_at].insn = p->m.ctx.instruction;
+        hist[hist_at].x0 = p->m.cpu.x[0];
+        hist[hist_at].x1 = p->m.cpu.x[1];
+        hist[hist_at].x2 = p->m.cpu.x[2];
+        hist_at = (hist_at + 1) % 32;
+        if (hist_n < 32) hist_n++;
         if (++guard > 40000000L) { snprintf(g_reason, sizeof(g_reason), "instruction cap"); g_fault = 1; break; }
         if (getenv("E2_TRACE_GREP") && p->m.cpu.pc == 0x4c4408) {
             static int ng = 0;
@@ -535,6 +547,19 @@ static int run_proc(int idx) {
                              (unsigned long long)p->m.cpu.pc, word);
                 }
                 g_fault = 1;
+                if (getenv("E2_TRACE_HIST")) {
+                    fprintf(stderr, "[hist] last %u steps before 0x%llx:\n", hist_n,
+                            (unsigned long long)p->m.cpu.pc);
+                    for (unsigned k = 0; k < hist_n; k++) {
+                        const unsigned idx = (hist_at + 32 - hist_n + k) % 32;
+                        fprintf(stderr, "  pc=0x%llx insn=0x%08llx x0=0x%llx x1=0x%llx x2=0x%llx\n",
+                                (unsigned long long)hist[idx].pc,
+                                (unsigned long long)hist[idx].insn,
+                                (unsigned long long)hist[idx].x0,
+                                (unsigned long long)hist[idx].x1,
+                                (unsigned long long)hist[idx].x2);
+                    }
+                }
                 if (getenv("E2_TRACE_GREP")) {
                     fprintf(stderr, "[fault] pid=%d regions=%u\n", p->pid, p->m.mem.count);
                     for (unsigned k = 0; k < p->m.mem.count; k++)
@@ -547,10 +572,25 @@ static int run_proc(int idx) {
             continue;
         }
         if (st != E2_OK) {
-            snprintf(g_reason, sizeof(g_reason), "%s pid=%d pc=0x%llx insn=0x%08x",
+            snprintf(g_reason, sizeof(g_reason),
+                     "%s pid=%d pc=0x%llx insn=0x%08x x0=0x%llx x1=0x%llx x2=0x%llx sp=0x%llx",
                      p->m.ctx.reason ? p->m.ctx.reason : "?", p->pid,
-                     (unsigned long long)p->m.cpu.pc, p->m.ctx.instruction);
+                     (unsigned long long)p->m.cpu.pc, p->m.ctx.instruction,
+                     (unsigned long long)p->m.cpu.x[0], (unsigned long long)p->m.cpu.x[1],
+                     (unsigned long long)p->m.cpu.x[2], (unsigned long long)p->m.cpu.sp);
             g_fault = 1;
+            if (getenv("E2_TRACE_HIST")) {
+                fprintf(stderr, "[hist] last %u steps:\n", hist_n);
+                for (unsigned k = 0; k < hist_n; k++) {
+                    const unsigned hidx = (hist_at + 32 - hist_n + k) % 32;
+                    fprintf(stderr, "  pc=0x%llx insn=0x%08llx x0=0x%llx x1=0x%llx x2=0x%llx\n",
+                            (unsigned long long)hist[hidx].pc,
+                            (unsigned long long)hist[hidx].insn,
+                            (unsigned long long)hist[hidx].x0,
+                            (unsigned long long)hist[hidx].x1,
+                            (unsigned long long)hist[hidx].x2);
+                }
+            }
             if (getenv("E2_TRACE_GREP")) {
                 fprintf(stderr, "[fault] pid=%d regions=%u\n", p->pid, p->m.mem.count);
                 for (unsigned k = 0; k < p->m.mem.count; k++)

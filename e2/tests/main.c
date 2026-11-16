@@ -893,6 +893,31 @@ static void test_scalar_immediates(void) {
         e2_memory_destroy(&m.mem);
     }
 
+    // LSL by an immediate lowers to UBFM with imms >= immr, which is the form
+    // that shows up right before a table lookup in Python's runtime.
+    {
+        static const struct { uint64_t in, want; } lsl[] = {
+            {0x0ULL, 0x0ULL},
+            {0x3ULL, 0x30ULL},
+            {0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFF0ULL},
+            {0x1000000000000000ULL, 0x0ULL},
+        };
+        for (unsigned i = 0; i < sizeof(lsl) / sizeof(lsl[0]); i++) {
+            e2_machine m;
+            e2_machine_init(&m, 0, 1 << 20);
+            const uint64_t at = 0x30000000ULL;
+            e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+            const uint32_t insn = 0xD37CEE80u;   // lsl x0, x20, #4
+            e2_memory_write(&m.mem, at, &insn, 4);
+            m.cpu.pc = at;
+            m.cpu.x[20] = lsl[i].in;
+            const e2_status st = e2_step(&m);
+            CHECK(st == E2_OK && m.cpu.x[0] == lsl[i].want,
+                  "lsl x0, x20, #4 with 0x%llx", (unsigned long long)lsl[i].in);
+            e2_memory_destroy(&m.mem);
+        }
+    }
+
     // scvtf/ucvtf convert an integer in x0 to a float in s0.
     {
         e2_machine m;
