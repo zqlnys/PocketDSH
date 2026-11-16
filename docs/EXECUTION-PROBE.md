@@ -49,6 +49,42 @@ execute code copied into anonymous page    →  进程直接终止，无信号
 
 进入 probe 页面即闪退。设置的 `SIGSEGV` / `SIGBUS` / `SIGILL` 保护**一个都没触发**——进程在一瞬间消失。
 
+#### 崩溃报告给出的判词
+
+用户真机日志 `PocketDSH-2026-11-16-152126.ips`：
+
+```json
+"exception": {
+  "type": "EXC_BAD_ACCESS",
+  "signal": "SIGKILL",
+  "subtype": "KERN_PROTECTION_FAILURE at 0x0000000124618000"
+},
+"termination": {
+  "namespace": "CODESIGNING",
+  "indicator": "Invalid Page",
+  "code": 2
+},
+"vmRegionInfo": "VM_ALLOCATE  124618000-12461c000 [16K] rw-/rwx SM=PRV"
+```
+
+四件事同时成立：
+
+1. **崩溃地址正好是 anonymous mmap 那一页**（`VM_ALLOCATE`，16K = 我们申请的 4 页）
+2. **失败原因是 `KERN_PROTECTION_FAILURE`**——页保护不让取指
+3. **终止原因归到 `CODESIGNING` / `Invalid Page`**——不是普通内存错误，是代码签名判定
+4. **信号是 `SIGKILL`**——内核终止，`SIGSEGV` 这类 handler 永远不会被调用
+
+调用栈精确落在崩点：
+
+```
+? +?                                     ← 匿名页中的代码
+pocket_exec_probe +324                   ← RuntimeExecProbe.c
+ExecutionProbe.run() +88                 ← ExecutionProbe.swift
+closure #2 in ExecProbeView.body.getter  ← 页面打开时触发
+```
+
+**签名状态也同样记录在案**：`developerMode: 1`、`codeSigningValidationCategory: 5`（开发签名）、自签 Team `5846AK7HYT`。也就是说，**在一个开了开发者模式的开发签名构建上，这条路径照样被内核处决。**
+
 ## 三、结论
 
 **iOS 对可执行页的强制发生在内核层，不是应用能拦截的错误路径。**

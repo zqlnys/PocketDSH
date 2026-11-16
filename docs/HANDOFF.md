@@ -538,7 +538,9 @@ examples/workspace-inspector.dshplugin/
 | 文件映射 + `mprotect(PROT_EXEC)` | `EACCES` |
 | 匿名页 + 拷贝代码 + 跳转 | 进程被内核终止，无信号 |
 
-测试用的是自签构建（带 `get-task-allow`），比商店版宽松，连它都不行。
+崩溃报告给出内核判词：`EXC_BAD_ACCESS` / `KERN_PROTECTION_FAILURE` / `termination: CODESIGNING, Invalid Page` / `SIGKILL`，崩溃地址正是 anonymous mmap 那一页。调用栈落在 `pocket_exec_probe → ExecutionProbe.run()`。
+
+测试用的是**开了开发者模式的自签构建**（`developerMode: 1`，`codeSigningValidationCategory: 5`），比商店版宽松，连它都被内核处决。
 
 **因此**：native userland 路线排除，重写后端必须自带 aarch64 解释器，工期 4–6 个月（不是 1–2 个月）。
 
