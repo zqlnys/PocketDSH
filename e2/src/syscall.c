@@ -271,6 +271,24 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             } else if (e2_memory_map_any(&m->mem, (size_t)length, e2_prot, &base) != 0) {
                 E2_RETURN(-12);  // ENOMEM
             }
+
+            // File-backed mappings must actually contain the file. Leaving them
+            // zero-filled makes the guest read an empty dynamic section and an
+            // empty program image, which fails far away from here.
+            const bool anonymous = (mmap_flags & 0x20) != 0;  // MAP_ANONYMOUS
+            const int map_fd = (int)m->cpu.x[4];
+            const uint64_t map_off = m->cpu.x[5];
+            if (!anonymous && map_fd >= 0) {
+                uint8_t *dst = e2_memory_host_ptr(&m->mem, base, (size_t)length,
+                                                  E2_PROT_WRITE);
+                if (dst != NULL) {
+                    long got = files->read(env->ctx, map_fd, dst, (size_t)length,
+                                           (long long)map_off);
+                    if (got < 0) {
+                        E2_RETURN(got);
+                    }
+                }
+            }
             E2_RETURN(base);
         }
         case E2_SYS_mprotect: {
