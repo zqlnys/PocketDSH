@@ -196,3 +196,19 @@
 "The system will ask before placing a call to" = "系统会在拨号前请求确认：";
 
 "Tier A default · Tier C experimental" = "Tier A 默认 · Tier C 实验性";
+
+/* Added with the UI pass: these literals were reaching a Chinese interface untranslated. */
+"OK" = "好";
+"Done" = "完成";
+"Close" = "关闭";
+"Execution probe" = "执行探测";
+"Run again" = "重新运行";
+"Also run anonymous execution (may crash)" = "同时测试匿名页执行（可能崩溃）";
+"Executing code in an anonymous page previously terminated the process on device. That step is opt-in." = "在匿名页中执行代码此前会导致进程在设备上被终止。该步骤需要手动开启。";
+"Run Tier C smoke test" = "运行 Tier C 冒烟测试";
+"Tier C smoke test" = "Tier C 冒烟测试";
+"This build does not include the Linux backend." = "此构建不包含 Linux 后端。";
+"The shipped target excludes the GPL-licensed Linux runtime. Build the PocketDSH-Lab target to exercise Tier C." = "发布目标不包含 GPL 许可的 Linux 运行时。构建 PocketDSH-Lab 目标以验证 Tier C。";
+"iSH · Alpine · no JIT · persistent shell" = "iSH · Alpine · 无 JIT · 持久 shell";
+"GPLv3: distribution requires source/license compliance." = "GPLv3：分发需满足源码与许可合规要求。";
+"Local-first iOS coding agent. Model inference uses the DeepSeek API; your files stay on this phone." = "本地优先的 iOS 编程 Agent。模型推理通过 DeepSeek API，文件保留在本机。";
