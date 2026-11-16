@@ -1353,3 +1353,33 @@ make -C e2 overlaps       # 解码规则重叠检查，musl 与 busybox 均无�
 make -C e2 tools/rune     # 主机测试台
 .github/workflows/e2.yml  # 同一套检查在 CI 上跑
 ```
+
+## M4 进展与当前阻塞点
+
+Python 3.12.13 能启动并打印版本号（`-V`）。执行代码仍失败，但每次失败都是
+**具体的、可复现的** fault，不再是死循环。已修掉的问题按因果顺序：
+
+1. **UMOV 被当成 DUP 解码** —— `memset` 的 8 字节模式全写成 0。
+2. **UMOV 掩码过宽** —— 吞下 `cmhs`/`cmge`/`fdiv`。
+3. **LD1 lane 掩码过宽** —— 吞下 `ld1r`。
+4. **FMAX/FMIN 当成 *NM 变体** —— NaN 传播语义错。
+5. **符号扩展只到 32 位** —— `ldrsb x2,[x2,#32]` 返回 0xFFFFFFFF 而非全 1，
+   使 Python 哈希探测永不终止。这解掉了死循环。
+6. **MAP_FIXED 未实现替换语义** —— musl 用匿名 `MAP_FIXED` 覆盖各段的 `.bss`，
+   而实现只是「接受地址」，导致 `.bss` 保留文件字节（`0x459930`，
+   `.data.rel.ro` 的 vaddr），被当作线程状态指针解引用。
+7. **FPCR / FPSR 未实现** —— musl 的 fenv 代码会读改写 FPCR。
+8. **INS（通用寄存器→向量）未实现** —— UMOV 的逆操作。
+
+当前停在这里：`pc=0x1018abd8`，`ldr x2, [x0, #0x90]` 且 `x0 = 0` —— 一个空指针。
+指令数从 11,587,837 推进到 12,848,935。
+
+### 调试工具
+
+- `E2_TRACE_STACK=1` —— 影子调用栈（bl/blr 入栈、ret 出栈，48 层），fault 时打印。
+- `E2_TRACE_WATCH=1` —— 逐指令比对某个 guest 字，变化时报出执行的那条指令。
+- `E2_TRACE_CODE=1` —— fault 时 dump 出错位置附近的真实代码。
+  磁盘文件和内存映像的偏移不一定一致，反汇编文件曾导致错误结论。
+- `tools/check-rule-mnemonics.py` —— 把解码规则的分类与 llvm 的独立反汇编做全量比对。
+  它一次找出了上面第 2、3 条。
+
