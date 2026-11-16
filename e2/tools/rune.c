@@ -1410,7 +1410,21 @@ static int run_proc(int idx) {
                 {
                     uint32_t word = 0;
                     e2_memory_read(&p->m.mem, p->m.cpu.pc, &word, 4);
-                    snprintf(g_reason, sizeof(g_reason), "%s pid=%d pc=0x%llx insn=0x%08x",
+                    // Name the region the faulting pc lives in. Without it a
+                    // pc inside a shared library is just a number.
+                    {
+                        const uint64_t fpc = p->m.cpu.pc;
+                        for (unsigned k = 0; k < p->m.mem.count; k++) {
+                            const e2_region *rg = &p->m.mem.regions[k];
+                            if (fpc >= rg->base && fpc < rg->base + rg->size) {
+                                snprintf(g_reason, sizeof(g_reason), "[pc in region base=0x%llx size=0x%llx] ",
+                                         (unsigned long long)rg->base, (unsigned long long)rg->size);
+                                break;
+                            }
+                        }
+                    }
+                    snprintf(g_reason + strlen(g_reason), sizeof(g_reason) - strlen(g_reason),
+                             "%s pid=%d pc=0x%llx insn=0x%08x",
                              p->m.ctx.reason ? p->m.ctx.reason : "?", p->pid,
                              (unsigned long long)p->m.cpu.pc, word);
                 }
