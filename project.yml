@@ -43,6 +43,8 @@ targets:
       - path: TierCProbe/ISHBridge.h
       - path: TierCProbe/ISHPersistentShell.c
       - path: TierCProbe/ISHPersistentShell.h
+      - path: TierCProbe/RuntimeExecProbe.c
+      - path: TierCProbe/RuntimeExecProbe.h
       - path: Vendor/iSH/rootfs
         buildPhase: resources
         type: folder

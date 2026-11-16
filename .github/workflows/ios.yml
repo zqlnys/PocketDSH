@@ -193,6 +193,15 @@ jobs:
           xcrun simctl io "$SIMULATOR_UDID" screenshot "$ARTIFACTS_DIR/pocketdsh-tierc-readonly.png" 2>&1 | tee "$LOG_DIR/screenshot-tierc-readonly.log"
           file "$ARTIFACTS_DIR/pocketdsh-tierc-readonly.png"
 
+          # Settles the question that picks the next backend architecture: can a
+          # device execute code it loaded at runtime? Simulator policy differs, so
+          # this screenshot only says what the simulator does.
+          xcrun simctl terminate "$SIMULATOR_UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
+          xcrun simctl launch "$SIMULATOR_UDID" "$BUNDLE_ID" -PocketDSHExecProbe 2>&1 | tee -a "$LOG_DIR/simulator-launch.log"
+          sleep 6
+          xcrun simctl io "$SIMULATOR_UDID" screenshot "$ARTIFACTS_DIR/pocketdsh-exec-probe.png" 2>&1 | tee "$LOG_DIR/screenshot-exec-probe.log"
+          file "$ARTIFACTS_DIR/pocketdsh-exec-probe.png"
+
       - name: Build Release and package unsigned IPA
         id: ipa
         if: >-

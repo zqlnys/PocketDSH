@@ -6,7 +6,9 @@ struct RootView: View {
 
     var body: some View {
         Group {
-            if appState.isTierCSmoke {
+            if appState.isExecProbe {
+                ExecProbeView()
+            } else if appState.isTierCSmoke {
                 TierCSmokeView()
             } else if appState.isPluginDemo {
                 NavigationStack {

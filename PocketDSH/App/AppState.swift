@@ -93,6 +93,7 @@ final class AppState: ObservableObject {
     @Published var errorMessage: String?
     @Published var showOnboarding = false
     @Published var isTierCSmoke = false
+    @Published var isExecProbe = false
     private var sessionSubscription: AnyCancellable?
     @Published private(set) var isPluginDemo = false
 
@@ -122,6 +123,11 @@ final class AppState: ObservableObject {
 
         if arguments.contains("-PocketDSHTierCSmoke") {
             isTierCSmoke = true
+            showOnboarding = false
+        }
+
+        if arguments.contains("-PocketDSHExecProbe") {
+            isExecProbe = true
             showOnboarding = false
         }
 
