@@ -1321,26 +1321,6 @@ static int run_proc(int idx) {
                         (unsigned long long)(p->m.cpu.pc + (int64_t)imm * 4));
             }
         }
-        if (getenv("E2_TRACE_RE")) {
-            static int n2 = 0;
-            if (p->m.cpu.pc == 0x4cbe7c && ++n2 <= 3) {
-                uint32_t f144 = 0, f32lo = 0;
-                uint64_t f40 = 0, f72 = 0;
-                const uint64_t base = p->m.cpu.x[21];
-                e2_memory_read(&p->m.mem, base + 144, &f144, 4);
-                e2_memory_read(&p->m.mem, base + 32, &f32lo, 4);
-                e2_memory_read(&p->m.mem, base + 40, &f40, 8);
-                e2_memory_read(&p->m.mem, base + 72, &f72, 8);
-                fprintf(stderr,
-                        "[re] regex=0x%llx flags144=0x%x f32=0x%x f40=0x%llx f72=0x%llx"
-                        " x0=0x%llx x1=0x%llx x2=0x%llx\n",
-                        (unsigned long long)base, f144, f32lo,
-                        (unsigned long long)f40, (unsigned long long)f72,
-                        (unsigned long long)p->m.cpu.x[0],
-                        (unsigned long long)p->m.cpu.x[1],
-                        (unsigned long long)p->m.cpu.x[2]);
-            }
-        }
         const uint64_t pre_pc = p->m.cpu.pc;
         // Shadow call stack. Chasing a bad argument by re-running with a probe
         // one frame up, over and over, was the slowest part of the last few
