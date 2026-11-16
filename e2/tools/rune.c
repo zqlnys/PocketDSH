@@ -337,6 +337,7 @@ static proc_t procs[16];
 static int g_next_pid = 2;
 // Shared with debug builds of the memory layer that need the faulting pc.
 uint64_t g_dbg_pc;
+uint64_t g_dbg_pc2;
 static const char *g_self_path = NULL;
 
 static int proc_slot(void) {
@@ -504,6 +505,7 @@ static int run_proc(int idx) {
     long guard = 0;
     while (p->alive) {
         g_dbg_pc = p->m.cpu.pc;
+        g_dbg_pc2 = p->m.cpu.pc;
         hist[hist_at].pc = p->m.cpu.pc;
         // Read the word at pc rather than ctx.instruction: ctx carries the
         // instruction of the previous step, which put every history entry one
@@ -574,6 +576,24 @@ static int run_proc(int idx) {
                 e2_memory_read(&p->m.mem, t + 16, &freev, 8);
                 e2_memory_read(&p->m.mem, t + 24, &cnt, 8);
                 e2_memory_read(&p->m.mem, t + 8, &sz8, 1);
+                {
+                    // Do two mappings cover the kind array? Then one guest
+                    // address resolves to different host buffers depending on
+                    // which region a helper happens to pick.
+                    const uint64_t t0 = 0x1065c050ULL, t1 = 0x1065c058ULL;
+                    unsigned hits = 0;
+                    for (unsigned r2 = 0; r2 < p->m.mem.count; r2++) {
+                        const e2_region *rg = &p->m.mem.regions[r2];
+                        if (rg->base < t1 && t0 < rg->base + rg->size) {
+                            fprintf(stderr, "[overlap] region[%u] base=0x%llx size=0x%llx prot=%d\n",
+                                    r2, (unsigned long long)rg->base,
+                                    (unsigned long long)rg->size, rg->prot);
+                            hits++;
+                        }
+                    }
+                    if (hits != 1)
+                        fprintf(stderr, "[overlap] %u regions cover the kind array\n", hits);
+                }
                 unsigned char kb[8] = {0};
                 e2_memory_read(&p->m.mem, p->m.cpu.x[19] + 32, kb, 8);
                 fprintf(stderr, "[tbl] kindbytes:");
@@ -686,7 +706,15 @@ static int run_proc(int idx) {
             }
             if (ng < 8) ng++;
         }
+        const uint64_t pre_pc = p->m.cpu.pc;
         e2_status st = e2_step(&p->m);
+        if (getenv("E2_TRACE_AFTER") && pre_pc == 0x50013e94) {
+            unsigned char k[8] = {0};
+            e2_memory_read(&p->m.mem, 0x1065c050ULL, k, 8);
+            fprintf(stderr, "[after-memset]:");
+            for (int q = 0; q < 8; q++) fprintf(stderr, " %02x", k[q]);
+            fprintf(stderr, "\n");
+        }
         if (st == E2_SYSCALL) {
             const uint64_t pn = p->m.cpu.x[8];
             if (getenv("E2_TRACE_PIPE") && (pn == 23 || pn == 24 || pn == 59 || pn == 220 || pn == 260 || pn == 221))

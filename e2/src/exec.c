@@ -595,10 +595,39 @@ e2_status e2_step(e2_machine *machine) {
     }
 
 
+    // --- SIMD: UMOV (vector element to general register) ---
+    // musl's memset does `mov x1, v0.d[0]` to materialise the replicated byte
+    // pattern, so without this every memset wrote zeros. It used to be decoded
+    // as DUP because that rule only tested bits 11-10 of the opcode.
+    if ((insn & 0x9F80FC00u) == 0x0E003C00u) {
+        const unsigned imm5 = BITS(insn, 20, 16);
+        const unsigned rn2 = BITS(insn, 9, 5);
+        unsigned esize, index;
+        if (imm5 & 1) {
+            esize = 8;  index = (imm5 >> 1) & 0xF;
+        } else if (imm5 & 2) {
+            esize = 16; index = (imm5 >> 2) & 0x7;
+        } else if (imm5 & 4) {
+            esize = 32; index = (imm5 >> 3) & 0x3;
+        } else if (imm5 & 8) {
+            esize = 64; index = (imm5 >> 4) & 0x1;
+        } else {
+            machine->ctx.reason = "invalid UMOV imm5";
+            return E2_UNIMPL;
+        }
+        const unsigned bit = index * esize;
+        const uint64_t mask = (esize >= 64) ? ~0ULL : ((1ULL << esize) - 1);
+        const uint64_t elem = (cpu->v[rn2][0] >> bit) & mask;
+        write_reg(cpu, rd, elem, true);
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     // --- SIMD: DUP (general) ---
     // `dup v0.16b, w1` is the first instruction of musl's memset, so this is the
     // entry point for vector support.
-    if ((insn & 0x9FE00C00u) == 0x0E000C00u) {
+    if ((insn & 0x9FF00C00u) == 0x0E000C00u) {
         const bool q = BIT(insn, 30) != 0;
         const unsigned imm5 = BITS(insn, 20, 16);
         const unsigned rn_v = BITS(insn, 9, 5);

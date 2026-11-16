@@ -918,6 +918,31 @@ static void test_scalar_immediates(void) {
         }
     }
 
+    // UMOV moves a vector element into a general register. musl's memset does
+    // `mov x1, v0.d[0]` to materialise the replicated byte pattern, so a broken
+    // UMOV silently turned every memset into a zero fill. It used to decode as
+    // DUP because that rule only tested bits 11-10 of the opcode.
+    {
+        static const struct { uint32_t insn; uint64_t v_lo; uint64_t want; const char *what; } um[] = {
+            {0x4E083C01u, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, "umov x1, v0.d[0] all ones"},
+            {0x4E083C01u, 0x1122334455667788ULL, 0x1122334455667788ULL, "umov x1, v0.d[0] pattern"},
+            {0x0E043C01u, 0x1122334455667788ULL, 0x0000000055667788ULL, "umov w1, v0.s[0]"},
+            {0x0E013C01u, 0x1122334455667788ULL, 0x0000000000000088ULL, "umov w1, v0.b[0]"},
+        };
+        for (unsigned i = 0; i < sizeof(um) / sizeof(um[0]); i++) {
+            e2_machine m;
+            e2_machine_init(&m, 0, 1 << 20);
+            const uint64_t at = 0x30000000ULL;
+            e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+            e2_memory_write(&m.mem, at, &um[i].insn, 4);
+            m.cpu.pc = at;
+            m.cpu.v[0][0] = um[i].v_lo;
+            const e2_status st = e2_step(&m);
+            CHECK(st == E2_OK && m.cpu.x[1] == um[i].want, "%s", um[i].what);
+            e2_memory_destroy(&m.mem);
+        }
+    }
+
     // Sign-extending loads must extend, not just move bytes. The register-offset
     // path skipped that once, so a 0xFF byte became 0xFF instead of -1 and every
     // index derived from it was wrong.
