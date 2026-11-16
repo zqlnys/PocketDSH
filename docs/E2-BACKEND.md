@@ -1,6 +1,6 @@
 # E2 后端：许可自由的 Linux 运行时
 
-状态：**M1 完成**（解释器 + ELF 加载 + syscall，能跑真实 aarch64 程序）
+状态：**M1 完成；M2 进行中**（PIE + 重定位已通，musl 链接器跑到第 459 条指令）
 最后更新：2026-11-16
 
 ---
@@ -45,17 +45,31 @@ e2/
 
 | 组件 | 状态 |
 | --- | --- |
-| 指令解码 | MOVZ/MOVN/MOVK、ADR/ADRP、ADD/SUB（immediate + shifted register）、AND/ORR/EOR/ANDS、B/BL、B.cond、CBZ/CBNZ、BR/BLR/RET、LDP/STP（offset/pre/post）、LDR/STR（unsigned offset）、SVC、NOP |
+| 指令解码 | MOVZ/MOVN/MOVK、ADR/ADRP、ADD/SUB（immediate + shifted register）、AND/ORR/EOR/ANDS（shifted register + **immediate**）、**位域 SBFM/BFM/UBFM**、B/BL、B.cond、CBZ/CBNZ、BR/BLR/RET、LDP/STP（整数 + **SIMD**）、LDR/STR（unsigned offset + **unscaled/pre/post** + **register offset**）、**DUP / SIMD 载入存储**、SVC、NOP |
+| 向量 | 32 个 128-bit 寄存器，按 lane 访问；DUP 广播、SIMD 单/双寄存器载入存储 |
 | 寄存器 | X0–X30 + SP 分离，NZCV 正确建模 |
 | 内存 | 平坦 48 位地址空间，区域管理 + 权限位 + `mprotect` |
-| ELF | 静态 ELF64 aarch64，多段、页对齐处理、加载期可写后降权限；动态可执行明确拒绝 |
+| ELF | ELF64 aarch64 静态与 **ET_DYN（PIE，固定基址 0x40000000）**，多段、页对齐、加载期可写后降权限；报告 load bias / entry / PT_DYNAMIC / phdr |
+| 重定位 | **R_AARCH64_RELATIVE**、**GLOB_DAT / JUMP_SLOT**（经 DT_SYMTAB 自解析）；未定义符号明确拒绝 |
 | syscall | `write`、`writev`、`exit`、`exit_group`；未知调用返回 `-ENOSYS` |
-| 测试 | 34 项，含两个交叉编译的真实 ELF（hello world、递归 fib） |
+| 测试 | **42 项**，含三个交叉编译的真实 ELF（hello world、递归 fib、SIMD memset）和一个合成的 PIE 重定位镜像 |
 
 ### 已验证的端到端用例
 
 - `hello.elf`：`mov` + `adr` + `svc write` + `svc exit`，输出逐字节校验
 - `fib.elf`：递归 fib(10)=55，含 STP/LDP 栈帧、BL/RET、`b.lt`、栈上 spill 槽，1956 条指令
+- `memset.elf`：`dup v0.16b` 广播 + `stp q0,q0` 批量写 + `ldrb` 逐字节校验
+- 合成的 PIE 镜像：验证 bias 计算与 RELATIVE 重定位结果
+
+### 正在进行：M2 的动态链接
+
+用 Alpine 的真实 `ld-musl-aarch64.so.1`（static-pie，723 KB）验证：
+
+| 阶段 | 结果 |
+| --- | --- |
+| 加载 | ✅ bias 0x40000000，entry 0x400696bc |
+| 重定位 | ✅ RELATIVE + GLOB_DAT 全部应用 |
+| 执行 | 459 条指令后失败，卡在自己对栈上 auxv 的处理 |
 
 ---
 
@@ -85,6 +99,16 @@ text 段最终是 `R+X`，但加载时要往里写内容。正确顺序是「映
 ### 5. 别用 `x[31]` 表示 SP
 
 `x[]` 只有 31 个元素。写 `x[31]` 会越过数组、踩坏相邻字段——表现是任何建栈帧的程序都莫名其妙 `stp outside mapped memory`。
+
+### 6. 只有 immediate 形式允许 SP 操作数
+
+`ADD/SUB` 和 logical 指令里，**寄存器形式没有 SP 变体**：`Rn=31` 必须读作 XZR。读 `cpu->x[31]` 会越界拿到垃圾值。
+
+这条最阴，因为 `mov xD, xM` 就是 `ORR Xd, XZR, Xm`——每个寄存器移动都会写坏目标。表现是 musl 的 auxv 扫描循环永不终止，起止指针全是垃圾。
+
+### 7. 栈顶之上要有余量
+
+musl 初始化时会清零 `[计算出的基址, 栈顶)`，而栈顶是开区间。最后一笔存储正好落在 SP 上。真实内核在 SP 之上留了空间；不留就会在 libc 的第一条初始化代码上 fault。
 
 ---
 
