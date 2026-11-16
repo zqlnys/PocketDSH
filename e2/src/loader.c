@@ -79,8 +79,24 @@ static int prot_from_flags(uint32_t flags) {
     return prot;
 }
 
+e2_load_result e2_load_elf_at(e2_machine *machine, const uint8_t *image, size_t size,
+                              uint64_t preferred_base, e2_loaded_image *out) {
+    // The default entry point runs the same code with the compiled-in base.
+    extern e2_load_result e2_load_elf_full_base(e2_machine *, const uint8_t *, size_t,
+                                                bool, e2_loaded_image *, uint64_t);
+    return e2_load_elf_full_base(machine, image, size, true, out, preferred_base);
+}
+
 e2_load_result e2_load_elf_full(e2_machine *machine, const uint8_t *image, size_t size,
                                 bool allow_interpreter, e2_loaded_image *out) {
+    extern e2_load_result e2_load_elf_full_base(e2_machine *, const uint8_t *, size_t,
+                                                bool, e2_loaded_image *, uint64_t);
+    return e2_load_elf_full_base(machine, image, size, allow_interpreter, out, 0);
+}
+
+e2_load_result e2_load_elf_full_base(e2_machine *machine, const uint8_t *image, size_t size,
+                                     bool allow_interpreter, e2_loaded_image *out,
+                                     uint64_t preferred_base) {
     if (image == NULL || size < sizeof(e2_elf64_ehdr)) {
         return E2_LOAD_TRUNCATED;
     }
@@ -134,7 +150,8 @@ e2_load_result e2_load_elf_full(e2_machine *machine, const uint8_t *image, size_
         if (lowest == UINT64_MAX) {
             return E2_LOAD_UNSUPPORTED;
         }
-        bias = E2_PIE_BASE - (lowest & ~(uint64_t)(E2_PAGE_SIZE - 1));
+        const uint64_t want = preferred_base ? preferred_base : E2_PIE_BASE;
+        bias = want - (lowest & ~(uint64_t)(E2_PAGE_SIZE - 1));
     }
 
     for (unsigned i = 0; i < eh->e_phnum; i++) {
@@ -195,7 +212,22 @@ e2_load_result e2_load_elf_full(e2_machine *machine, const uint8_t *image, size_
         out->entry = eh->e_entry + bias;
         out->dynamic_addr = dynamic_vaddr ? dynamic_vaddr + bias : 0;
         out->dynamic_size = dynamic_size;
-        out->phdr_addr = eh->e_phoff + bias;
+        // The program headers live inside the first PT_LOAD, so their guest
+        // address is that segment's vaddr plus the offset of e_phoff within it.
+        // For ET_EXEC bias is zero and using e_phoff alone yields a file offset
+        // (0x40), which every later computation then treats as a pointer.
+        uint64_t phdr_addr = eh->e_phoff + bias;
+        for (unsigned i = 0; i < eh->e_phnum; i++) {
+            if (ph[i].p_type != PT_LOAD) {
+                continue;
+            }
+            if (eh->e_phoff >= ph[i].p_offset &&
+                eh->e_phoff < ph[i].p_offset + ph[i].p_filesz) {
+                phdr_addr = ph[i].p_vaddr + bias + (eh->e_phoff - ph[i].p_offset);
+                break;
+            }
+        }
+        out->phdr_addr = phdr_addr;
         out->phnum = eh->e_phnum;
         out->phentsize = eh->e_phentsize;
     }

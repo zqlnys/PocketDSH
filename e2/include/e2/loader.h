@@ -38,6 +38,13 @@ typedef struct {
 e2_load_result e2_load_elf_full(e2_machine *machine, const uint8_t *image, size_t size,
                                 bool allow_interpreter, e2_loaded_image *out);
 
+/// Same, but places a position-independent image at `preferred_base`. Needed
+/// when loading a program together with its ELF interpreter, which is what a
+/// kernel does: both images must live in one address space at different bases.
+/// Pass 0 to keep the default placement.
+e2_load_result e2_load_elf_at(e2_machine *machine, const uint8_t *image, size_t size,
+                              uint64_t preferred_base, e2_loaded_image *out);
+
 /// Convenience wrapper that refuses dynamic executables.
 e2_load_result e2_load_elf(e2_machine *machine, const uint8_t *image, size_t size);
 
