@@ -515,6 +515,31 @@ static int run_proc(int idx) {
         hist[hist_at].x23 = p->m.cpu.x[23];
         hist_at = (hist_at + 1) % 256;
         if (hist_n < 256) hist_n++;
+        if (getenv("E2_TRACE_PROBE") && p->m.cpu.pc == 0x10161074) {
+            static int np = 0;
+            if (np == 1) {
+                // The probe walks this table until a byte has its sign bit set.
+                // If none does, it can never stop.
+                unsigned char tb[16] = {0};
+                e2_memory_read(&p->m.mem, p->m.cpu.x[25], tb, 8);
+                fprintf(stderr, "[probe-table] bytes:");
+                for (int k = 0; k < 8; k++) fprintf(stderr, " %02x", tb[k]);
+                uint64_t vals[8] = {0};
+                for (int k = 0; k < 8; k++)
+                    e2_memory_read(&p->m.mem, p->m.cpu.x[19] + (uint64_t)k * 16, &vals[k], 8);
+                fprintf(stderr, "\n[probe-values] ");
+                for (int k = 0; k < 8; k++)
+                    fprintf(stderr, " %d:0x%llx", k, (unsigned long long)vals[k]);
+                fprintf(stderr, "\n");
+            }
+            if (np < 10) {
+                fprintf(stderr, "[probe] x25=0x%llx x27=0x%llx x19=0x%llx x23=0x%llx x24=0x%llx x21=0x%llx\n",
+                        (unsigned long long)p->m.cpu.x[25], (unsigned long long)p->m.cpu.x[27],
+                        (unsigned long long)p->m.cpu.x[19], (unsigned long long)p->m.cpu.x[23],
+                        (unsigned long long)p->m.cpu.x[24], (unsigned long long)p->m.cpu.x[21]);
+                np++;
+            }
+        }
         if (getenv("E2_TRACE_PROGRESS") && (guard % 5000000L) == 0 && guard > 0) {
             // Sampling the pc tells "slow" from "stuck": a loop shows the same
             // handful of addresses every sample.
