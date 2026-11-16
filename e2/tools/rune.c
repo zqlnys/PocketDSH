@@ -1161,8 +1161,24 @@ static int run_proc(int idx) {
             static int n = 0;
             const uint64_t from = strtoull(getenv("E2_TRACE_PCS"), NULL, 0);
             if (!recording && p->m.cpu.pc == from) recording = 1;
-            if (recording && n < (int)(sizeof(buf) / sizeof(buf[0])))
+            if (recording && n < (int)(sizeof(buf) / sizeof(buf[0]))) {
+                // Dumping registers from inside the recording pass keeps them on
+                // the same iteration as the trace index, which a separate probe
+                // does not: it fires on whichever visit happens to come first.
+                const char *watch = getenv("E2_TRACE_AT2");
+                if (watch && p->m.cpu.pc == strtoull(watch, NULL, 0) && n < 340 && n > 280)
+                    fprintf(stderr,
+                            "[at2] idx=%d x1=0x%llx x2=0x%llx x3=0x%llx x4=0x%llx "
+                            "x5=0x%llx x6=0x%llx x7=0x%llx\n",
+                            n, (unsigned long long)p->m.cpu.x[1],
+                            (unsigned long long)p->m.cpu.x[2],
+                            (unsigned long long)p->m.cpu.x[3],
+                            (unsigned long long)p->m.cpu.x[4],
+                            (unsigned long long)p->m.cpu.x[5],
+                            (unsigned long long)p->m.cpu.x[6],
+                            (unsigned long long)p->m.cpu.x[7]);
                 buf[n++] = p->m.cpu.pc;
+            }
             if (recording && n == (int)(sizeof(buf) / sizeof(buf[0]))) {
                 for (int q = 0; q < n; q++) fprintf(stdout, "%llx\n",
                                                    (unsigned long long)buf[q]);
