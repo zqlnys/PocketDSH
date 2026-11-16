@@ -837,16 +837,21 @@ e2_status e2_step(e2_machine *machine) {
             const bool dbl = ftype == 1;
             const unsigned rm = BITS(insn, 20, 16);
             const unsigned rn2 = BITS(insn, 9, 5);
+            // Bit 3 selects the zero form: `fcmp d8, #0.0` is 0x...2118 while
+            // `fcmp d8, d0` is 0x...2110. Testing Rm == 0 instead looked right
+            // and was wrong - d0 is a real register whose number is zero - so
+            // every comparison against d0 silently became a comparison against
+            // zero and float branches went the opposite way.
+            const bool zero_form = BIT(insn, 3) != 0;
             double a, b;
             if (dbl) {
-                a = cpu->v[rn2][0] == 0 ? 0.0 : 0.0;
                 memcpy(&a, &cpu->v[rn2][0], 8);
-                if (rm == 0) { b = 0.0; } else { memcpy(&b, &cpu->v[rm][0], 8); }
+                if (zero_form) { b = 0.0; } else { memcpy(&b, &cpu->v[rm][0], 8); }
             } else {
                 uint32_t ba = (uint32_t)cpu->v[rn2][0];
                 float fa; memcpy(&fa, &ba, 4);
                 a = (double)fa;
-                if (rm == 0) { b = 0.0; }
+                if (zero_form) { b = 0.0; }
                 else { uint32_t bb = (uint32_t)cpu->v[rm][0]; float fb; memcpy(&fb, &bb, 4); b = (double)fb; }
             }
             if (a != a || b != b) {          // unordered

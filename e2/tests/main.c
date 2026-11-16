@@ -1576,6 +1576,44 @@ static void test_scalar_immediates(void) {
         e2_memory_destroy(&m.mem);
     }
 
+    {
+        // fcmpe must set NZCV so that b.ge (N == V) means "not less than".
+        // Getting the operands the wrong way round here makes every float
+        // comparison branch the opposite way, which is silent: the program takes
+        // a valid-looking path and simply never does the work.
+        e2_machine m;
+        e2_machine_init(&m, 0, 1 << 20);
+        const uint64_t at = 0x30000000ULL;
+        e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+        uint32_t insn = 0x1E602110u;   // fcmpe d8, d0
+        e2_memory_write(&m.mem, at, &insn, 4);
+
+        const double one = 1.0, two = 2.0;
+        memcpy(&m.cpu.v[8][0], &one, 8);
+        memcpy(&m.cpu.v[0][0], &two, 8);
+        m.cpu.pc = at;
+        e2_step(&m);
+        CHECK(m.cpu.flags.n == true && m.cpu.flags.z == false &&
+              m.cpu.flags.c == false && m.cpu.flags.v == false,
+              "fcmpe 1, 2 reports less-than");
+
+        memcpy(&m.cpu.v[8][0], &two, 8);
+        memcpy(&m.cpu.v[0][0], &one, 8);
+        m.cpu.pc = at;
+        e2_step(&m);
+        CHECK(m.cpu.flags.n == false && m.cpu.flags.z == false &&
+              m.cpu.flags.c == true && m.cpu.flags.v == false,
+              "fcmpe 2, 1 reports greater-than");
+
+        memcpy(&m.cpu.v[8][0], &one, 8);
+        memcpy(&m.cpu.v[0][0], &one, 8);
+        m.cpu.pc = at;
+        e2_step(&m);
+        CHECK(m.cpu.flags.z == true && m.cpu.flags.c == true && m.cpu.flags.v == false,
+              "fcmpe of equal values reports equal");
+        e2_memory_destroy(&m.mem);
+    }
+
     // UMOV moves a vector element into a general register. musl's memset does
     // `mov x1, v0.d[0]` to materialise the replicated byte pattern, so a broken
     // UMOV silently turned every memset into a zero fill. It used to decode as
