@@ -13,6 +13,7 @@ struct SettingsView: View {
     @State private var keyMessage: String?
     @State private var keyError: String?
     @State private var showTierCSmoke = false
+    @State private var showExecProbe = false
 
     var body: some View {
         NavigationStack {
@@ -39,6 +40,9 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showTierCSmoke) {
                 TierCSmokeView()
+            }
+            .sheet(isPresented: $showExecProbe) {
+                ExecProbeView()
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
@@ -349,6 +353,14 @@ struct SettingsView: View {
                 showTierCSmoke = true
             } label: {
                 Label("Run Tier C smoke test", systemImage: "terminal")
+            }
+            .buttonStyle(SecondaryButtonStyle())
+            .frame(maxWidth: .infinity)
+
+            Button {
+                showExecProbe = true
+            } label: {
+                Label("Execution probe", systemImage: "cpu")
             }
             .buttonStyle(SecondaryButtonStyle())
             .frame(maxWidth: .infinity)
