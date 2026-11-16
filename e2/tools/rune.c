@@ -1225,7 +1225,35 @@ static int run_proc(int idx) {
                 // the same iteration as the trace index, which a separate probe
                 // does not: it fires on whichever visit happens to come first.
                 const char *watch = getenv("E2_TRACE_AT2");
-                if (watch && p->m.cpu.pc == strtoull(watch, NULL, 0) && n < 340 && n > 280)
+                // E2_TRACE_AT2 pins a register dump to the trace index, which is the only
+                // way to be sure it is the same iteration the path trace recorded.
+                // The window is a guard against noise, not a fixed range.
+                if (watch && p->m.cpu.pc == strtoull(watch, NULL, 0) && n < 512) {
+                    // The pointers matter as much as the registers: comparing
+                    // two implementations is mostly comparing what they point
+                    // at, and a bare address tells you nothing.
+                    char ta[32] = {0}, tb[32] = {0};
+                    e2_memory_read(&p->m.mem, p->m.cpu.x[0], ta, sizeof(ta) - 1);
+                    e2_memory_read(&p->m.mem, p->m.cpu.x[1], tb, sizeof(tb) - 1);
+                    for (int q = 0; q < 24; q++) {
+                        if (ta[q] && (ta[q] < 0x20 || ta[q] > 0x7e)) ta[q] = '.';
+                        if (tb[q] && (tb[q] < 0x20 || tb[q] > 0x7e)) tb[q] = '.';
+                    }
+                    char sa[25], sb[25];
+                    snprintf(sa, sizeof(sa), "%s", ta);
+                    snprintf(sb, sizeof(sb), "%s", tb);
+                    fprintf(stderr,
+                            "[at2] idx=%d x0=\"%s\" x1=\"%s\" "
+                            "x2=0x%llx x3=0x%llx x4=0x%llx x5=0x%llx x6=0x%llx x7=0x%llx\n",
+                            n, sa, sb,
+                            (unsigned long long)p->m.cpu.x[2],
+                            (unsigned long long)p->m.cpu.x[3],
+                            (unsigned long long)p->m.cpu.x[4],
+                            (unsigned long long)p->m.cpu.x[5],
+                            (unsigned long long)p->m.cpu.x[6],
+                            (unsigned long long)p->m.cpu.x[7]);
+                }
+                if (0)
                     fprintf(stderr,
                             "[at2] idx=%d x1=0x%llx x2=0x%llx x3=0x%llx x4=0x%llx "
                             "x5=0x%llx x6=0x%llx x7=0x%llx\n",
