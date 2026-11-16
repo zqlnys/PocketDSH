@@ -843,8 +843,25 @@ e2_status e2_step(e2_machine *machine) {
                 case 1: r = a / b; break;                 // fdiv
                 case 2: r = a + b; break;                 // fadd
                 case 3: r = a - b; break;                 // fsub
-                case 4: case 6: r = (a != a) ? b : (b != b) ? a : (a > b ? a : b); break;
-                case 5: case 7: r = (a != a) ? b : (b != b) ? a : (a < b ? a : b); break;
+                // FMAX/FMIN propagate a NaN; the "number" variants FMAXNM/FMINNM
+                // return the other operand instead. Treating both as the *NM form
+                // is wrong whenever an input is NaN.
+                case 4: case 5: {
+                    const bool is_max = (opcode == 4);
+                    if (a != a || b != b) {
+                        r = a + b;   // quiet NaN
+                    } else {
+                        r = is_max ? (a > b ? a : b) : (a < b ? a : b);
+                    }
+                    break;
+                }
+                case 6: case 7: {
+                    const bool is_max = (opcode == 6);
+                    if (a != a) r = b;
+                    else if (b != b) r = a;
+                    else r = is_max ? (a > b ? a : b) : (a < b ? a : b);
+                    break;
+                }
                 case 8: r = -(a * b); break;              // fnmul
                 default:
                     machine->ctx.reason = "unimplemented FP 2-source opcode";

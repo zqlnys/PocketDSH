@@ -60,10 +60,17 @@ FAMILY = {
     "CSEL": {"csel", "csinc", "csinv", "csneg", "cset", "csetm", "cinc", "cinv", "cneg", "unknown"},
     "2-source": {"lsl", "lsr", "asr", "ror", "sdiv", "udiv",
                  "crc32b", "crc32h", "crc32w", "crc32x",
-                 "crc32cb", "crc32ch", "crc32cw", "crc32cx", "subp"},
+                 "crc32cb", "crc32ch", "crc32cw", "crc32cx", "subp",
+                 # SIMD min/max share the mask; their opcode fields are outside
+                 # the handled set, so the default branch rejects them.
+                 "umin", "umax", "smin", "smax",
+                 # Insert Random Tag shares the mask; its opcode is outside the
+                 # handled set and is rejected.
+                 "irg"},
     "FMOV general": {"fmov", "unknown"},
     "FMOV scalar imm": {"fmov", "unknown"},
-    "FP 2-source": {"fmul", "fdiv", "fadd", "fsub", "fmax", "fmin", "fnmul", "unknown"},
+    "FP 2-source": {"fmul", "fdiv", "fadd", "fsub", "fmax", "fmin",
+                    "fmaxnm", "fminnm", "fnmul"},
     "SHLL": {"shll", "sshll", "ushll", "sshll2", "ushll2", "shll2", "unknown"},
     "LD1/ST1 pair": {"ld1", "st1", "unknown"},
     "LD1/ST1 lane": {"ld1", "st1", "unknown"},
