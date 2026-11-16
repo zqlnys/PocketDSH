@@ -655,7 +655,30 @@ m->maplen = needed>>12;                   // = 1
 
 **矛盾仍在别处**：`alloc_group` 算出 `needed = 464 → 对齐到 4096`，而相邻两个 storage（`0x690` 与 `0x820`）只隔 400 字节。
 
-这两组数字没法同时成立。下一轮需要直接确认某个 meta 的 `maplen`——如果 `maplen == 1` 而两个 storage 只隔 400，那说明 `0x820` 不是新 group 而是**同一 4096 页里另一个 size class 的 group**（不同 size class 的 group 可以在同一映射里嵌套，见 `alloc_group` 的 else 分支）。
+**读 meta 后确认：两个 group 都是嵌套的。**
+
+按 `get_meta` 的算法（`base = p − offset×16 − 16`，`meta = base->meta`）反推：
+
+```
+[g0] base=0x10000680  meta=0x20001158  last_idx=3  sizeclass=6  maplen=0
+[g1] base=0x10000810  meta=0x200011a8  last_idx=3  sizeclass=6  maplen=0
+```
+
+`maplen = 0` 表示它们不是独立 mmap，而是**从一个外层 group 里分出来的 slot**（`alloc_group` 的 else 分支）：
+
+```c
+int j = size_to_class(UNIT+cnt*size-IB);      // 4 个 0x70 slot 需要 448 → class?
+int idx = alloc_slot(j, UNIT+cnt*size-IB);
+p = enframe(g, idx, UNIT*size_classes[j]-IB, ctx.mmap_counter);
+```
+
+所以外层要为每个嵌套 group 提供 `UNIT*size_classes[j]` 字节。4 个 `0x70` slot 需要 **448 字节**，而 `size_classes` 里 448/16 = 28 没有对应项，会被归到 31（`31×16 = 496`）——**外层 slot 至少该有 496 字节**。
+
+**但实测两个嵌套 group 只隔 400 字节。**
+
+也就是说：外层 group 分配给第二个嵌套 group 的 slot 起点，比第一个 nested group 需要的空间还小——**这正是重叠的机制**。
+
+下一轮：查 `size_to_class(448)` 的实际返回值，以及外层 group 的 `size_classes[j]`——看这个 class 值是算错还是被截断。
 
 另一个纠正：被拒绝的字符是 **`0xff`**，不是空格——终端把它渲染成了不可见字符，导致前一轮在字符串里找一个根本不存在的空格。
 
