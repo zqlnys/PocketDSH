@@ -599,7 +599,7 @@ e2_status e2_step(e2_machine *machine) {
     // musl's memset does `mov x1, v0.d[0]` to materialise the replicated byte
     // pattern, so without this every memset wrote zeros. It used to be decoded
     // as DUP because that rule only tested bits 11-10 of the opcode.
-    if ((insn & 0x9F80FC00u) == 0x0E003C00u) {
+    if ((insn & 0x9FE0FC00u) == 0x0E003C00u) {
         const unsigned imm5 = BITS(insn, 20, 16);
         const unsigned rn2 = BITS(insn, 9, 5);
         unsigned esize, index;
@@ -1047,7 +1047,7 @@ e2_status e2_step(e2_machine *machine) {
     // `ld1 {v0.d}[1], [x0]` loads a single element into one lane of a register.
     // Index comes from Q and S; the element width is size=00 (32-bit) or
     // 01 (64-bit) in the forms the compiler emits here.
-    if ((insn & 0xBF9F8400u) == 0x0D008400u || (insn & 0xBF9F8400u) == 0x0D008000u) {
+    if ((insn & 0xBF9FF400u) == 0x0D008400u || (insn & 0xBF9FF400u) == 0x0D008000u) {
         const bool is_load = BIT(insn, 22) != 0;
         const unsigned q = BIT(insn, 30);
         const unsigned s_bit = BIT(insn, 12);

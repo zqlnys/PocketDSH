@@ -547,6 +547,32 @@ static int run_proc(int idx) {
                 nr++;
             }
         }
+        if (getenv("E2_TRACE_T3") && p->m.cpu.pc == 0x10163230) {
+            static unsigned v3 = 0;
+            static uint64_t prev = 0;
+            v3++;
+            if (v3 <= 12 || (v3 % 1000000) == 0)
+                fprintf(stderr, "[t3] call=%u hash=0x%llx table=0x%llx same=%d\n", v3,
+                        (unsigned long long)p->m.cpu.x[1],
+                        (unsigned long long)p->m.cpu.x[0],
+                        (int)(p->m.cpu.x[1] == prev));
+            prev = p->m.cpu.x[1];
+        }
+        if (getenv("E2_TRACE_T2") && p->m.cpu.pc == 0x10163988) {
+            static unsigned v2 = 0;
+            ++v2;
+            if (v2 == 100 || v2 == 200000 || v2 == 2000000) {
+                const uint64_t tbl = p->m.cpu.x[4];
+                const unsigned lg = (unsigned)(p->m.cpu.x[6] & 0xFF);
+                const unsigned n = (lg < 6) ? (1u << lg) : 64u;
+                unsigned char kb[64] = {0};
+                e2_memory_read(&p->m.mem, tbl + 32, kb, n);
+                fprintf(stderr, "[t2] visit=%u table=0x%llx logsize=%u mask=0x%llx kindbytes:", v2,
+                        (unsigned long long)tbl, lg, (unsigned long long)p->m.cpu.x[3]);
+                for (unsigned k = 0; k < n; k++) fprintf(stderr, " %02x", kb[k]);
+                fprintf(stderr, "\n");
+            }
+        }
         if (getenv("E2_TRACE_SLOTS") && p->m.cpu.pc == 0x10161074) {
             static unsigned visits = 0;
             visits++;

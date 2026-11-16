@@ -44,7 +44,7 @@ RULES = [
     # DUP and UMOV share bits 11-10; only bits 15-12 tell them apart, so the
     # mask has to include those. It did not, and UMOV ran as DUP.
     ("DUP",             0x9FF0FC00, 0x0E000C00, None),
-    ("UMOV",            0x9F80FC00, 0x0E003C00, None),
+    ("UMOV",            0x9FE0FC00, 0x0E003C00, None),
     ("FMOV general",    0xFFFFFC00, 0x1E270000, None),
     ("FMOV scalar imm", 0xFF201FE0, 0x1E201000, None),
     ("SCVTF/UCVTF int", 0x7F3FFC00, 0x1E230000, None),
