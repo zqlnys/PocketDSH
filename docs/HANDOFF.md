@@ -499,12 +499,17 @@ examples/workspace-inspector.dshplugin/
    - 用用户 Key 验证 DeepSeek 工具调用；
    - 保存日志，不泄露 Key。
 
-5. **真机 / 签名**
+5. **/workspace 默认挂载模式**（需产品决定）
+   - 能力已实现：只读包装层，写操作返回 EROFS；
+   - 默认仍是读写。要定的是：是否允许 guest 写绕过 `WorkspaceFileSystem` 的备份与路径守卫；
+   - 决定后改 `LinuxRuntime.workspaceReadOnly` 默认值，并补一次「只读下写被拒」的运行时测试。
+
+6. **真机 / 签名**
    - 用用户证书签 IPA；
    - 真机验证 Reminders/Notifications/电话/短信；
    - GPLv3 决策。
 
-6. **上游 DSH/Cordis 插件**
+7. **上游 DSH/Cordis 插件**
    - 目前完全没实现；
    - 如要做，先明确只支持纯 JS 子集还是远程 Host。
 
@@ -551,4 +556,4 @@ examples/workspace-inspector.dshplugin/
 
 ## 15. 一句话状态
 
-**PocketDSH 是一个可构建、可运行的原生 iOS 本地 Agent App。Tier C 已经完整可用：项目目录通过 realfs 双向挂载在 `/workspace`，`run_linux` 复用同一个持久 shell（每条命令 ~0.4s），Tier 状态只在会话真的在跑时才报告 Tier C。未完成：真机验证、GPLv3 分发决策、上游 DSH/Cordis 插件兼容。最新可用构建 `pocketdsh-ios-91`（run 43799762866）。**
+**PocketDSH 是一个可构建、可运行的原生 iOS 本地 Agent App。Tier C 已经完整可用：项目目录通过 realfs 挂载在 `/workspace`（默认读写，只读能力已就绪待决定默认值），`run_linux` 复用同一个持久 shell（每条命令 ~0.4s），Tier 状态只在会话真的在跑时才报告 Tier C。未完成：只读默认值的产品决定、真机验证、GPLv3 分发决策、上游 DSH/Cordis 插件兼容。最新可用构建 `pocketdsh-ios-96`（run 43804715174）。**
