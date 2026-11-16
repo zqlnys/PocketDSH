@@ -160,26 +160,49 @@ public struct TodoItem: Codable, Hashable, Sendable, Identifiable {
     }
 }
 
+/// A file the agent wants the user to look at.
+///
+/// The desktop harness has `present`, which turns a finished artifact into
+/// something the user can open rather than a path buried in prose. This is the
+/// same idea: a named workspace file plus one line saying why it matters.
+public struct Deliverable: Codable, Hashable, Sendable, Identifiable {
+    public let id: UUID
+    public var path: String
+    public var summary: String
+    public var createdAt: Date
+
+    public init(id: UUID = UUID(), path: String, summary: String,
+                createdAt: Date = .now) {
+        self.id = id
+        self.path = path
+        self.summary = summary
+        self.createdAt = createdAt
+    }
+}
+
 public struct AgentConversation: Codable, Sendable {
     public var messages: [LLMMessage]
     public var events: [AgentEvent]
     public var todos: [TodoItem]
+    public var deliverables: [Deliverable]
     public var updatedAt: Date
 
     public init(
         messages: [LLMMessage] = [],
         events: [AgentEvent] = [],
         todos: [TodoItem] = [],
+        deliverables: [Deliverable] = [],
         updatedAt: Date = .now
     ) {
         self.messages = messages
         self.events = events
         self.todos = todos
+        self.deliverables = deliverables
         self.updatedAt = updatedAt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case messages, events, todos, updatedAt
+        case messages, events, todos, deliverables, updatedAt
     }
 
     /// Conversations written before todos existed have no such key. Decoding
@@ -190,6 +213,10 @@ public struct AgentConversation: Codable, Sendable {
         messages = try container.decode([LLMMessage].self, forKey: .messages)
         events = try container.decode([AgentEvent].self, forKey: .events)
         todos = try container.decodeIfPresent([TodoItem].self, forKey: .todos) ?? []
+        // `deliverables` postdates both of the others, so it goes through the
+        // same tolerant path: older conversations must keep opening.
+        deliverables = try container.decodeIfPresent([Deliverable].self,
+                                                      forKey: .deliverables) ?? []
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
     }
 }
@@ -229,4 +256,6 @@ public enum ToolNames {
     /// search API key.
     public static let fetchURL = "fetch_url"
     public static let todoWrite = "todo_write"
+    /// Marks a workspace file as something the user should open.
+    public static let present = "present"
 }

@@ -9,6 +9,9 @@ struct AgentView: View {
     @ObservedObject var session: WorkspaceSession
     @ObservedObject var agent: AgentRunner
     let onOpenSettings: () -> Void
+    /// Called when a delivered card is tapped. Optional so the view still works
+    /// outside a tab container.
+    var onOpenFile: ((String) -> Void)? = nil
     var embedded = false
 
     @State private var input = ""
@@ -41,6 +44,7 @@ struct AgentView: View {
                     .padding(.bottom, PocketSpacing.sm)
                 }
 
+                deliverableStrip
                 planStrip
 
                 Divider()
@@ -86,6 +90,69 @@ struct AgentView: View {
                 }
             }
         }
+    }
+
+    /// Finished artifacts, above the plan. A card is something to open, so each
+    /// one is a button rather than a label: tapping it moves to the file.
+    @ViewBuilder
+    private var deliverableStrip: some View {
+        if !agent.deliverables.isEmpty {
+            VStack(alignment: .leading, spacing: PocketSpacing.xs) {
+                Text("Delivered")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(PocketTheme.secondaryText)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: PocketSpacing.sm) {
+                        ForEach(agent.deliverables) { item in
+                            Button {
+                                onOpenFile?(item.path)
+                            } label: {
+                                VStack(alignment: .leading, spacing: PocketSpacing.xxs) {
+                                    HStack(spacing: PocketSpacing.xxs) {
+                                        Image(systemName: "doc.text")
+                                            .font(.system(size: 10, weight: .semibold))
+                                            .foregroundStyle(PocketTheme.accent)
+                                        Text(Self.fileName(item.path))
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(PocketTheme.primaryText)
+                                            .lineLimit(1)
+                                    }
+                                    if !item.summary.isEmpty {
+                                        Text(item.summary)
+                                            .font(.caption2)
+                                            .foregroundStyle(PocketTheme.secondaryText)
+                                            .lineLimit(2)
+                                            .multilineTextAlignment(.leading)
+                                    }
+                                }
+                                .frame(width: 168, alignment: .leading)
+                                .padding(PocketSpacing.sm)
+                                .background {
+                                    RoundedRectangle(cornerRadius: PocketRadius.md,
+                                                     style: .continuous)
+                                        .fill(PocketTheme.surface)
+                                }
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: PocketRadius.md,
+                                                     style: .continuous)
+                                        .stroke(PocketTheme.cardStroke, lineWidth: 1)
+                                }
+                            }
+                            .buttonStyle(PressableButtonStyle())
+                            .accessibilityLabel("Open \(item.path)")
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, PocketSpacing.lg)
+            .padding(.bottom, PocketSpacing.sm)
+        }
+    }
+
+    private static func fileName(_ path: String) -> String {
+        guard let slash = path.lastIndex(of: "/") else { return path }
+        return String(path[path.index(after: slash)...])
     }
 
     private var planDoneCount: Int {

@@ -15,6 +15,7 @@ final class PocketDSHTests: XCTestCase {
         XCTAssertTrue(names.contains(ToolNames.runLinux))
         XCTAssertTrue(names.contains(ToolNames.fetchURL))
         XCTAssertTrue(names.contains(ToolNames.todoWrite))
+        XCTAssertTrue(names.contains(ToolNames.present))
     }
 
     func testToolSchemasAreObjectsWithRequiredFields() {
@@ -76,6 +77,7 @@ final class PocketDSHTests: XCTestCase {
         let conversation = try decoder.decode(AgentConversation.self,
                                               from: Data(json.utf8))
         XCTAssertTrue(conversation.todos.isEmpty)
+        XCTAssertTrue(conversation.deliverables.isEmpty)
         XCTAssertTrue(conversation.messages.isEmpty)
     }
 
@@ -95,6 +97,55 @@ final class PocketDSHTests: XCTestCase {
                                           from: try encoder.encode(original))
         XCTAssertEqual(restored.todos.map(\.content), ["first", "second"])
         XCTAssertEqual(restored.todos.map(\.status), [.completed, .inProgress])
+    }
+
+    func testDeliverablesRoundTrip() throws {
+        let original = AgentConversation(
+            messages: [],
+            events: [],
+            todos: [],
+            deliverables: [Deliverable(path: "README.md", summary: "how to run it")],
+            updatedAt: Date(timeIntervalSince1970: 0)
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let restored = try decoder.decode(AgentConversation.self,
+                                          from: try encoder.encode(original))
+        XCTAssertEqual(restored.deliverables.count, 1)
+        XCTAssertEqual(restored.deliverables.first?.path, "README.md")
+        XCTAssertEqual(restored.deliverables.first?.summary, "how to run it")
+    }
+
+    @MainActor
+    func testPresentRequiresAnExistingFile() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let workspace = WorkspaceFileSystem(root: root)
+        let executor = ToolExecutor(
+            workspace: workspace,
+            luaEngine: LuaEngine(),
+            systemActions: SystemActionStore()
+        )
+
+        let missing = #"{"path":"nope.md","summary":"x"}"#
+        XCTAssertTrue(await executor.execute(name: ToolNames.present,
+                                             argumentsJSON: missing).isError)
+        XCTAssertTrue(executor.deliverables.isEmpty)
+
+        _ = try workspace.write(path: "README.md", content: "# hi\n", overwrite: true)
+        let ok = #"{"path":"README.md","summary":"how to run it"}"#
+        let accepted = await executor.execute(name: ToolNames.present, argumentsJSON: ok)
+        XCTAssertFalse(accepted.isError)
+        XCTAssertEqual(executor.deliverables.count, 1)
+
+        // Presenting the same path again updates rather than duplicates.
+        let again = #"{"path":"README.md","summary":"updated"}"#
+        _ = await executor.execute(name: ToolNames.present, argumentsJSON: again)
+        XCTAssertEqual(executor.deliverables.count, 1)
+        XCTAssertEqual(executor.deliverables.first?.summary, "updated")
     }
 
     func testTodoStatusDecodesFromSnakeCase() throws {

@@ -90,6 +90,15 @@ enum ToolCatalog {
             required: ["number"]
         ),
         tool(
+            name: ToolNames.present,
+            description: "Mark a file in the workspace as a finished artifact for the user to open. The path must already exist; this does not create files. Use it when a task produces something worth looking at, not for every file you touch. Calling it again with the same path updates the summary instead of adding a duplicate.",
+            properties: [
+                "path": property("string", "Relative path of an existing workspace file"),
+                "summary": property("string", "One line saying what it is or why it matters")
+            ],
+            required: ["path", "summary"]
+        ),
+        tool(
             name: ToolNames.todoWrite,
             description: "Replace the plan for this task. Send the complete list each time, with every step's current status. Use it for work that needs more than two or three steps so progress is visible; keep each entry to one short line. Exactly one step may be in_progress at a time.",
             properties: [
@@ -153,8 +162,9 @@ enum ToolCatalog {
         3. Read the changed file again after editing when correctness matters.
         4. Use run_lua for local computation and executable checks. Lua is available; shell commands, Node, Python, Xcode, and subprocesses are not in this build.
         5. For work that needs more than two or three steps, record the plan with todo_write before starting and update it as steps finish. Send the whole list each time, keep exactly one step in_progress, and keep entries to one short line. Skip it for single-step requests.
-        6. Use fetch_url to read documentation the workspace does not contain. It performs a plain GET and reduces HTML to text; it cannot write to the workspace, and results are truncated, so prefer the file tools for anything already on the device.
-        7. Report changed paths, real tool results, and anything you could not verify.
+        6. When a task produces a file worth opening, mark it with present so it appears as a card above the conversation. Present files that already exist; the tool does not create them.
+        7. Use fetch_url to read documentation the workspace does not contain. It performs a plain GET and reduces HTML to text; it cannot write to the workspace, and results are truncated, so prefer the file tools for anything already on the device.
+        8. Report changed paths, real tool results, and anything you could not verify.
 
         Existing files require overwrite=true in write_file. Every overwrite creates a recovery backup and a diff. Never request a destructive operation just to make a build pass. If a tool fails, inspect the error and try a different safe approach. Do not invent tool output.
 

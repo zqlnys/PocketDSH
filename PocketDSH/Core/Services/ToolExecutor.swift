@@ -14,6 +14,9 @@ final class ToolExecutor {
     /// show progress without scraping conversation text.
     private(set) var todos: [TodoItem] = []
     var onTodosChanged: (([TodoItem]) -> Void)?
+    /// Files marked with `present`, mirrored into AgentRunner for the card strip.
+    private(set) var deliverables: [Deliverable] = []
+    var onDeliverablesChanged: (([Deliverable]) -> Void)?
 
     private let linuxRuntime: LinuxRuntime?
     private let eventStore = EKEventStore()
@@ -81,6 +84,8 @@ final class ToolExecutor {
                 return try await fetchURL(arguments)
             case ToolNames.todoWrite:
                 return todoWrite(arguments)
+            case ToolNames.present:
+                return present(arguments)
             default:
                 return .failure("Unknown tool: \(name)")
             }
@@ -231,9 +236,69 @@ final class ToolExecutor {
         guard !result.isError else { return result }
         return .success("Linux output (Tier C):\n\(result.content)")
     }
+    /// Declare a finished artifact.
+    ///
+    /// The file has to exist. `present` says "this is worth opening", not "here
+    /// is a file" - creating it is write_file's job, and letting present succeed
+    /// on a path that is not there would put a card in front of the user that
+    /// opens nothing.
+    private func present(_ arguments: [String: JSONValue]) -> ToolExecutionResult {
+        guard let rawPath = arguments["path"]?.stringValue else {
+            return .failure("present requires path.")
+        }
+        let path = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        if path.isEmpty {
+            return .failure("present requires a non-empty path.")
+        }
+        let summary = (arguments["summary"]?.stringValue ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let entries: [FileEntry]
+        do {
+            entries = try workspace.listFiles(path: ".", maxDepth: 6,
+                                              includeHidden: true)
+        } catch {
+            return .failure("present could not read the workspace: \(error.localizedDescription)")
+        }
+        guard let entry = entries.first(where: { $0.path == path }) else {
+            return .failure("present: no such workspace file \(path). Create it with write_file first.")
+        }
+        if entry.isDirectory {
+            return .failure("present takes a file, not a directory: \(path)")
+        }
+        guard exists else {
+            return .failure("present: no such workspace file \(path). Create it with write_file first.")
+        }
+
+        var items = deliverables
+        if let index = items.firstIndex(where: { $0.path == path }) {
+            items[index].summary = summary.isEmpty ? items[index].summary : summary
+        } else {
+            items.append(Deliverable(path: path,
+                                     summary: String(summary.prefix(200))))
+        }
+        deliverables = items
+        onDeliverablesChanged?(items)
+
+        var output = "presented \(items.count) file(s):\n"
+        for item in items {
+            output += "  \(item.path)"
+            if !item.summary.isEmpty {
+                output += " - \(item.summary)"
+            }
+            output += "\n"
+        }
+        return .success(output)
+    }
+
     /// Adopt a plan restored from disk, without treating it as a change.
     func restoreTodos(_ items: [TodoItem]) {
         todos = items
+    }
+
+    /// Adopt deliverables restored from disk, without treating them as a change.
+    func restoreDeliverables(_ items: [Deliverable]) {
+        deliverables = items
     }
 
     /// Replace the plan. The model sends the whole list every time, which keeps

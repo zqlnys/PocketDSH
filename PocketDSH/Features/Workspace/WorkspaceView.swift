@@ -108,6 +108,7 @@ struct WorkspaceView: View {
                 session: session,
                 agent: session.agent,
                 onOpenSettings: { selection = .settings },
+                onOpenFile: { _ in selection = .files },
                 embedded: true
             )
             .tabItem { Label("Agent", systemImage: "sparkles") }
