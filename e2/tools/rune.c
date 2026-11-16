@@ -425,7 +425,7 @@ static const char *elf_interp(const uint8_t *img, size_t n) {
 // until an awk program of 66 characters failed to parse.
 #define ARG_MAX 1024
 static int start_image(e2_machine *m, const char *path, char args[][ARG_MAX], int nargs,
-                       char envs[][96], int nenv) {
+                       char envs[][ARG_MAX], int nenv) {
     size_t size = 0;
     uint8_t *img = load_file(path, &size);
     if (img == NULL) return -2;   // ENOENT
@@ -640,8 +640,10 @@ static int p_execve(void *ctx, e2_machine *m, const char *path, uint64_t argv,
         if (e2_memory_read(&m->mem, ptr, args[nargs], sizeof(args[0])) != 0) break;
         nargs++;
     }
-    char envs[8][96]; int nenv = 0;
-    for (int i = 0; i < 8; i++) {
+    // Same class of limit as ARG_MAX: 96 bytes per variable and eight variables
+    // silently truncated a long PATH or dropped anything beyond the eighth.
+    char envs[64][ARG_MAX]; int nenv = 0;
+    for (int i = 0; i < 64; i++) {
         uint64_t ptr = 0;
         if (e2_memory_read(&m->mem, envp + (uint64_t)i * 8, &ptr, 8) != 0 || ptr == 0) break;
         if (e2_memory_read(&m->mem, ptr, envs[nenv], sizeof(envs[0])) != 0) break;
@@ -1729,7 +1731,7 @@ int main(int argc, char **argv) {
     }
     for (int i = 2; i < argc && nargs < 16; i++)
         snprintf(args[nargs++], sizeof(args[0]), "%s", argv[i]);
-    char envs[8][96]; int nenv = 0;
+    char envs[64][ARG_MAX]; int nenv = 0;
     // E2_MIN_ENV=1 passes no environment at all. If an applet behaves
     // differently without it, the cause is the stack layout or environ rather
     // than the code being exercised.
@@ -1751,7 +1753,7 @@ int main(int argc, char **argv) {
         static const char *passthrough[] = {"PYTHONHOME", "PYTHONPATH", "PYTHONNOUSERSITE"};
         for (unsigned i = 0; i < sizeof(passthrough) / sizeof(passthrough[0]); i++) {
             const char *v = getenv(passthrough[i]);
-            if (v != NULL && nenv < 8) {
+            if (v != NULL && nenv < 64) {
                 snprintf(envs[nenv], sizeof(envs[0]), "%s=%s", passthrough[i], v);
                 nenv++;
             }
