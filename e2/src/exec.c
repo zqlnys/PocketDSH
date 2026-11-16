@@ -180,7 +180,15 @@ e2_status e2_step(e2_machine *machine) {
         if (set_flags) {
             set_flags_addsub(cpu, a, b, result, is_sub, width);
         }
-        e2_write_sp(cpu, rd, result);
+        // The meaning of Rd=31 depends on the S bit, and this is the trap that
+        // silently corrupted SP: in ADDS/SUBS it is XZR (result discarded), only
+        // in ADD/SUB is it SP. Reading Rn is always SP, which is why CMP reads
+        // SP correctly but must not write it back.
+        if (set_flags) {
+            write_reg(cpu, rd, result, is64);
+        } else {
+            e2_write_sp(cpu, rd, result);
+        }
         cpu->pc = next_pc;
         machine->instructions++;
         return E2_OK;
@@ -215,6 +223,105 @@ e2_status e2_step(e2_machine *machine) {
             set_flags_addsub(cpu, a, operand, result, is_sub, width);
         }
         write_reg(cpu, rd, result, is64);
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
+    // --- Logical (shifted register): AND / ORR / EOR / ANDS ---
+    // Also covers MOV (register), which assemblers emit as ORR Xd, XZR, Xm.
+    if ((insn & 0x1F000000u) == 0x0A000000u && BIT(insn, 21) == 0) {
+        const unsigned opc = BITS(insn, 30, 29);
+        const unsigned shift_type = BITS(insn, 23, 22);
+        const unsigned shift_amount = BITS(insn, 15, 10);
+        const unsigned rm = BITS(insn, 20, 16);
+        const unsigned width = is64 ? 64 : 32;
+        const uint64_t mask = is64 ? ~0ULL : 0xFFFFFFFFULL;
+
+        uint64_t operand = cpu->x[rm] & mask;
+        switch (shift_type) {
+            case 0: operand = (operand << shift_amount) & mask; break;
+            case 1: operand >>= shift_amount; break;
+            case 2:
+                operand = (uint64_t)((int64_t)(operand << (64 - width)) >> (64 - width));
+                operand = (uint64_t)((int64_t)operand >> shift_amount);
+                break;
+            case 3: {
+                unsigned r = shift_amount % width;
+                operand = r ? (((operand >> r) | (operand << (width - r))) & mask) : operand;
+                break;
+            }
+        }
+        operand &= mask;
+
+        const uint64_t a = cpu->x[rn] & mask;
+        uint64_t result;
+        switch (opc) {
+            case 0: result = a & operand; break;   // AND
+            case 1: result = a | operand; break;   // ORR / MOV
+            case 2: result = a ^ operand; break;   // EOR
+            default: result = a & operand; break;  // ANDS
+        }
+        result &= mask;
+        if (opc == 3) {                            // ANDS sets NZCV, C and V cleared
+            cpu->flags.n = (result & (1ULL << (width - 1))) != 0;
+            cpu->flags.z = result == 0;
+            cpu->flags.c = false;
+            cpu->flags.v = false;
+        }
+        write_reg(cpu, rd, result, is64);
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
+    // --- LDP / STP (signed offset, pre-index, post-index) ---
+    if ((insn & 0x3A000000u) == 0x28000000u) {
+        const bool is_load = BIT(insn, 22) != 0;
+        const unsigned mode = BITS(insn, 24, 23);  // 01 post, 10 offset, 11 pre
+        const int64_t imm7 = (int64_t)sign_extend(BITS(insn, 21, 15), 7);
+        const unsigned scale = is64 ? 8u : 4u;
+        const int64_t offset = imm7 * (int64_t)scale;
+        const unsigned rt = BITS(insn, 4, 0);
+        const unsigned rn2 = BITS(insn, 9, 5);
+        const unsigned rt2 = BITS(insn, 14, 10);
+
+        uint64_t base = e2_read_sp(cpu, rn2);
+        uint64_t addr;
+        if (mode == 1) {                             // post-index
+            addr = base;
+        } else if (mode == 3) {                      // pre-index
+            base = (uint64_t)((int64_t)base + offset);
+            addr = base;
+        } else {                                     // signed offset
+            addr = (uint64_t)((int64_t)base + offset);
+        }
+
+        if (is_load) {
+            uint64_t v1 = 0;
+            uint64_t v2 = 0;
+            if (e2_memory_read(&machine->mem, addr, &v1, scale) != 0 ||
+                e2_memory_read(&machine->mem, addr + scale, &v2, scale) != 0) {
+                machine->ctx.reason = "ldp outside mapped memory";
+                return E2_FAULT;
+            }
+            write_reg(cpu, rt, v1, is64);
+            write_reg(cpu, rt2, v2, is64);
+        } else {
+            uint64_t v1 = is64 ? cpu->x[rt] : (cpu->x[rt] & 0xFFFFFFFFu);
+            uint64_t v2 = is64 ? cpu->x[rt2] : (cpu->x[rt2] & 0xFFFFFFFFu);
+            if (e2_memory_write(&machine->mem, addr, &v1, scale) != 0 ||
+                e2_memory_write(&machine->mem, addr + scale, &v2, scale) != 0) {
+                machine->ctx.reason = "stp outside mapped memory";
+                return E2_FAULT;
+            }
+        }
+
+        if (mode == 1) {                             // post-index writes back
+            e2_write_sp(cpu, rn2, (uint64_t)((int64_t)base + offset));
+        } else if (mode == 3) {
+            e2_write_sp(cpu, rn2, base);
+        }
         cpu->pc = next_pc;
         machine->instructions++;
         return E2_OK;

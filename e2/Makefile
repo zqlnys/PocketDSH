@@ -10,7 +10,7 @@ BUILD := build
 SRC := src/memory.c src/exec.c src/syscall.c src/loader.c
 TEST_SRC := tests/main.c
 TEST_BIN := $(BUILD)/e2-tests
-GUEST_ELF := tests/guest/hello.elf
+GUEST_ELF := tests/guest/hello.elf tests/guest/fib.elf
 
 # Cross-toolchain pieces for building the guest test binary. clang handles the
 # aarch64 target and lld links it statically, so no libc is needed.
@@ -27,9 +27,13 @@ $(BUILD):
 $(TEST_BIN): $(SRC) $(TEST_SRC) | $(BUILD)
 	$(CC) $(CFLAGS) $(SRC) $(TEST_SRC) -o $@
 
-$(GUEST_ELF): tests/guest/hello.s
-	$(CLANG) --target=aarch64-linux-gnu -c tests/guest/hello.s -o $(BUILD)/hello-guest.o
+tests/guest/hello.elf: tests/guest/hello.s | $(BUILD)
+	$(CLANG) --target=aarch64-linux-gnu -c $< -o $(BUILD)/hello-guest.o
 	$(LLD) -static -o $@ $(BUILD)/hello-guest.o
+
+tests/guest/fib.elf: tests/guest/fib.s | $(BUILD)
+	$(CLANG) --target=aarch64-linux-gnu -c $< -o $(BUILD)/fib-guest.o
+	$(LLD) -static -o $@ $(BUILD)/fib-guest.o
 
 test: $(TEST_BIN) $(GUEST_ELF)
 	@./$(TEST_BIN)

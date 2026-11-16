@@ -398,6 +398,45 @@ static void test_load_real_elf(void) {
     free(image);
 }
 
+static void test_recursive_fib_elf(void) {
+    printf("recursive fib through a real ELF (frame, BL/RET, branches)\n");
+    FILE *f = fopen("tests/guest/fib.elf", "rb");
+    if (f == NULL) {
+        printf("  SKIP (tests/guest/fib.elf not built)\n");
+        return;
+    }
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    uint8_t *image = (uint8_t *)malloc((size_t)size);
+    if (image == NULL || fread(image, 1, (size_t)size, f) != (size_t)size) {
+        fclose(f);
+        free(image);
+        CHECK(0, "could not read fib.elf");
+        return;
+    }
+    fclose(f);
+
+    e2_machine m;
+    e2_machine_init(&m, 0, 65536);
+    e2_load_result lr = e2_load_elf(&m, image, (size_t)size);
+    CHECK(lr == E2_LOAD_OK, "load: %s", e2_load_result_name(lr));
+
+    if (lr == E2_LOAD_OK) {
+        capture cap = {0};
+        e2_syscall_env env = {.write = capture_write, .exit = capture_exit, .ctx = &cap};
+        e2_status st = run_program(&m, &env, 2000000);
+        CHECK(st == E2_HALTED, "expected halt, got %s (%s)", e2_status_name(st),
+              m.ctx.reason ? m.ctx.reason : "-");
+        CHECK(cap.status == 0, "fib(10) != 55, exit status %d", cap.status);
+        CHECK(strcmp(cap.out, "ok\n") == 0, "output \"%s\"", cap.out);
+        printf("  (%llu instructions)\n", (unsigned long long)m.instructions);
+    }
+
+    e2_machine_destroy(&m);
+    free(image);
+}
+
 static void test_reject_dynamic(void) {
     printf("dynamic executables are refused with a clear reason\n");
     // A crafted header: valid ELF64 aarch64 EXEC with one PT_INTERP segment.
@@ -458,6 +497,7 @@ int main(void) {
     test_exit_status();
     test_unknown_syscall();
     test_load_real_elf();
+    test_recursive_fib_elf();
     test_reject_dynamic();
     test_reject_wrong_machine();
 

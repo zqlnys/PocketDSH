@@ -163,6 +163,7 @@ e2_load_result e2_load_elf(e2_machine *machine, const uint8_t *image, size_t siz
     }
 
     machine->cpu.pc = eh->e_entry;
-    machine->cpu.x[E2_REG_SP] = machine->cpu.sp;
+    // SP is a separate field and was set up by e2_machine_init; writing it through
+    // the general register array would run past X30.
     return E2_LOAD_OK;
 }
