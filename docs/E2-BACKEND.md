@@ -622,7 +622,29 @@ ret=0x10000820  slot=0  off=0    calc=25   ← 新 group 的 storage
 
 slot 3 落在 `0x7e0`，占 `[0x7e0, 0x850)`——而 group 在 `0x820` 就结束了，**越界 0x30**。越界部分正好覆盖下一个 group 的 storage 头部，也就是链表节点的 `next` 字段。
 
-`alloc_group()` 里 `size*cnt+UNIT > pagesize/2` 那条分支决定是整页分配还是嵌套小映射，`cnt` 来自 `small_cnt_tab[sc][i]`。下一轮查 `cnt` 的实际取值与 `maplen` 是否一致——**400 = 25 × UNIT** 这个数字很可疑，像是某个计数少算了。
+**在 `enframe` 内部读参数后，块尺寸也确认了**：
+
+```
+0x4b9318: add x6, x0, x6
+    x0 = stride*idx + storage   （slot 起点）
+    x6 = p + n，其中 n = 0x6c = 0x70 - IB
+```
+
+也就是说块的实际占用是 `n + IB = 0x70`，与 stride 一致。slot 3 在 `0x7e0`，块结束于 `0x7e0 + 0x6c = 0x84c`。
+
+而 group 在 `0x820` 结束——**越界 `0x2c`**。
+
+**问题收敛到 group 的容量。** `alloc_group()` 里：
+
+```c
+size_t needed = size*cnt + UNIT;          // 112*4 + 16 = 464
+needed += -needed & (pagesize-1);         // 对齐到 4096
+m->maplen = needed>>12;                   // = 1
+```
+
+按这段代码，group 应该是 **4096 字节**，足以容纳 448 字节的 slot。但实测只有 **400 字节**。
+
+**4096 与 400 差了十倍以上**，不像是差几个字节的算术问题。下一轮的目标变成：确认 `0x820` 到底是不是"下一个 group 的 storage"，还是同一 group 里另一个位置被我误判成了 storage——即 `p[-2] == 0` 这个判据本身是否可靠。
 
 另一个纠正：被拒绝的字符是 **`0xff`**，不是空格——终端把它渲染成了不可见字符，导致前一轮在字符串里找一个根本不存在的空格。
 
