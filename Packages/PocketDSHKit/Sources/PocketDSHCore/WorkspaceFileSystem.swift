@@ -319,14 +319,33 @@ public struct WorkspaceFileSystem {
 
     // MARK: - Search
 
+    /// Searches file contents.
+    ///
+    /// `useRegex` switches from a literal substring match to `NSRegularExpression`.
+    /// The literal path stays the default because it cannot fail, while a regular
+    /// expression can: an unparseable pattern is reported instead of silently
+    /// matching nothing, which is the difference between "no results" and "your
+    /// pattern is wrong".
     public func search(
         query: String,
         path: String = ".",
         include: String? = nil,
-        maxResults: Int = 100
+        maxResults: Int = 100,
+        useRegex: Bool = false
     ) throws -> [SearchMatch] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
+
+        var expression: NSRegularExpression?
+        if useRegex {
+            do {
+                expression = try NSRegularExpression(pattern: trimmed, options: [.caseInsensitive])
+            } catch {
+                throw WorkspaceError.invalidPattern(
+                    "That is not a valid regular expression: \(error.localizedDescription)"
+                )
+            }
+        }
 
         let base = try pathGuard.resolve(path, mustExist: true)
         let limit = max(1, min(maxResults, 500))
@@ -365,7 +384,17 @@ public struct WorkspaceFileSystem {
 
                     for (index, line) in text.components(separatedBy: "\n").enumerated() {
                         guard matches.count < limit else { break }
-                        if line.range(of: trimmed, options: [.caseInsensitive, .diacriticInsensitive]) != nil {
+                        let found: Bool
+                        if let expression {
+                            let range = NSRange(line.startIndex..<line.endIndex, in: line)
+                            found = expression.firstMatch(in: line, options: [], range: range) != nil
+                        } else {
+                            found = line.range(
+                                of: trimmed,
+                                options: [.caseInsensitive, .diacriticInsensitive]
+                            ) != nil
+                        }
+                        if found {
                             let preview = line.trimmingCharacters(in: .whitespaces)
                             matches.append(
                                 SearchMatch(

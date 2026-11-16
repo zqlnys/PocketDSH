@@ -172,11 +172,13 @@ final class ToolExecutor {
         let path = arguments["path"]?.stringValue ?? "."
         let include = arguments["include"]?.stringValue
         let maxResults = min(max(arguments["max_results"]?.intValue ?? 100, 1), 500)
+        let useRegex = arguments["regex"]?.boolValue ?? false
         let matches = try workspace.search(
             query: query,
             path: path,
             include: include,
-            maxResults: maxResults
+            maxResults: maxResults,
+            useRegex: useRegex
         )
 
         guard !matches.isEmpty else {

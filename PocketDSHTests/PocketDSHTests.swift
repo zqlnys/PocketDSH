@@ -192,6 +192,48 @@ final class PocketDSHTests: XCTestCase {
         XCTAssertFalse(text.isEmpty)
     }
 
+    func testSearchFilesSupportsRegex() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PocketDSHRegex-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "alpha 1\nbeta 22\ngamma 333\n".write(
+            to: root.appendingPathComponent("data.txt"), atomically: true, encoding: .utf8)
+
+        let workspace = try WorkspaceFileSystem(root: root)
+        // Literal search cannot express "a digit run", which is the point of the flag.
+        let literal = try workspace.search(query: "[0-9]+", path: ".", useRegex: false)
+        XCTAssertTrue(literal.isEmpty, "a literal search must not treat the pattern as a regex")
+
+        let regex = try workspace.search(query: "[0-9]+", path: ".", useRegex: true)
+        XCTAssertEqual(regex.count, 3)
+        XCTAssertEqual(regex.first?.line, 1)
+
+        // A bad pattern has to be reported, not silently turned into "no matches".
+        XCTAssertThrowsError(
+            try workspace.search(query: "[unclosed", path: ".", useRegex: true)
+        ) { error in
+            guard case WorkspaceError.invalidPattern = error else {
+                return XCTFail("expected invalidPattern, got \(error)")
+            }
+        }
+    }
+
+    func testSearchFilesStaysLiteralByDefault() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PocketDSHLiteral-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "a.b\nabc\n".write(
+            to: root.appendingPathComponent("d.txt"), atomically: true, encoding: .utf8)
+
+        let workspace = try WorkspaceFileSystem(root: root)
+        // The default must still be a substring match: "a.b" appears once
+        // literally but twice as a regex.
+        let plain = try workspace.search(query: "a.b", path: ".")
+        XCTAssertEqual(plain.count, 1)
+    }
+
     func testSearchResultParsing() throws {
         // A trimmed version of the real results page: two hits, one of them
         // behind DuckDuckGo's redirect wrapper.

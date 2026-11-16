@@ -77,7 +77,7 @@ E2 是自写的 aarch64 解释器 + syscall 层，不复用 iSH 的 GPL 代码�
 | 并行委派 | **缺失** | 子 Agent 串行执行，不并行 |
 | `skill` 技能目录 | 有 `use_skill` | 工作区 `skills/*.md`；无参列出、给名加载 |
 | `bash` | 部分 | `run_linux` 依赖 E2，M4 未完成 |
-| `grep` 正则 | 部分 | `search_files` 是字面搜索，非正则 |
+| `grep` 正则 | 有 | `search_files` 默认字面搜索；传 `regex: true` 走 `NSRegularExpression`，模式非法会报错而不是静默返回空 |
 | `schedule_*` | 等价 | 有 `schedule_alert` / `schedule_reminder`，但只到通知/提醒 |
 | `present` 交付物 | 有 `present` | 校验文件存在；对话上方以卡片显示，点击跳到文件页 |
 

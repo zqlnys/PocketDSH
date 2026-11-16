@@ -12,6 +12,9 @@ public enum WorkspaceError: Error, LocalizedError, Equatable {
     case patchMismatch(String)
     case patchParse(String)
     case fileSystem(String)
+    /// A regular expression that does not parse. Reported rather than treated as
+    /// "no matches", so a bad pattern is visible.
+    case invalidPattern(String)
 
     public var errorDescription: String? {
         switch self {
@@ -37,6 +40,8 @@ public enum WorkspaceError: Error, LocalizedError, Equatable {
             return "Could not parse patch: \(message)"
         case .fileSystem(let message):
             return "Filesystem error: \(message)"
+        case .invalidPattern(let message):
+            return message
         }
     }
 }

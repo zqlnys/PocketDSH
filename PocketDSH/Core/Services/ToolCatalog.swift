@@ -35,11 +35,12 @@ enum ToolCatalog {
         ),
         tool(
             name: ToolNames.searchFiles,
-            description: "Search text files in the active workspace for a literal case-insensitive query. Optionally filter by a glob such as *.swift.",
+            description: "Search text files in the active workspace for a case-insensitive query. By default the query is literal; set regex to true to use a regular expression. Optionally filter by a glob such as *.swift.",
             properties: [
-                "query": property("string", "Literal text to find"),
+                "query": property("string", "Text to find, or a regular expression when regex is true"),
                 "path": property("string", "Relative directory or file path, default ."),
                 "include": property("string", "Optional glob filter, for example *.swift"),
+                "regex": property("boolean", "Treat query as a regular expression instead of a literal substring"),
                 "max_results": property("integer", "Maximum matches, default 100, max 500")
             ],
             required: ["query"]
