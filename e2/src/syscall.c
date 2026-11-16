@@ -1,6 +1,8 @@
 #include "e2/syscall.h"
 
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #include "e2/memory.h"
 
@@ -407,6 +409,12 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             const int mmap_flags = (int)m->cpu.x[3];
             const uint64_t hint = a0;
             const bool fixed = (mmap_flags & 0x10) != 0;  // MAP_FIXED
+            static int mmap_trace = -1;
+            if (mmap_trace < 0) mmap_trace = getenv("E2_TRACE_MMAP") != NULL;
+            if (mmap_trace)
+                fprintf(stderr, "[mmap2] hint=0x%llx len=0x%llx prot=%llu flags=0x%x fixed=%d\n",
+                        (unsigned long long)hint, (unsigned long long)length,
+                        (unsigned long long)a2, mmap_flags, (int)fixed);
             uint64_t base = 0;
             if (fixed && hint != 0) {
                 // Honouring the hint matters: musl places its own bookkeeping at
@@ -414,10 +422,22 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
                 // different address leaves those references dangling.
                 const uint64_t aligned = hint & ~0xFFFULL;
                 if (e2_memory_find(&m->mem, aligned) != NULL) {
-                    // MAP_FIXED replaces whatever was there. The address is
-                    // already backed by a region of ours, which is what the guest
-                    // asked for, so accept it rather than failing with ENOMEM.
+                    // MAP_FIXED replaces whatever was there. Accepting the
+                    // address is not enough: an anonymous request gets fresh
+                    // zero pages, and reusing the region without clearing it
+                    // leaves the old bytes visible. musl covers each segment's
+                    // .bss with exactly this kind of mapping, and the bytes
+                    // underneath were the tail of the file - which put 0x459930
+                    // where a thread state pointer belonged.
                     base = aligned;
+                    if ((mmap_flags & 0x20) != 0) {
+                        uint8_t *fresh = e2_memory_host_ptr(&m->mem, aligned,
+                                                            (size_t)length,
+                                                            E2_PROT_WRITE);
+                        if (fresh != NULL) {
+                            memset(fresh, 0, (size_t)length);
+                        }
+                    }
                 } else if (e2_memory_map_at(&m->mem, aligned, (size_t)length,
                                             e2_prot) != 0) {
                     E2_RETURN(-12);

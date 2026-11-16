@@ -624,6 +624,36 @@ e2_status e2_step(e2_machine *machine) {
         return E2_OK;
     }
 
+    // --- SIMD: INS (general register into a vector element) ---
+    // The inverse of UMOV, and the same family: bits 15-10 select it. musl's
+    // memcpy and every vectorised loop reach for both.
+    if ((insn & 0x9FE0FC00u) == 0x0E001C00u) {
+        const unsigned imm5 = BITS(insn, 20, 16);
+        const unsigned rn2 = BITS(insn, 9, 5);
+        unsigned esize, index;
+        if (imm5 & 1) {
+            esize = 8;  index = (imm5 >> 1) & 0xF;
+        } else if (imm5 & 2) {
+            esize = 16; index = (imm5 >> 2) & 0x7;
+        } else if (imm5 & 4) {
+            esize = 32; index = (imm5 >> 3) & 0x3;
+        } else if (imm5 & 8) {
+            esize = 64; index = (imm5 >> 4) & 0x1;
+        } else {
+            machine->ctx.reason = "invalid INS imm5";
+            return E2_UNIMPL;
+        }
+        const unsigned bit = index * esize;
+        uint64_t *half = (bit >= 64) ? &cpu->v[rd][1] : &cpu->v[rd][0];
+        const unsigned shift = bit & 63;
+        const uint64_t mask = (esize >= 64) ? ~0ULL : ((1ULL << esize) - 1);
+        const uint64_t src = e2_read_xzr(cpu, rn2) & mask;
+        *half = (*half & ~(mask << shift)) | (src << shift);
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     // --- SIMD: DUP (general) ---
     // `dup v0.16b, w1` is the first instruction of musl's memset, so this is the
     // entry point for vector support.
@@ -1874,6 +1904,20 @@ e2_status e2_step(e2_machine *machine) {
                 if (is_read) {
                     machine->cycle_clock += 1000;
                     write_reg(cpu, rt, machine->cycle_clock, true);
+                }
+                break;
+            case 0xDA20:  // FPCR: floating-point control register
+                if (is_read) {
+                    write_reg(cpu, rt, cpu->fpcr, true);
+                } else {
+                    cpu->fpcr = e2_read_xzr(cpu, rt);
+                }
+                break;
+            case 0xDA21:  // FPSR: floating-point status register
+                if (is_read) {
+                    write_reg(cpu, rt, cpu->fpsr, true);
+                } else {
+                    cpu->fpsr = e2_read_xzr(cpu, rt);
                 }
                 break;
             case 0xD809:  // CTR_EL0: cache type register, constant

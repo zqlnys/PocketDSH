@@ -934,6 +934,20 @@ static int run_proc(int idx) {
                      (unsigned long long)p->m.cpu.sp);
             g_fault = 1;
             if (getenv("E2_TRACE_STACK")) dump_shadow("fault");
+            if (getenv("E2_TRACE_CODE")) {
+                // The binary on disk and the image in memory are not always at
+                // the same offsets, so disassembling the file can mislead. Dump
+                // what is actually executing.
+                const uint64_t at = p->m.cpu.pc;
+                const uint64_t from = (at > 48) ? at - 48 : 0;
+                fprintf(stderr, "[code] around pc=0x%llx:\n", (unsigned long long)at);
+                for (uint64_t a = from; a < at + 48; a += 16) {
+                    uint32_t w[4] = {0, 0, 0, 0};
+                    e2_memory_read(&p->m.mem, a, w, 16);
+                    fprintf(stderr, "  0x%llx: %08x %08x %08x %08x\n",
+                            (unsigned long long)a, w[0], w[1], w[2], w[3]);
+                }
+            }
             if (getenv("E2_TRACE_TABLE")) {
                 // Summarise the array the faulting code indexed: a table that is
                 // entirely zero was never filled, whereas a sparse one means a

@@ -31,6 +31,11 @@ typedef struct {
     uint64_t sp;         ///< stack pointer (separate from x31)
     uint64_t pc;         ///< program counter
     uint64_t tpidr_el0;  ///< thread pointer, used for TLS
+    /// Floating-point control and status. Nothing here computes with them yet,
+    /// but libc's fenv routines read-modify-write FPCR and the interpreter must
+    /// keep whatever it is given: rounding-mode plumbing is not ours to fake.
+    uint64_t fpcr;
+    uint64_t fpsr;
     uint64_t v[32][2];   ///< SIMD/FP registers, 128 bits each as two halves
     e2_flags flags;
 } e2_cpu;
