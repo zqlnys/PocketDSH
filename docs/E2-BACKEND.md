@@ -1945,3 +1945,39 @@ op 位，第二次是寄存器声称 DC ZVA 可用。症状各不相同，成因
 新增工具：`tools/trace-align.py`、`E2_TRACE_HIT`（判断某地址是否在路径上）、
 `E2_TRACE_PCS_LIMIT`。
 
+### 正则匹配：已确认为唯一剩余缺陷，且范围不断收窄
+
+经过这一轮，**除正则匹配外的一切都被排除了**：
+
+| 检查项 | 结果 |
+| --- | --- |
+| argc / argv 传递 | 正确（`busybox.static, expr, abc, :, abc`）|
+| `strlen` | 正确（`expr length abc` = 3，两边一致）|
+| 字符串子串 | 正确（`expr substr abcde 2 3` = bcd，两边一致）|
+| `regcomp` | 正确（`grep '['` 正确报 `Missing ']'`）|
+| `grep -F` | 正确 |
+| 空模式 | 正确（匹配所有行）|
+| **`regexec`** | **所有非空模式都返回不匹配** |
+
+## 工具：qemu 的日志比 gdb 单步快几个数量级
+
+这是本轮最有价值的产出。`gdb` 单步大约**每秒 100 条指令**，一条 3 万条指令的
+轨迹要跑一小时，这让对比法只能用在很窄的窗口上。
+
+```sh
+env -i qemu-aarch64-static -d in_asm,exec -D log BINARY ARGS
+tools/qemu-fultrace.py log > qemu.txt     # 逐指令轨迹，几秒钟
+tools/qemu-execdiff.py qemu.txt mine.txt  # 找第一条不出现的块
+```
+
+实测：`expr a : a` 的 9,670 条指令轨迹**约两秒**生成。
+
+## 三个会制造假分歧的坑（都踩过）
+
+1. **索引对齐**：`svc` 处 gdb 不保证逐条上报，每个系统调用都报假分歧
+2. **缓冲区满后重印**：512 条之后全是缓冲重复的垃圾
+3. **argv[0] 形状**：busybox 会扫它找 `/`，`busybox.static` 和
+   `/tmp/bbs/bin/busybox.static` 走不同分支——用 `E2_ARGV0` 对齐
+4. **字符串对齐**：本实现原来把 argv/env 字符串补齐到 16 字节，而真实内核紧密
+   排列；对齐的地址会让 musl 的 word-at-a-time `strlen` 走不同分支。已修正为紧密排列
+
