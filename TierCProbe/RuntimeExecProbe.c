@@ -182,7 +182,7 @@ static void *map_code_file(long page, char *path_out, size_t path_size,
     return mapping;
 }
 
-int pocket_exec_probe(pocket_exec_probe_result *out) {
+int pocket_exec_probe(pocket_exec_probe_result *out, int attempt_anonymous_execution) {
     if (out == NULL) {
         return -EINVAL;
     }
@@ -196,7 +196,9 @@ int pocket_exec_probe(pocket_exec_probe_result *out) {
     }
 
     probe_anonymous_exec(out);
-    probe_anonymous_execution(out, page);
+    if (attempt_anonymous_execution) {
+        probe_anonymous_execution(out, page);
+    }
 
     char path[1024];
     int map_errno = 0;

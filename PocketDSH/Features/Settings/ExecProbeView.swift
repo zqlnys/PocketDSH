@@ -49,12 +49,15 @@ struct ExecProbeView: View {
                                 ? "returned \(report.executeValue)"
                                 : report.anonExecuteStatus > 0
                                     ? "faulted (signal \(report.anonExecuteStatus))"
-                                    : "not attempted")
+                                    : "not attempted (see warning)")
 
                         Divider().overlay(PocketTheme.stroke)
 
                         Text(report.verdict)
                             .font(.callout.weight(.medium))
+                        Text("Executing code in an anonymous page previously terminated the process on device. That step is opt-in.")
+                            .font(.caption)
+                            .foregroundStyle(PocketTheme.amber)
                         Text(report.environmentNote)
                             .font(.caption)
                             .foregroundStyle(PocketTheme.amber)
@@ -78,6 +81,16 @@ struct ExecProbeView: View {
                 report = ExecutionProbe.run()
             } label: {
                 Label("Run again", systemImage: "arrow.clockwise")
+            }
+            .buttonStyle(SecondaryButtonStyle())
+
+            // Deliberately behind its own button: on device this step has taken
+            // the process down with no catchable signal, which is itself the
+            // result we needed.
+            Button(role: .destructive) {
+                report = ExecutionProbe.run(attemptAnonymousExecution: true)
+            } label: {
+                Label("Also run anonymous execution (may crash)", systemImage: "exclamationmark.triangle")
             }
             .buttonStyle(SecondaryButtonStyle())
         }

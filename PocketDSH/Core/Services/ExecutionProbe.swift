@@ -47,6 +47,9 @@ enum ExecutionProbe {
             if anonExecuteStatus > 0 {
                 return "Anonymous page was mapped but running copied code faulted (signal \(anonExecuteStatus)). The backend will need an interpreter."
             }
+            if anonExecMapErrno == 0 && anonExecuteStatus == -1 {
+                return "Anonymous executable mapping is granted, but running it was not attempted (it previously terminated the process). Treat native execution as unavailable: the backend will need an interpreter."
+            }
             if fileProtectErrno != 0 {
                 return "Neither path executes runtime code: file mapping was refused (errno \(fileProtectErrno)) and the anonymous page could not run copied code. The backend will need an interpreter."
             }
@@ -62,9 +65,12 @@ enum ExecutionProbe {
         }
     }
 
-    static func run() -> Report {
+    /// - Parameter attemptAnonymousExecution: off by default. This step can
+    ///   terminate the process without a catchable signal on device, so it only
+    ///   runs when the user explicitly asks for it.
+    static func run(attemptAnonymousExecution: Bool = false) -> Report {
         var result = pocket_exec_probe_result()
-        let status = pocket_exec_probe(&result)
+        let status = pocket_exec_probe(&result, attemptAnonymousExecution ? 1 : 0)
         guard status == 0 else {
             return Report(
                 anonymousExecErrno: 0,

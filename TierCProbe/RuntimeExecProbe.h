@@ -50,6 +50,12 @@ typedef struct {
 
 /// Runs the probe. Returns 0 when the probe completed (regardless of outcome),
 /// negative errno when the probe itself could not run.
-int pocket_exec_probe(pocket_exec_probe_result *out);
+///
+/// `attempt_anonymous_execution` gates the one step that can terminate the
+/// process outright. On a device, mmap of an anonymous RWX page succeeds but
+/// executing it took the process down without a catchable signal, which points
+/// at kernel-level enforcement rather than a fault we can handle. Pass 0 to
+/// measure everything else safely.
+int pocket_exec_probe(pocket_exec_probe_result *out, int attempt_anonymous_execution);
 
 #endif
