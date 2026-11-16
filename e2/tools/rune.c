@@ -340,17 +340,21 @@ static int start_image(e2_machine *m, const char *path, char args[][64], int nar
 
     uint64_t top = m->cpu.sp - 64, strs = top - 2048, cur = strs;
     uint64_t argp[16], envp[16];
+    // Strings are packed back to back, as a real kernel does. Padding each one
+    // to 16 bytes changes their addresses, and an aligned address takes a
+    // different branch inside musl's word-at-a-time strlen - which shows up as
+    // a divergence in any trace comparison and is purely an artifact.
     for (int i = 0; i < nargs; i++) {
         size_t l = strlen(args[i]) + 1;
         e2_memory_write(&m->mem, cur, args[i], l);
         argp[i] = cur;
-        cur += (l + 15) & ~15ULL;
+        cur += l;
     }
     for (int i = 0; i < nenv; i++) {
         size_t l = strlen(envs[i]) + 1;
         e2_memory_write(&m->mem, cur, envs[i], l);
         envp[i] = cur;
-        cur += (l + 15) & ~15ULL;
+        cur += l;
     }
     // AT_RANDOM must point at 16 readable bytes. musl takes the stack canary
     // and the pointer guard from it; leaving the entry out means a zero canary,
