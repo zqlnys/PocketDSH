@@ -1427,3 +1427,29 @@ qemu-aarch64-static -g PORT -L /tmp/alpine-root /tmp/alpine-root/usr/bin/python3
 **局限**：只能验证「这个位置在 qemu 下是什么」，不能直接找到「第一处分歧」。
 如果 qemu 根本不执行那条指令，说明分歧更早，需要别的手段。
 
+### 当前阻塞点的真实性质（重要）
+
+`python3 -c pass` 在 1.5 亿条指令后 fault，但**fault 不是根因**。stderr 实际输出是：
+
+```
+Exception ignored error evaluating path:
+Traceback (most recent call last):
+```
+
+也就是说：**Python 在计算 `sys.path`（执行冻结的 `getpath.py`）时抛出了异常**，
+随后在打印回溯、取源码行时踩到坏指针而崩溃。
+
+关键推论：**qemu 下那段代码从不执行**（用硬件断点验证过），因为正常运行时没有这个
+异常。所以这不是解码问题，也不是内存问题，而是**某个 Python 操作失败**。
+
+下一次排查应该从这里入手，而不是继续修指令：
+
+1. 让回溯能正常打印，从而看到真正的异常类型与消息；
+2. 或者直接定位 `getpath.py` 里哪一步失败——它依赖 `os`、`sys`、文件系统调用；
+3. `-S`、`-E`、`-X frozen_modules=off`、`PYTHONHOME` 都已试过，都绕不过去。
+
+### 测试台的环境变量
+
+`tools/rune` 现在会把 `PYTHONHOME`、`PYTHONPATH`、`PYTHONNOUSERSITE` 透传给 guest，
+方便在不重编译的情况下做这类实验。
+

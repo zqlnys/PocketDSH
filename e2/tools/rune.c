@@ -1025,6 +1025,19 @@ static int run_proc(int idx) {
                      (unsigned long long)p->m.cpu.sp);
             g_fault = 1;
             if (getenv("E2_TRACE_STACK")) dump_shadow("fault");
+            if (getenv("E2_TRACE_OBJFAULT")) {
+                const uint64_t o = p->m.cpu.x[19];
+                fprintf(stderr, "[objfault] struct at 0x%llx:\n", (unsigned long long)o);
+                for (uint64_t off = 0; off < 0x40; off += 8) {
+                    uint64_t v = 0;
+                    if (e2_memory_read(&p->m.mem, o + off, &v, 8) != 0) {
+                        fprintf(stderr, "   +0x%02llx <unmapped>\n", (unsigned long long)off);
+                        break;
+                    }
+                    fprintf(stderr, "   +0x%02llx = 0x%llx\n",
+                            (unsigned long long)off, (unsigned long long)v);
+                }
+            }
             if (getenv("E2_TRACE_REGIONS"))
                 fprintf(stderr, "[regions] %u in use (max %d)\n",
                         p->m.mem.count, E2_MAX_REGIONS);
@@ -1109,6 +1122,18 @@ int main(int argc, char **argv) {
     snprintf(envs[nenv++], sizeof(envs[0]), "TERM=xterm");
     snprintf(envs[nenv++], sizeof(envs[0]), "PWD=/");
     snprintf(envs[nenv++], sizeof(envs[0]), "LANG=C");
+    // Pass Python's own knobs through, so the guest can be pointed at a
+    // rootfs without rebuilding the harness.
+    {
+        static const char *passthrough[] = {"PYTHONHOME", "PYTHONPATH", "PYTHONNOUSERSITE"};
+        for (unsigned i = 0; i < sizeof(passthrough) / sizeof(passthrough[0]); i++) {
+            const char *v = getenv(passthrough[i]);
+            if (v != NULL && nenv < 8) {
+                snprintf(envs[nenv], sizeof(envs[0]), "%s=%s", passthrough[i], v);
+                nenv++;
+            }
+        }
+    }
 
     if (start_image(&m, path, args, nargs, envs, nenv) != 0) {
         fprintf(stderr, "cannot load %s\n", path);
