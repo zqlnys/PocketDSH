@@ -193,7 +193,27 @@ do_relocs(p, laddr(p, dyn[DT_JMPREL]), dyn[DT_PLTRELSZ],
           2+(dyn[DT_PLTREL]==DT_RELA));
 ```
 
-`ld-musl` 的 `DT_PLTREL` 确实是 `7 (RELA)`，所以 stride 应该是 **3**；实际是 **2**，说明 **`dyn[DT_PLTREL]` 没有被填成 7**，即 `decode_vec` 的输出不对。
+`reloc_all` 里的写法是：
+
+```c
+size_t dyn[DYN_CNT];              // 未初始化
+for (; p; p=p->next) {
+    if (p->relocated) continue;   // ← ldso 在这里被跳过
+    decode_vec(p->dynv, dyn, DYN_CNT);
+    ...
+    do_relocs(p, laddr(p, dyn[DT_JMPREL]), dyn[DT_PLTRELSZ],
+              2+(dyn[DT_PLTREL]==DT_RELA));
+```
+
+实测 `ldso` 的标志位（`+0xa8`）：
+
+```
+relocated=1  kernel_mapped=1
+```
+
+**所以 `dyn[]` 从未被填充**，里面是栈垃圾——`dyn[DT_JMPREL]` 恰好是 `0x40013ba0`、`dyn[DT_PLTREL]` 不是 7，这正好解释了 stride 为什么是 2。
+
+已排除的：`ldso->dynv = 0x400bfd98` 正确，`.dynamic` 内容正确（`DT_PLTREL=7`、`DT_JMPREL=0x13ba0`、`DT_PLTRELSZ=144`），`syms = 0x40005d28` 也正确。**数据全对，是控制流跳过了填充。**
 
 步长错位后，`ldr x4, [x28, #8]` 读到的是 `0x910003fda9bf7bfd`——两条指令编码的拼接（`stp x29,x30` + `mov x29,sp`），因为指针滑进了 `.text`。这就是污染来源。
 
