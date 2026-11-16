@@ -254,7 +254,8 @@ e2_status e2_step(e2_machine *machine) {
         const unsigned width = is64 ? 64 : 32;
         const uint64_t mask = is64 ? ~0ULL : 0xFFFFFFFFULL;
 
-        uint64_t operand = cpu->x[rm] & mask;
+        // Rm=31 is XZR: reading the array directly would run past X30.
+        uint64_t operand = e2_read_xzr(cpu, rm) & mask;
         switch (shift_type) {
             case 0: operand <<= shift_amount; break;                                   // LSL
             case 1: operand >>= shift_amount; break;                                   // LSR
@@ -331,7 +332,8 @@ e2_status e2_step(e2_machine *machine) {
         const unsigned width = is64 ? 64 : 32;
         const uint64_t mask = is64 ? ~0ULL : 0xFFFFFFFFULL;
 
-        uint64_t operand = cpu->x[rm] & mask;
+        // Rm=31 is XZR here too; the shifted-register forms have no SP operand.
+        uint64_t operand = e2_read_xzr(cpu, rm) & mask;
         switch (shift_type) {
             case 0: operand = (operand << shift_amount) & mask; break;
             case 1: operand >>= shift_amount; break;
@@ -587,6 +589,52 @@ e2_status e2_step(e2_machine *machine) {
         return E2_OK;
     }
 
+    // --- Conditional select: CSEL / CSINC / CSINV / CSNEG ---
+    // Ternary operators and min/max compile to these; CSET is CSINC with an
+    // inverted condition.
+    if ((insn & 0x1FE00000u) == 0x1A800000u) {
+        const unsigned op = BITS(insn, 30, 29);
+        const unsigned rm = BITS(insn, 20, 16);
+        const unsigned cond = BITS(insn, 15, 12);
+        const unsigned rn2 = BITS(insn, 9, 5);
+        const uint64_t mask = is64 ? ~0ULL : 0xFFFFFFFFULL;
+
+        uint64_t result;
+        if (condition_holds(cpu, cond)) {
+            result = e2_read_xzr(cpu, rn2);
+        } else {
+            const uint64_t other = e2_read_xzr(cpu, rm);
+            switch (op) {
+                case 0: result = other; break;            // CSEL
+                case 1: result = other + 1; break;        // CSINC
+                case 2: result = ~other; break;           // CSINV
+                default: result = (uint64_t)(-(int64_t)other); break;  // CSNEG
+            }
+        }
+        write_reg(cpu, rd, result & mask, is64);
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
+    // --- MADD / MSUB ---
+    if ((insn & 0x1F000000u) == 0x1B000000u) {
+        const bool is_sub = BIT(insn, 15) != 0;
+        const unsigned rm = BITS(insn, 20, 16);
+        const unsigned ra = BITS(insn, 14, 10);
+        const unsigned rn2 = BITS(insn, 9, 5);
+        const uint64_t mask = is64 ? ~0ULL : 0xFFFFFFFFULL;
+
+        const uint64_t a = e2_read_xzr(cpu, rn2) & mask;
+        const uint64_t b = e2_read_xzr(cpu, rm) & mask;
+        const uint64_t acc = e2_read_xzr(cpu, ra) & mask;
+        uint64_t result = is_sub ? (acc - a * b) : (acc + a * b);
+        write_reg(cpu, rd, result & mask, is64);
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     // --- B / BL ---
     if ((insn & 0x7C000000u) == 0x14000000u) {
         const bool link = BIT(insn, 31) != 0;
@@ -723,9 +771,9 @@ e2_status e2_step(e2_machine *machine) {
 
         uint64_t offset;
         switch (option) {
-            case 0x2: offset = cpu->x[rm] & 0xFFFFFFFFu; break;                  // UXTW
-            case 0x6: offset = (uint64_t)(int64_t)(int32_t)(cpu->x[rm] & 0xFFFFFFFFu); break;  // SXTW
-            default: offset = cpu->x[rm]; break;                                  // LSL / SXTX
+            case 0x2: offset = e2_read_xzr(cpu, rm) & 0xFFFFFFFFu; break;       // UXTW
+            case 0x6: offset = (uint64_t)(int64_t)(int32_t)(e2_read_xzr(cpu, rm) & 0xFFFFFFFFu); break;  // SXTW
+            default: offset = e2_read_xzr(cpu, rm); break;                       // LSL / SXTX
         }
         if (scale) {
             offset <<= size_code;
@@ -736,6 +784,7 @@ e2_status e2_step(e2_machine *machine) {
             uint64_t value = 0;
             if (e2_memory_read(&machine->mem, addr, &value, bytes) != 0) {
                 machine->ctx.reason = "load outside mapped memory";
+                machine->ctx.svc_number = (uint16_t)(addr & 0xFFFF);
                 return E2_FAULT;
             }
             write_reg(cpu, rd, value, size_code == 3);
@@ -743,6 +792,7 @@ e2_status e2_step(e2_machine *machine) {
             uint64_t value = cpu->x[rd];
             if (e2_memory_write(&machine->mem, addr, &value, bytes) != 0) {
                 machine->ctx.reason = "store outside mapped memory";
+                machine->ctx.svc_number = (uint16_t)(addr & 0xFFFF);
                 return E2_FAULT;
             }
         }

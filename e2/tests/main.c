@@ -478,6 +478,51 @@ static void test_simd_memset_elf(void) {
 /// Builds a synthetic ET_DYN image with one RELATIVE relocation and checks the
 /// loader applies the bias. Kept synthetic so the test does not depend on a
 /// downloaded libc.
+/// Runs a freestanding C program compiled by clang, so the instruction mix is
+/// whatever the compiler really emits rather than what a hand-written test
+/// assumes. Checks the observable output only.
+static void test_compiled_c_program(void) {
+    printf("compiler-generated C program\n");
+    FILE *f = fopen("tests/guest/cprog.elf", "rb");
+    if (f == NULL) {
+        printf("  SKIP (tests/guest/cprog.elf not built)\n");
+        return;
+    }
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    uint8_t *image = (uint8_t *)malloc((size_t)size);
+    if (image == NULL || fread(image, 1, (size_t)size, f) != (size_t)size) {
+        fclose(f);
+        free(image);
+        CHECK(0, "could not read cprog.elf");
+        return;
+    }
+    fclose(f);
+
+    e2_machine m;
+    e2_machine_init(&m, 0, 1 << 20);
+    e2_loaded_image info = {0};
+    e2_load_result lr = e2_load_elf_full(&m, image, (size_t)size, true, &info);
+    CHECK(lr == E2_LOAD_OK, "load: %s", e2_load_result_name(lr));
+
+    if (lr == E2_LOAD_OK) {
+        capture cap = {0};
+        e2_syscall_env env = {.write = capture_write, .exit = capture_exit, .ctx = &cap};
+        e2_status st = run_program(&m, &env, 500000);
+        CHECK(st == E2_HALTED, "expected halt, got %s (%s)", e2_status_name(st),
+              m.ctx.reason ? m.ctx.reason : "-");
+        CHECK(cap.status == 0, "exit status %d", cap.status);
+        // The struct-by-value path is the interesting part: make_point returns a
+        // two-int struct in registers and point_sum receives it back.
+        CHECK(strstr(cap.out, "sum=42") != NULL, "output was \"%s\"", cap.out);
+        CHECK(strstr(cap.out, "idx=3568") != NULL, "output was \"%s\"", cap.out);
+    }
+
+    e2_machine_destroy(&m);
+    free(image);
+}
+
 static void test_pie_relocation(void) {
     printf("PIE load bias and RELATIVE relocation\n");
     e2_machine m;
@@ -609,6 +654,7 @@ int main(void) {
     test_load_real_elf();
     test_recursive_fib_elf();
     test_simd_memset_elf();
+    test_compiled_c_program();
     test_pie_relocation();
     test_reject_dynamic();
     test_reject_wrong_machine();

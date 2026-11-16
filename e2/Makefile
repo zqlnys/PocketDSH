@@ -10,7 +10,7 @@ BUILD := build
 SRC := src/memory.c src/exec.c src/syscall.c src/loader.c
 TEST_SRC := tests/main.c
 TEST_BIN := $(BUILD)/e2-tests
-GUEST_ELF := tests/guest/hello.elf tests/guest/fib.elf tests/guest/memset.elf
+GUEST_ELF := tests/guest/hello.elf tests/guest/fib.elf tests/guest/memset.elf tests/guest/cprog.elf
 
 # Cross-toolchain pieces for building the guest test binary. clang handles the
 # aarch64 target and lld links it statically, so no libc is needed.
@@ -38,6 +38,10 @@ tests/guest/fib.elf: tests/guest/fib.s | $(BUILD)
 tests/guest/memset.elf: tests/guest/memset.s | $(BUILD)
 	$(CLANG) --target=aarch64-linux-gnu -c $< -o $(BUILD)/memset-guest.o
 	$(LLD) -static -o $@ $(BUILD)/memset-guest.o
+
+tests/guest/cprog.elf: tests/guest/cprog.c | $(BUILD)
+	$(CLANG) --target=aarch64-linux-gnu -O2 -ffreestanding -nostdlib -static -c $< -o $(BUILD)/cprog-guest.o
+	$(LLD) -static -o $@ $(BUILD)/cprog-guest.o
 
 test: $(TEST_BIN) $(GUEST_ELF)
 	@./$(TEST_BIN)
