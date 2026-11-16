@@ -1216,7 +1216,7 @@ static int run_proc(int idx) {
             // Record the instruction path from a chosen address, so it can be
             // diffed against the same window taken from qemu's single-step.
             static int recording = 0;
-            static uint64_t buf[512];
+            static uint64_t buf[8192];
             static int n = 0;
             const uint64_t from = strtoull(getenv("E2_TRACE_PCS"), NULL, 0);
             if (!recording && p->m.cpu.pc == from) recording = 1;
@@ -1266,11 +1266,24 @@ static int run_proc(int idx) {
                             (unsigned long long)p->m.cpu.x[7]);
                 buf[n++] = p->m.cpu.pc;
             }
-            if (recording && n == (int)(sizeof(buf) / sizeof(buf[0]))) {
-                for (int q = 0; q < n; q++) fprintf(stdout, "%llx\n",
-                                                   (unsigned long long)buf[q]);
-                fflush(stdout);
+            // Stop before printing: leaving `recording` set made the dump run
+            // again on every following instruction, so everything past the
+            // buffer length was the buffer repeating and every trace comparison
+            // beyond that point was meaningless.
+            // E2_TRACE_PCS_LIMIT sets how many entries to keep; the buffer is
+            // large enough that running out of it is a mistake, not a design.
+            static int limit = -1;
+            if (limit < 0) {
+                const char *ls = getenv("E2_TRACE_PCS_LIMIT");
+                limit = ls ? atoi(ls) : 512;
+                if (limit <= 0 || limit > (int)(sizeof(buf) / sizeof(buf[0])))
+                    limit = (int)(sizeof(buf) / sizeof(buf[0]));
+            }
+            if (recording > 0 && n == limit) {
                 recording = -1;
+                for (int q = 0; q < n; q++) fprintf(stdout, "%llx\n",
+                                                    (unsigned long long)buf[q]);
+                fflush(stdout);
             }
         }
         const uint64_t pre_pc = p->m.cpu.pc;
