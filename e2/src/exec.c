@@ -202,7 +202,7 @@ e2_status e2_step(e2_machine *machine) {
         } else if (mov_top == 0x12800000u) {     // MOVN
             write_reg(cpu, rd, ~value, is64);
         } else {                                 // MOVK
-            uint64_t current = is64 ? cpu->x[rd] : (cpu->x[rd] & 0xFFFFFFFFu);
+            uint64_t current = is64 ? e2_read_xzr(cpu, rd) : (e2_read_xzr(cpu, rd) & 0xFFFFFFFFu);
             uint64_t mask = (uint64_t)0xFFFF << shift;
             current = (current & ~mask) | value;
             write_reg(cpu, rd, current, is64);
@@ -406,7 +406,7 @@ e2_status e2_step(e2_machine *machine) {
                 }
                 case 1: {  // BFM: insert into destination at immr
                     const uint64_t mask = field_mask << immr;
-                    const uint64_t dst = cpu->x[rd] & width_mask;
+                    const uint64_t dst = e2_read_xzr(cpu, rd) & width_mask;
                     result = (dst & ~mask) | (field << immr);
                     break;
                 }
@@ -431,7 +431,7 @@ e2_status e2_step(e2_machine *machine) {
                 case 1: {  // BFM
                     const uint64_t mask = (field_mask << shift) & width_mask;
                     const uint64_t shifted = (field << shift) & width_mask;
-                    const uint64_t dst = cpu->x[rd] & width_mask;
+                    const uint64_t dst = e2_read_xzr(cpu, rd) & width_mask;
                     result = (dst & ~mask) | shifted;
                     break;
                 }
@@ -480,8 +480,8 @@ e2_status e2_step(e2_machine *machine) {
             write_reg(cpu, rt, v1, is64);
             write_reg(cpu, rt2, v2, is64);
         } else {
-            uint64_t v1 = is64 ? cpu->x[rt] : (cpu->x[rt] & 0xFFFFFFFFu);
-            uint64_t v2 = is64 ? cpu->x[rt2] : (cpu->x[rt2] & 0xFFFFFFFFu);
+            uint64_t v1 = is64 ? e2_read_xzr(cpu, rt) : (e2_read_xzr(cpu, rt) & 0xFFFFFFFFu);
+            uint64_t v2 = is64 ? e2_read_xzr(cpu, rt2) : (e2_read_xzr(cpu, rt2) & 0xFFFFFFFFu);
             if (e2_memory_write(&machine->mem, addr, &v1, scale) != 0 ||
                 e2_memory_write(&machine->mem, addr + scale, &v2, scale) != 0) {
                 machine->ctx.reason = "stp outside mapped memory";
@@ -648,6 +648,37 @@ e2_status e2_step(e2_machine *machine) {
         return E2_OK;
     }
 
+    // --- CCMP / CCMN (conditional compare) ---
+    // Chains comparisons without branching, e.g. `a <= b && b < c`. When the
+    // condition fails the flags are taken from the instruction instead of being
+    // computed, which is how short-circuit evaluation stays branch-free.
+    if ((insn & 0x1FE00000u) == 0x1A400000u) {
+        const bool is_compare = BIT(insn, 30) != 0;  // 1 = CCMP(sub), 0 = CCMN(add)
+        const bool is_immediate = BIT(insn, 11) != 0;
+        const unsigned cond = BITS(insn, 15, 12);
+        const unsigned nzcv = BITS(insn, 3, 0);
+        const unsigned rm_or_imm = BITS(insn, 20, 16);
+        const unsigned rn2 = BITS(insn, 9, 5);
+        const unsigned width = is64 ? 64 : 32;
+        const uint64_t mask = is64 ? ~0ULL : 0xFFFFFFFFULL;
+
+        if (condition_holds(cpu, cond)) {
+            const uint64_t a = e2_read_xzr(cpu, rn2) & mask;
+            const uint64_t b = is_immediate ? (uint64_t)rm_or_imm
+                                            : (e2_read_xzr(cpu, rm_or_imm) & mask);
+            const uint64_t result = is_compare ? (a - b) : (a + b);
+            set_flags_addsub(cpu, a, b, result, is_compare, width);
+        } else {
+            cpu->flags.n = (nzcv >> 3) & 1u;
+            cpu->flags.z = (nzcv >> 2) & 1u;
+            cpu->flags.c = (nzcv >> 1) & 1u;
+            cpu->flags.v = nzcv & 1u;
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     // --- MADD / MSUB ---
     // `mul xD, Xn, Xm` is MADD with Ra=XZR, so the accumulator being 31 is
     // normal here. The high-multiply variants live in a different encoding group
@@ -751,7 +782,7 @@ e2_status e2_step(e2_machine *machine) {
     if ((insn & 0x7E000000u) == 0x34000000u) {
         const bool nonzero = BIT(insn, 24) != 0;
         const int64_t offset = (int64_t)sign_extend(BITS(insn, 23, 5), 19) << 2;
-        const uint64_t value = is64 ? cpu->x[rd] : (cpu->x[rd] & 0xFFFFFFFFu);
+        const uint64_t value = is64 ? e2_read_xzr(cpu, rd) : (e2_read_xzr(cpu, rd) & 0xFFFFFFFFu);
         const bool take = nonzero ? (value != 0) : (value == 0);
         if (take) {
             next_pc = (uint64_t)((int64_t)cpu->pc + offset);
@@ -768,7 +799,7 @@ e2_status e2_step(e2_machine *machine) {
         const bool branch_if_set = BIT(insn, 24) != 0;
         const unsigned bit_pos = (BIT(insn, 31) << 5) | BITS(insn, 23, 19);
         const int64_t offset = (int64_t)sign_extend(BITS(insn, 18, 5), 14) << 2;
-        const uint64_t value = is64 ? cpu->x[rd] : (cpu->x[rd] & 0xFFFFFFFFu);
+        const uint64_t value = is64 ? e2_read_xzr(cpu, rd) : (e2_read_xzr(cpu, rd) & 0xFFFFFFFFu);
         const bool bit_is_set = ((value >> bit_pos) & 1u) != 0;
         if (bit_is_set == branch_if_set) {
             next_pc = (uint64_t)((int64_t)cpu->pc + offset);
@@ -808,7 +839,9 @@ e2_status e2_step(e2_machine *machine) {
             }
             write_reg(cpu, rd, value, size_code == 3);
         } else {
-            uint64_t value = cpu->x[rd];
+            // Storing XZR is legal and common (zero-init loops); reading x[31]
+            // would take a byte from the neighbouring stack slot instead.
+            uint64_t value = e2_read_xzr(cpu, rd);
             if (e2_memory_write(&machine->mem, addr, &value, bytes) != 0) {
                 machine->ctx.reason = "store outside mapped memory";
                 return E2_FAULT;
@@ -845,7 +878,7 @@ e2_status e2_step(e2_machine *machine) {
             }
             write_reg(cpu, rd, value, size_code == 3);
         } else {
-            uint64_t value = cpu->x[rd];
+            uint64_t value = e2_read_xzr(cpu, rd);
             if (e2_memory_write(&machine->mem, addr, &value, bytes) != 0) {
                 machine->ctx.reason = "unscaled store outside mapped memory";
                 return E2_FAULT;
@@ -893,7 +926,7 @@ e2_status e2_step(e2_machine *machine) {
             }
             write_reg(cpu, rd, value, size_code == 3);
         } else {
-            uint64_t value = cpu->x[rd];
+            uint64_t value = e2_read_xzr(cpu, rd);
             if (e2_memory_write(&machine->mem, addr, &value, bytes) != 0) {
                 machine->ctx.reason = "store outside mapped memory";
                 machine->ctx.svc_number = (uint16_t)(addr & 0xFFFF);
