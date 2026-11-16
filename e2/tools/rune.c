@@ -272,9 +272,19 @@ static long fs_readlink(void *ctx, const char *path, char *out, size_t outlen) {
     return (long)n;
 }
 
+// Reports a descriptor as ready for whatever was asked. Regular files always
+// are, and a pipe with data pending is too, which covers every case this
+// sandbox produces. A poll implementation that returns ENOSYS is worse than this
+// approximation: a shell's `while read` loop simply never runs.
+static int fs_pollable(void *c, int fd, int events) {
+    (void)c;
+    if (fd < 0 || fd >= 64) return 0;
+    return events;
+}
+
 static const e2_file_ops FS = {fs_open, fs_read, fs_write, fs_close, fs_stat,
                                fs_opendir, fs_readdir, fs_clock, fs_pipe, fs_dup3,
-                               fs_fcntl, fs_readlink};
+                               fs_fcntl, fs_readlink, fs_pollable};
 
 
 

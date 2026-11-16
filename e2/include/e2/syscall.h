@@ -69,6 +69,11 @@ typedef struct {
     /// the return value is its length, or a negative errno. Python's path
     /// configuration calls os.readlink while normalising sys.path.
     long (*readlink)(void *ctx, const char *path, char *out, size_t outlen);
+    /// Whether `fd` is ready for the given poll events (1 = read, 4 = write).
+    /// Returns a bitmask of ready events, 0 for "not ready", or negative errno.
+    /// Optional: without it, poll reports every open descriptor as ready, which
+    /// is correct for regular files and for pipes that hold data.
+    int (*pollable)(void *ctx, int fd, int events);
 } e2_file_ops;
 
 /// Everything the syscall layer needs from its host. The iOS layer will provide

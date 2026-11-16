@@ -30,6 +30,10 @@ while IFS= read -r cmd; do
         pass=$((pass + 1))
     fi
 done <<'EOF'
+printf 'p q\nr s\n' > /tmp/m3r; while read x y; do echo $y-$x; done < /tmp/m3r
+echo a b | while read x y; do echo $y $x; done
+echo a | read x; echo got $x
+printf 'a b\nc d\n' > /tmp/m3r; awk '{print $2, $1}' /tmp/m3r
 echo a | cat
 echo a | cat | cat
 printf x\n | wc -l
