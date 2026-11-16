@@ -929,6 +929,64 @@ static int run_proc(int idx) {
             }
             prev_pc = p->m.cpu.pc;
         }
+        if (getenv("E2_TRACE_TSTATE") && p->m.cpu.pc == 0x1027d520) {
+            // _PyErr_WriteUnraisableMsg reads the pending exception from the
+            // thread state, which musl keeps in TPIDR_EL0. Dump enough of it to
+            // find the three exception slots.
+            static int nt = 0;
+            if (++nt <= 1) {
+                const uint64_t ts = p->m.cpu.tpidr_el0;
+                fprintf(stderr, "[tstate] tpidr=0x%llx\n", (unsigned long long)ts);
+                for (uint64_t off = 0; off < 0x80; off += 8) {
+                    uint64_t v = 0;
+                    if (e2_memory_read(&p->m.mem, ts + off, &v, 8) != 0) break;
+                    if (v == 0) continue;
+                    char note[80] = "";
+                    uint64_t ty = 0;
+                    if (e2_memory_read(&p->m.mem, v + 8, &ty, 8) == 0 && ty != 0) {
+                        uint64_t np = 0;
+                        if (e2_memory_read(&p->m.mem, ty + 0x18, &np, 8) == 0 && np != 0) {
+                            char text[48] = {0};
+                            if (e2_memory_read(&p->m.mem, np, text, sizeof(text) - 1) == 0) {
+                                int ok = 1;
+                                for (int q = 0; q < 30 && text[q]; q++)
+                                    if (text[q] < 0x20 || text[q] > 0x7e) { ok = 0; break; }
+                                if (ok && text[0]) snprintf(note, sizeof(note), "  obj type=\"%s\"", text);
+                            }
+                        }
+                    }
+                    fprintf(stderr, "[tstate]   +0x%02llx = 0x%llx%s\n",
+                            (unsigned long long)off, (unsigned long long)v, note);
+                }
+            }
+        }
+        if (getenv("E2_TRACE_EXC") && p->m.cpu.pc == 0x10203524) {
+            static int ne = 0;
+            if (++ne <= 2) {
+                const uint64_t obj = p->m.cpu.x[20];
+                fprintf(stderr, "[exc] x20=0x%llx\n", (unsigned long long)obj);
+                uint64_t v[6] = {0};
+                for (int q = 0; q < 6; q++)
+                    e2_memory_read(&p->m.mem, obj + (uint64_t)q * 8, &v[q], 8);
+                fprintf(stderr, "[exc]   refcnt=0x%llx type=0x%llx\n",
+                        (unsigned long long)v[0], (unsigned long long)v[1]);
+                // A PyTypeObject carries tp_name at a fixed offset in 3.12; try
+                // the common ones and print whatever looks like a string.
+                for (int off = 0x10; off <= 0x30; off += 8) {
+                    uint64_t nameptr = 0;
+                    if (e2_memory_read(&p->m.mem, v[1] + (uint64_t)off, &nameptr, 8) != 0)
+                        continue;
+                    char text[64] = {0};
+                    if (e2_memory_read(&p->m.mem, nameptr, text, sizeof(text) - 1) == 0) {
+                        int printable = 1;
+                        for (int q = 0; q < 32 && text[q]; q++)
+                            if (text[q] < 0x20 || text[q] > 0x7e) { printable = 0; break; }
+                        if (printable && text[0])
+                            fprintf(stderr, "[exc]   type+0x%x -> \"%s\"\n", off, text);
+                    }
+                }
+            }
+        }
         const uint64_t pre_pc = p->m.cpu.pc;
         // Shadow call stack. Chasing a bad argument by re-running with a probe
         // one frame up, over and over, was the slowest part of the last few
