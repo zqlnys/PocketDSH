@@ -1,6 +1,6 @@
 # E2 后端：许可自由的 Linux 运行时
 
-状态：**M1 完成；M2 进行中**（PIE + 重定位已通，musl 链接器跑到第 459 条指令）
+状态：**M1 完成；M2 进行中**（编译器生成的 C 程序端到端跑通；musl 链接器卡在第 459 条指令）
 最后更新：2026-11-16
 
 ---
@@ -52,13 +52,14 @@ e2/
 | ELF | ELF64 aarch64 静态与 **ET_DYN（PIE，固定基址 0x40000000）**，多段、页对齐、加载期可写后降权限；报告 load bias / entry / PT_DYNAMIC / phdr |
 | 重定位 | **R_AARCH64_RELATIVE**、**GLOB_DAT / JUMP_SLOT**（经 DT_SYMTAB 自解析）；未定义符号明确拒绝 |
 | syscall | `write`、`writev`、`exit`、`exit_group`；未知调用返回 `-ENOSYS` |
-| 测试 | **42 项**，含三个交叉编译的真实 ELF（hello world、递归 fib、SIMD memset）和一个合成的 PIE 重定位镜像 |
+| 测试 | **47 项**，含四个交叉编译的真实 ELF（hello world、递归 fib、SIMD memset、freestanding C 程序）和一个合成的 PIE 重定位镜像 |
 
 ### 已验证的端到端用例
 
 - `hello.elf`：`mov` + `adr` + `svc write` + `svc exit`，输出逐字节校验
 - `fib.elf`：递归 fib(10)=55，含 STP/LDP 栈帧、BL/RET、`b.lt`、栈上 spill 槽，1956 条指令
 - `memset.elf`：`dup v0.16b` 广播 + `stp q0,q0` 批量写 + `ldrb` 逐字节校验
+- `cprog.elf`：clang 编译的 freestanding C 程序，结构体按值返回、字节加载、循环、除法强度削减；输出校验 `sum=42`、`idx=3568`
 - 合成的 PIE 镜像：验证 bias 计算与 RELATIVE 重定位结果
 
 ### 正在进行：M2 的动态链接
@@ -70,6 +71,8 @@ e2/
 | 加载 | ✅ bias 0x40000000，entry 0x400696bc |
 | 重定位 | ✅ RELATIVE + GLOB_DAT 全部应用 |
 | 执行 | 459 条指令后失败，卡在自己对栈上 auxv 的处理 |
+
+**已知缺口**：同一个 C 程序里把缓冲区改成 `volatile` 后，会在第 42632 条指令处遇到一个无关的 store fault。非 volatile 路径正确，但这说明还有未覆盖的指令路径。
 
 ---
 
@@ -106,7 +109,15 @@ text 段最终是 `R+X`，但加载时要往里写内容。正确顺序是「映
 
 这条最阴，因为 `mov xD, xM` 就是 `ORR Xd, XZR, Xm`——每个寄存器移动都会写坏目标。表现是 musl 的 auxv 扫描循环永不终止，起止指针全是垃圾。
 
-### 7. 栈顶之上要有余量
+### 7. `Rm=31` 同样是 XZR
+
+上一轮修了 `Rn` 就以为完事，漏了 `Rm`。`mov x11, xzr` 编码为 `ORR X11, XZR, XZR`——**两个操作数都是 31**。
+
+表现：循环计数器被初始化成一个栈地址，第一次数组访问直接飞出去。这类 bug 的共同点是「读越界拿到垃圾」，而垃圾通常长得像一个合法地址，所以故障点离根因很远。
+
+**规则**：寄存器形式的逻辑/算术指令里，Rn 和 Rm 的 31 都读作 XZR，只有 immediate 形式的 Rd/Rn 才可能是 SP。
+
+### 8. 栈顶之上要有余量
 
 musl 初始化时会清零 `[计算出的基址, 栈顶)`，而栈顶是开区间。最后一笔存储正好落在 SP 上。真实内核在 SP 之上留了空间；不留就会在 libc 的第一条初始化代码上 fault。
 
