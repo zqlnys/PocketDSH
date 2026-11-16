@@ -1107,3 +1107,39 @@ make test
 ```
 
 需要 `cc`（C11）、`clang`（交叉编译 guest 测试程序）、`ld.lld`（链接）。没有这些工具链时，guest ELF 测试会自动跳过，其余测试照常跑。
+
+## M4：动态链接打通，Python 已能跑起来
+
+**动态链接不再是障碍。** 测试台现在按内核的方式加载程序：读 `PT_INTERP`，把主程序映射到 `0x40000000`、解释器映射到 `0x50000000`，在新栈上摆好 argv/envp/auxv（主程序用 `AT_PHDR`/`AT_ENTRY`，解释器用 `AT_BASE`），然后从解释器入口进入。`execve` 走同一条路径，所以 shell 也能启动动态程序。
+
+对 Alpine 的动态 busybox 验证：
+
+```
+busybox ls          列出全部 17 个目录，exit 0，272,547 条指令
+busybox echo hi     hello-dynamic
+```
+
+**顺带修掉一个编码错误**：FMOV 的 64 位形式 `type=01`，即 `fmov d0, x0` 是 `0x9E670000`、`fmov x0, d0` 是 `0x9E660000`。之前写的 `0x9E27`/`0x9E26` 是 32 位的 type 字段却把 sf 置了 1。
+
+### Python 的进展
+
+装了 Alpine 的 `python3.12`（动态 PIE）及其依赖库，直接跑：
+
+```
+python3.12 -c "print(1+1)"   5,926,291 条指令后停在 fmov s1, #0.5
+```
+
+也就是说 **M4 不再卡在架构上，只卡在具体指令**。一路遇到的缺口依次补掉：
+
+| 指令 | 作用 |
+| --- | --- |
+| `fmov d0, x0` | 通用寄存器 → 浮点寄存器（64 位编码修正） |
+| `ld1 {v0.d}[1], [x0]` | 单元素载入一个 lane（`index = (Q<<1)\｜S`，L 位在 bit 22） |
+
+下一个是 **`fmov s1, #0.5`** 这类浮点立即数，需要实现 VFPExpandImm 的位展开规则。
+
+### 诚实说明
+
+- 测试用的 `python3.12` 与依赖库是从 Alpine 仓库下载后放在 `/tmp/alpine-root`，**不在仓库里**
+- `tools/rune.c` 已在仓库中（`make tools/rune`），能复现上述所有结果
+- 距离「Python 脚本跑通」还差若干指令，未达成
