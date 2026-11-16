@@ -211,3 +211,6 @@
 "iSH · Alpine · no JIT · persistent shell" = "iSH · Alpine · 无 JIT · 持久 shell";
 "GPLv3: distribution requires source/license compliance." = "GPLv3：分发需满足源码与许可合规要求。";
 "Local-first iOS coding agent. Model inference uses the DeepSeek API; your files stay on this phone." = "本地优先的 iOS 编程 Agent。模型推理通过 DeepSeek API，文件保留在本机。";
+
+/* Plan strip above the agent conversation. */
+"Plan" = "计划";

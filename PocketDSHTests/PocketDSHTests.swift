@@ -14,6 +14,7 @@ final class PocketDSHTests: XCTestCase {
         XCTAssertTrue(names.contains(ToolNames.runLua))
         XCTAssertTrue(names.contains(ToolNames.runLinux))
         XCTAssertTrue(names.contains(ToolNames.fetchURL))
+        XCTAssertTrue(names.contains(ToolNames.todoWrite))
     }
 
     func testToolSchemasAreObjectsWithRequiredFields() {
@@ -32,6 +33,34 @@ final class PocketDSHTests: XCTestCase {
         XCTAssertTrue(prompt.contains("iPhone"))
         XCTAssertTrue(prompt.contains("real files"))
         XCTAssertTrue(prompt.contains("shell commands"))
+    }
+
+    @MainActor
+    func testTodoWriteAcceptsOnlyOneInProgressAndRejectsEmptyContent() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let workspace = WorkspaceFileSystem(root: root)
+        let executor = ToolExecutor(
+            workspace: workspace,
+            luaEngine: LuaEngine(),
+            systemActions: SystemActionStore()
+        )
+
+        let twoActive = """
+        {"todos":[{"content":"a","status":"in_progress"},{"content":"b","status":"in_progress"}]}
+        """
+        let rejected = await executor.execute(name: ToolNames.todoWrite, argumentsJSON: twoActive)
+        XCTAssertTrue(rejected.isError)
+
+        let empty = """{"todos":[{"content":"  ","status":"pending"}]}"""
+        XCTAssertTrue(await executor.execute(name: ToolNames.todoWrite, argumentsJSON: empty).isError)
+
+        let good = """{"todos":[{"content":"a","status":"completed"},{"content":"b","status":"in_progress"}]}"""
+        let accepted = await executor.execute(name: ToolNames.todoWrite, argumentsJSON: good)
+        XCTAssertFalse(accepted.isError)
+        XCTAssertEqual(executor.todos.count, 2)
+        XCTAssertEqual(executor.todos.first?.status, .completed)
     }
 
     func testHTMLIsReducedToReadableText() {

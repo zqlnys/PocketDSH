@@ -10,6 +10,11 @@ final class ToolExecutor {
     private let luaEngine: LuaEngine
     private let pluginRuntime: PluginRuntimeManager?
     private let systemActions: SystemActionStore
+    /// The plan the model last submitted, mirrored into AgentRunner so the UI can
+    /// show progress without scraping conversation text.
+    private(set) var todos: [TodoItem] = []
+    var onTodosChanged: (([TodoItem]) -> Void)?
+
     private let linuxRuntime: LinuxRuntime?
     private let eventStore = EKEventStore()
 
@@ -74,6 +79,8 @@ final class ToolExecutor {
                 return try prepareCall(arguments)
             case ToolNames.fetchURL:
                 return try await fetchURL(arguments)
+            case ToolNames.todoWrite:
+                return todoWrite(arguments)
             default:
                 return .failure("Unknown tool: \(name)")
             }
@@ -224,6 +231,68 @@ final class ToolExecutor {
         guard !result.isError else { return result }
         return .success("Linux output (Tier C):\n\(result.content)")
     }
+    /// Adopt a plan restored from disk, without treating it as a change.
+    func restoreTodos(_ items: [TodoItem]) {
+        todos = items
+    }
+
+    /// Replace the plan. The model sends the whole list every time, which keeps
+    /// the tool stateless from its side and makes the result the single source
+    /// of truth for what is done.
+    private func todoWrite(_ arguments: [String: JSONValue]) -> ToolExecutionResult {
+        guard let raw = arguments["todos"]?.arrayValue else {
+            return .failure("todo_write requires todos to be an array.")
+        }
+        if raw.count > 50 {
+            return .failure("todo_write accepts at most 50 entries.")
+        }
+        var items: [TodoItem] = []
+        var inProgress = 0
+        for (index, entry) in raw.enumerated() {
+            guard let object = entry.objectValue else {
+                return .failure("todo_write entry \(index + 1) is not an object.")
+            }
+            let content = (object["content"]?.stringValue ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if content.isEmpty {
+                return .failure("todo_write entry \(index + 1) has empty content.")
+            }
+            let statusText = object["status"]?.stringValue ?? TodoStatus.pending.rawValue
+            guard let status = TodoStatus(rawValue: statusText) else {
+                return .failure("todo_write entry \(index + 1) has an unknown status \(statusText).")
+            }
+            if status == .inProgress { inProgress += 1 }
+            items.append(TodoItem(content: String(content.prefix(160)), status: status))
+        }
+        if inProgress > 1 {
+            return .failure("todo_write allows one in_progress entry; \(inProgress) were given.")
+        }
+        // Keep ids stable when a step is merely re-described, so the list does
+        // not animate as if every row were new.
+        for index in items.indices where index < todos.count {
+            if todos[index].content == items[index].content {
+                items[index] = TodoItem(id: todos[index].id,
+                                        content: items[index].content,
+                                        status: items[index].status)
+            }
+        }
+        todos = items
+        onTodosChanged?(items)
+
+        let done = items.filter { $0.status == .completed }.count
+        var output = "plan: \(done)/\(items.count) completed\n"
+        for item in items {
+            let marker: String
+            switch item.status {
+            case .pending: marker = "[ ]"
+            case .inProgress: marker = "[~]"
+            case .completed: marker = "[x]"
+            }
+            output += "\(marker) \(item.content)\n"
+        }
+        return .success(output)
+    }
+
     /// Fetch a URL and return readable text.
     ///
     /// The desktop harness hands this job to a separate fetch layer; a phone can

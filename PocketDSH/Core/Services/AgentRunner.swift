@@ -40,6 +40,9 @@ enum AgentPhase: Equatable, Sendable {
 final class AgentRunner: ObservableObject {
     @Published private(set) var messages: [LLMMessage] = []
     @Published private(set) var events: [AgentEvent] = []
+    /// The plan the model last submitted through todo_write. Shown above the
+    /// conversation so a long task shows progress instead of just activity.
+    @Published private(set) var todos: [TodoItem] = []
     @Published private(set) var phase: AgentPhase = .idle
     @Published private(set) var currentStep = 0
     @Published private(set) var isRunning = false
@@ -74,6 +77,11 @@ final class AgentRunner: ObservableObject {
         self.projectName = projectName
         self.conversationURL = metadataRoot.appendingPathComponent("agent-conversation.json")
         load()
+        // The tool owns the validation; the runner owns the state the UI reads.
+        toolExecutor.onTodosChanged = { [weak self] items in
+            self?.todos = items
+            self?.save()
+        }
     }
 
     deinit {
@@ -253,6 +261,7 @@ final class AgentRunner: ObservableObject {
             let conversation = AgentConversation(
                 messages: messages,
                 events: events,
+                todos: todos,
                 updatedAt: .now
             )
             let encoder = JSONEncoder()
@@ -274,5 +283,9 @@ final class AgentRunner: ObservableObject {
         }
         messages = conversation.messages
         events = conversation.events
+        todos = conversation.todos
+        // Keep the executor in step: it validates the next submission against
+        // the list it already holds, so a restored plan must live there too.
+        toolExecutor.restoreTodos(todos)
     }
 }

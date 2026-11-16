@@ -90,6 +90,30 @@ enum ToolCatalog {
             required: ["number"]
         ),
         tool(
+            name: ToolNames.todoWrite,
+            description: "Replace the plan for this task. Send the complete list each time, with every step's current status. Use it for work that needs more than two or three steps so progress is visible; keep each entry to one short line. Exactly one step may be in_progress at a time.",
+            properties: [
+                "todos": .object([
+                    "type": .string("array"),
+                    "description": .string("Complete list, in order."),
+                    "items": .object([
+                        "type": .string("object"),
+                        "properties": .object([
+                            "content": .object(["type": .string("string")]),
+                            "status": .object([
+                                "type": .string("string"),
+                                "enum": .array([.string("pending"),
+                                                .string("in_progress"),
+                                                .string("completed")])
+                            ])
+                        ]),
+                        "required": .array([.string("content"), .string("status")])
+                    ])
+                ])
+            ],
+            required: ["todos"]
+        ),
+        tool(
             name: ToolNames.fetchURL,
             description: "Fetch a web page or raw text resource over http(s) and return its text. HTML is reduced to readable text. Use this for documentation the workspace does not contain; do not use it to download files into the workspace.",
             properties: [
@@ -128,8 +152,9 @@ enum ToolCatalog {
         2. Prefer apply_patch for targeted multi-line edits and write_file for new files or complete replacements.
         3. Read the changed file again after editing when correctness matters.
         4. Use run_lua for local computation and executable checks. Lua is available; shell commands, Node, Python, Xcode, and subprocesses are not in this build.
-        5. Use fetch_url to read documentation the workspace does not contain. It performs a plain GET and reduces HTML to text; it cannot write to the workspace, and results are truncated, so prefer the file tools for anything already on the device.
-        6. Report changed paths, real tool results, and anything you could not verify.
+        5. For work that needs more than two or three steps, record the plan with todo_write before starting and update it as steps finish. Send the whole list each time, keep exactly one step in_progress, and keep entries to one short line. Skip it for single-step requests.
+        6. Use fetch_url to read documentation the workspace does not contain. It performs a plain GET and reduces HTML to text; it cannot write to the workspace, and results are truncated, so prefer the file tools for anything already on the device.
+        7. Report changed paths, real tool results, and anything you could not verify.
 
         Existing files require overwrite=true in write_file. Every overwrite creates a recovery backup and a diff. Never request a destructive operation just to make a build pass. If a tool fails, inspect the error and try a different safe approach. Do not invent tool output.
 

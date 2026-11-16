@@ -139,19 +139,58 @@ public struct AgentEvent: Identifiable, Codable, Hashable, Sendable {
     }
 }
 
+public enum TodoStatus: String, Codable, Hashable, Sendable {
+    case pending
+    case inProgress = "in_progress"
+    case completed
+}
+
+/// One line of the agent's own plan. The desktop harness keeps a todo list for
+/// multi-step work; this is the same idea, small enough to show above the
+/// conversation on a phone.
+public struct TodoItem: Codable, Hashable, Sendable, Identifiable {
+    public let id: UUID
+    public var content: String
+    public var status: TodoStatus
+
+    public init(id: UUID = UUID(), content: String, status: TodoStatus = .pending) {
+        self.id = id
+        self.content = content
+        self.status = status
+    }
+}
+
 public struct AgentConversation: Codable, Sendable {
     public var messages: [LLMMessage]
     public var events: [AgentEvent]
+    public var todos: [TodoItem]
     public var updatedAt: Date
 
     public init(
         messages: [LLMMessage] = [],
         events: [AgentEvent] = [],
+        todos: [TodoItem] = [],
         updatedAt: Date = .now
     ) {
         self.messages = messages
         self.events = events
+        self.todos = todos
         self.updatedAt = updatedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case messages, events, todos, updatedAt
+    }
+
+    /// Conversations written before todos existed have no such key. Decoding
+    /// them must keep working - losing someone's history to add a feature would
+    /// be worse than not having the feature - so the field defaults to empty.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        messages = try container.decode([LLMMessage].self, forKey: .messages)
+        events = try container.decode([AgentEvent].self, forKey: .events)
+        todos = try container.decodeIfPresent([TodoItem].self, forKey: .todos) ?? []
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
     }
 }
 
@@ -189,4 +228,5 @@ public enum ToolNames {
     /// web_fetch; this is the part of that which a phone can do without a
     /// search API key.
     public static let fetchURL = "fetch_url"
+    public static let todoWrite = "todo_write"
 }

@@ -41,6 +41,8 @@ struct AgentView: View {
                     .padding(.bottom, PocketSpacing.sm)
                 }
 
+                planStrip
+
                 Divider()
                     .overlay(PocketTheme.stroke.opacity(0.6))
 
@@ -83,6 +85,82 @@ struct AgentView: View {
                     .accessibilityLabel("Agent actions")
                 }
             }
+        }
+    }
+
+    private var planDoneCount: Int {
+        agent.todos.filter { $0.status == .completed }.count
+    }
+
+    /// The agent's plan, when it has one. A long task otherwise shows nothing
+    /// but an ever-growing transcript, so this is the one place the shape of the
+    /// work is visible without reading back through it.
+    @ViewBuilder
+    private var planStrip: some View {
+        if !agent.todos.isEmpty {
+            VStack(alignment: .leading, spacing: PocketSpacing.xs) {
+                HStack(spacing: PocketSpacing.xs) {
+                    Text("Plan")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(PocketTheme.secondaryText)
+                    Spacer(minLength: 0)
+                    Text("\(planDoneCount)/\(agent.todos.count)")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(PocketTheme.secondaryText)
+                }
+
+                ProgressView(value: Double(planDoneCount),
+                             total: Double(max(agent.todos.count, 1)))
+                    .tint(PocketTheme.accent)
+
+                ForEach(Array(agent.todos.prefix(4))) { item in
+                    HStack(alignment: .firstTextBaseline, spacing: PocketSpacing.xs) {
+                        Image(systemName: Self.planIcon(for: item.status))
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Self.planTint(for: item.status))
+                        Text(item.content)
+                            .font(.caption)
+                            .foregroundStyle(item.status == .completed
+                                             ? PocketTheme.secondaryText
+                                             : PocketTheme.primaryText)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                }
+
+                if agent.todos.count > 4 {
+                    Text("+\(agent.todos.count - 4)")
+                        .font(.caption2)
+                        .foregroundStyle(PocketTheme.secondaryText)
+                }
+            }
+            .padding(PocketSpacing.md)
+            .background {
+                RoundedRectangle(cornerRadius: PocketRadius.md, style: .continuous)
+                    .fill(PocketTheme.surface)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: PocketRadius.md, style: .continuous)
+                    .stroke(PocketTheme.stroke.opacity(0.7), lineWidth: 1)
+            }
+            .padding(.horizontal, PocketSpacing.lg)
+            .padding(.bottom, PocketSpacing.sm)
+        }
+    }
+
+    private static func planIcon(for status: TodoStatus) -> String {
+        switch status {
+        case .pending: return "circle"
+        case .inProgress: return "circle.dotted"
+        case .completed: return "checkmark.circle.fill"
+        }
+    }
+
+    private static func planTint(for status: TodoStatus) -> Color {
+        switch status {
+        case .pending: return PocketTheme.secondaryText
+        case .inProgress: return PocketTheme.accent
+        case .completed: return PocketTheme.accent
         }
     }
 
