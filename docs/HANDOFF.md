@@ -21,9 +21,9 @@ cat docs/TIER-C.md
 当前仓库：<https://github.com/zqlnys/PocketDSH>（**public**）
 当前分支：`main`
 当前源码头：见 `git log --oneline -1`
-最新已验证构建 commit：`77ebd31`（tier-c: verify the read-only mount at runtime）
-最新构建 run：<https://github.com/zqlnys/PocketDSH/actions/runs/43806552415>
-最新 artifact：`pocketdsh-ios-97`
+最新已验证构建 commit：`928c1a8`（tier-c: show only the checks that apply to the current mount mode）
+最新构建 run：<https://github.com/zqlnys/PocketDSH/actions/runs/43808219268>
+最新 artifact：`pocketdsh-ios-98`
 最新 IPA 本地路径：`/root/dsh/PocketDSH-builds/latest/PocketDSH-unsigned.ipa`
 
 最新 IPA：
@@ -493,7 +493,7 @@ examples/workspace-inspector.dshplugin/
    - 加了 `readonly_realfs` 包装层：写模式 open 与全部路径级写操作返回 `EROFS`；
    - 开关 `LinuxRuntime.workspaceReadOnly`，变化时自动重建会话；
    - **默认值待产品决定**：读写让 guest 构建工具可用但绕过工作区备份，只读更安全；
-   - 验证结果：只读下两次写命令均返回 `Read-only file system`，`ls` 正常，宿主确认无文件产生（run 43806552415）。
+   - 验证结果：只读下写命令返回 `Read-only file system`，`ls` 正常，宿主确认无文件产生，会话在被拒后仍然存活（run 43808219268）。
 
 4. **真实 Key 端到端**
    - 用用户 Key 验证 DeepSeek 工具调用；
@@ -556,4 +556,4 @@ examples/workspace-inspector.dshplugin/
 
 ## 15. 一句话状态
 
-**PocketDSH 是一个可构建、可运行的原生 iOS 本地 Agent App。Tier C 已经完整可用：项目目录通过 realfs 挂载在 `/workspace`（默认读写，只读能力已就绪待决定默认值），`run_linux` 复用同一个持久 shell（每条命令 ~0.4s），Tier 状态只在会话真的在跑时才报告 Tier C。未完成：只读默认值的产品决定、真机验证、GPLv3 分发决策、上游 DSH/Cordis 插件兼容。最新可用构建 `pocketdsh-ios-97`（run 43806552415）。**
+**PocketDSH 是一个可构建、可运行的原生 iOS 本地 Agent App。Tier C 已经完整可用：项目目录通过 realfs 挂载在 `/workspace`（默认读写，只读能力已就绪待决定默认值），`run_linux` 复用同一个持久 shell（每条命令 ~0.4s），Tier 状态只在会话真的在跑时才报告 Tier C。未完成：只读默认值的产品决定、真机验证、GPLv3 分发决策、上游 DSH/Cordis 插件兼容。最新可用构建 `pocketdsh-ios-98`（run 43808219268）。**
