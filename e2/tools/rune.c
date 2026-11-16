@@ -1312,6 +1312,11 @@ static int run_proc(int idx) {
                 fflush(stdout);
             }
         }
+        if (getenv("E2_TRACE_HIT") &&
+            p->m.cpu.pc == strtoull(getenv("E2_TRACE_HIT"), NULL, 0)) {
+            static int hits = 0;
+            if (++hits <= 1) fprintf(stderr, "[hit] reached\n");
+        }
         const uint64_t pre_pc = p->m.cpu.pc;
         // Shadow call stack. Chasing a bad argument by re-running with a probe
         // one frame up, over and over, was the slowest part of the last few
