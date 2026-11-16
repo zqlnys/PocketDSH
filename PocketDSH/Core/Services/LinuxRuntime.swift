@@ -1,3 +1,4 @@
+#if TIER_C_AVAILABLE
 import Foundation
 import PocketDSHCore
 
@@ -209,3 +210,36 @@ private extension ToolExecutionResult {
         .success(content + "\n\nNote: \(note)")
     }
 }
+
+#else
+
+import Foundation
+import PocketDSHCore
+
+/// Stub for builds that exclude the Linux backend.
+///
+/// The shipped target does not compile or link iSH, so the app carries no GPL
+/// components. Keeping the same surface means the rest of the app compiles
+/// unchanged; every call reports why it cannot run instead of failing obscurely.
+@MainActor
+final class LinuxRuntime: ObservableObject {
+    enum SessionState: Equatable {
+        case idle
+        case starting
+        case active
+        case failed(String)
+    }
+
+    @Published private(set) var state: SessionState = .idle
+    var isSessionActive: Bool { false }
+    var sessionError: String { "This build does not include the Linux backend." }
+    var workspaceReadOnly = false
+
+    func run(command: String, workspace: URL? = nil) async -> ToolExecutionResult {
+        .failure("This build does not include the Linux backend. Install the Lab build to use run_linux.")
+    }
+
+    func discardSession() async {}
+}
+
+#endif

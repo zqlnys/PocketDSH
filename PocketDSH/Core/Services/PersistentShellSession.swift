@@ -1,3 +1,4 @@
+#if TIER_C_AVAILABLE
 import Foundation
 import PocketDSHCore
 
@@ -77,3 +78,4 @@ final class PersistentShellSession: @unchecked Sendable {
         }
     }
 }
+#endif

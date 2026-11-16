@@ -179,19 +179,9 @@ jobs:
           xcrun simctl io "$SIMULATOR_UDID" screenshot "$ARTIFACTS_DIR/pocketdsh-workspace.png" 2>&1 | tee "$LOG_DIR/screenshot-workspace.log"
           file "$ARTIFACTS_DIR/pocketdsh-workspace.png"
 
-          xcrun simctl terminate "$SIMULATOR_UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
-          xcrun simctl launch "$SIMULATOR_UDID" "$BUNDLE_ID" -PocketDSHTierCSmoke -PocketDSHWorkspaceDemo 2>&1 | tee -a "$LOG_DIR/simulator-launch.log"
-          sleep 45
-          xcrun simctl io "$SIMULATOR_UDID" screenshot "$ARTIFACTS_DIR/pocketdsh-tierc.png" 2>&1 | tee "$LOG_DIR/screenshot-tierc.log"
-          file "$ARTIFACTS_DIR/pocketdsh-tierc.png"
-
-          # Same smoke run with the workspace mounted read-only, to prove the
-          # wrapper actually rejects guest writes rather than just setting a flag.
-          xcrun simctl terminate "$SIMULATOR_UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
-          xcrun simctl launch "$SIMULATOR_UDID" "$BUNDLE_ID" -PocketDSHTierCSmoke -PocketDSHWorkspaceDemo -PocketDSHTierCReadOnly 2>&1 | tee -a "$LOG_DIR/simulator-launch.log"
-          sleep 45
-          xcrun simctl io "$SIMULATOR_UDID" screenshot "$ARTIFACTS_DIR/pocketdsh-tierc-readonly.png" 2>&1 | tee "$LOG_DIR/screenshot-tierc-readonly.log"
-          file "$ARTIFACTS_DIR/pocketdsh-tierc-readonly.png"
+          # Tier C lives in the PocketDSH-Lab target, which links iSH and is
+          # therefore GPLv3. It is verified by .github/workflows/tierc-lab.yml so
+          # this workflow can keep producing the shippable, GPL-free build.
 
           # Settles the question that picks the next backend architecture: can a
           # device execute code it loaded at runtime? Simulator policy differs, so

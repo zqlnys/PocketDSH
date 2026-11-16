@@ -11,6 +11,7 @@ build/
 
 # XcodeGen output
 PocketDSH/Resources/Info.plist
+PocketDSH/Resources/Lab-Info.plist
 
 # Swift Package Manager
 .build/

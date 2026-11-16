@@ -39,6 +39,66 @@ targets:
       - path: PocketDSH
         excludes:
           - Resources/Info.plist
+      - path: TierCProbe/RuntimeExecProbe.c
+      - path: TierCProbe/RuntimeExecProbe.h
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.pocketdsh
+        PRODUCT_NAME: PocketDSH
+        INFOPLIST_FILE: PocketDSH/Resources/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        # Shipped target: bridging header exposes only the original probe, so no
+        # GPL-licensed headers are even reachable.
+        SWIFT_OBJC_BRIDGING_HEADER: TierCProbe/RuntimeOnly-Bridging-Header.h
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/TierCProbe"
+        OTHER_LDFLAGS:
+          - "$(inherited)"
+          - -framework
+          - Foundation
+          - -framework
+          - UIKit
+          - -framework
+          - CoreLocation
+        TARGETED_DEVICE_FAMILY: "1"
+        SUPPORTS_MACCATALYST: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+    info:
+      path: PocketDSH/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: PocketDSH
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSRequiresIPhoneOS: true
+        ITSAppUsesNonExemptEncryption: false
+        LSSupportsOpeningDocumentsInPlace: true
+        UIFileSharingEnabled: true
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSRemindersFullAccessUsageDescription: "PocketDSH can create reminders when you ask the agent to remember a task."
+        NSRemindersUsageDescription: "PocketDSH can create reminders when you ask the agent to remember a task."
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UIRequiredDeviceCapabilities:
+          - arm64
+    dependencies:
+      - package: PocketDSHKit
+        product: PocketDSHCore
+      - package: PocketDSHKit
+        product: LuaRuntime
+
+  PocketDSH-Lab:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: PocketDSH
+        excludes:
+          - Resources/Info.plist
+          - Resources/Lab-Info.plist
       - path: TierCProbe/ISHBridge.c
       - path: TierCProbe/ISHBridge.h
       - path: TierCProbe/ISHPersistentShell.c
@@ -50,11 +110,13 @@ targets:
         type: folder
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.pocketdsh
-        PRODUCT_NAME: PocketDSH
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.pocketdsh.lab
+        PRODUCT_NAME: PocketDSH-Lab
         INFOPLIST_FILE: PocketDSH/Resources/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        # Links iSH, so this target is a GPLv3 derivative work. Never ship it.
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) TIER_C_AVAILABLE"
         SWIFT_OBJC_BRIDGING_HEADER: TierCProbe/TierCProbe-Bridging-Header.h
         HEADER_SEARCH_PATHS:
           - "$(SRCROOT)/Vendor/iSH/include"
@@ -78,9 +140,9 @@ targets:
         SUPPORTS_MACCATALYST: NO
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
     info:
-      path: PocketDSH/Resources/Info.plist
+      path: PocketDSH/Resources/Lab-Info.plist
       properties:
-        CFBundleDisplayName: PocketDSH
+        CFBundleDisplayName: PocketDSH Lab
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSRequiresIPhoneOS: true
@@ -158,6 +220,17 @@ targets:
         BUNDLE_LOADER: "$(TEST_HOST)"
 
 schemes:
+  PocketDSH-Lab:
+    build:
+      targets:
+        PocketDSH-Lab: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    archive:
+      config: Release
+
   PocketDSH:
     build:
       targets:

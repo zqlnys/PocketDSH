@@ -1,3 +1,4 @@
+#if TIER_C_AVAILABLE
 import SwiftUI
 
 struct TierCSmokeView: View {
@@ -105,3 +106,28 @@ struct TierCSmokeView: View {
         output = text
     }
 }
+
+#else
+
+import SwiftUI
+
+struct TierCSmokeView: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Tier C smoke test")
+                .font(.system(size: 34, weight: .medium, design: .serif))
+            Text("This build does not include the Linux backend.")
+                .font(.caption.monospaced())
+                .foregroundStyle(PocketTheme.secondaryText)
+            Text("The shipped target excludes the GPL-licensed Linux runtime. Build the PocketDSH-Lab target to exercise Tier C.")
+                .font(.caption)
+                .foregroundStyle(PocketTheme.secondaryText)
+            Spacer()
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(PocketTheme.background)
+    }
+}
+
+#endif

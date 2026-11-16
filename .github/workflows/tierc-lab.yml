@@ -1,0 +1,136 @@
+name: Tier C Lab CI
+
+# The Lab target links iSH, which is GPLv3, so its binary is a GPLv3 derivative
+# work and must never be shipped. It is kept in a separate workflow so the main
+# iOS CI keeps building and packaging the GPL-free shipped target only.
+#
+# Trigger manually, or on pushes that touch the backend.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "TierCProbe/**"
+      - "Vendor/iSH/**"
+      - "PocketDSH/Core/Services/LinuxRuntime.swift"
+      - "PocketDSH/Core/Services/PersistentShellSession.swift"
+      - "PocketDSH/Features/Settings/TierCSmokeView.swift"
+      - "project.yml"
+      - ".github/workflows/tierc-lab.yml"
+
+concurrency:
+  group: tierc-lab-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PROJECT_NAME: PocketDSH
+  SCHEME: PocketDSH-Lab
+  APP_NAME: PocketDSH-Lab
+  BUNDLE_ID: com.example.pocketdsh.lab
+  DERIVED_DATA: ${{ github.workspace }}/build/DerivedData
+  ARTIFACTS_DIR: ${{ github.workspace }}/artifacts
+  LOG_DIR: ${{ github.workspace }}/artifacts/logs
+
+jobs:
+  build-lab:
+    name: Build Lab target and verify Tier C
+    runs-on: macos-15
+    timeout-minutes: 50
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACTS_DIR" "$LOG_DIR" "$DERIVED_DATA"
+
+      - name: Select available Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x scripts/select_xcode.sh
+          scripts/select_xcode.sh 2>&1 | tee "$LOG_DIR/xcode-selection.log"
+
+      - name: Install XcodeGen if needed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen 2>&1 | tee "$LOG_DIR/brew-xcodegen.log"
+          fi
+          xcodegen --version | tee "$LOG_DIR/xcodegen-version.log"
+
+      - name: Generate Xcode project
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodegen generate --spec project.yml 2>&1 | tee "$LOG_DIR/xcodegen.log"
+
+      - name: Build Lab app for device
+        id: build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -project "$PROJECT_NAME.xcodeproj" \
+            -scheme "$SCHEME" \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$DERIVED_DATA" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            2>&1 | tee "$LOG_DIR/build.log"
+
+      - name: Capture Tier C screenshots
+        id: screenshot
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          SIMULATOR_UDID="$(python3 scripts/select_simulator.py)"
+          echo "Simulator UDID: $SIMULATOR_UDID" | tee "$LOG_DIR/simulator.log"
+          xcrun simctl boot "$SIMULATOR_UDID" >/dev/null 2>&1 || true
+          xcrun simctl bootstatus "$SIMULATOR_UDID" -b 2>&1 | tee -a "$LOG_DIR/simulator.log"
+
+          SIMULATOR_APP="$DERIVED_DATA/Build/Products/Debug-iphonesimulator/$APP_NAME.app"
+          APP_PATH="$DERIVED_DATA/Build/Products/Debug-iphoneos/$APP_NAME.app"
+          test -d "$APP_PATH"
+          xcrun simctl install "$SIMULATOR_UDID" "$SIMULATOR_APP" 2>&1 | tee "$LOG_DIR/install.log"
+
+          xcrun simctl launch "$SIMULATOR_UDID" "$BUNDLE_ID" -PocketDSHSkipOnboarding -PocketDSHWorkspaceDemo -PocketDSHTierCSmoke 2>&1 | tee -a "$LOG_DIR/launch.log"
+          sleep 45
+          xcrun simctl io "$SIMULATOR_UDID" screenshot "$ARTIFACTS_DIR/pocketdsh-tierc.png" 2>&1 | tee "$LOG_DIR/screenshot-tierc.log"
+          file "$ARTIFACTS_DIR/pocketdsh-tierc.png"
+
+          xcrun simctl terminate "$SIMULATOR_UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
+          xcrun simctl launch "$SIMULATOR_UDID" "$BUNDLE_ID" -PocketDSHSkipOnboarding -PocketDSHWorkspaceDemo -PocketDSHTierCSmoke -PocketDSHTierCReadOnly 2>&1 | tee -a "$LOG_DIR/launch.log"
+          sleep 45
+          xcrun simctl io "$SIMULATOR_UDID" screenshot "$ARTIFACTS_DIR/pocketdsh-tierc-readonly.png" 2>&1 | tee "$LOG_DIR/screenshot-tierc-readonly.log"
+          file "$ARTIFACTS_DIR/pocketdsh-tierc-readonly.png"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pocketdsh-lab-${{ github.run_number }}
+          path: ${{ env.ARTIFACTS_DIR }}
+          if-no-files-found: warn
+
+      - name: Enforce result
+        if: steps.build.outcome != 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "::error::PocketDSH-Lab build failed"
+          exit 1
