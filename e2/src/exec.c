@@ -627,6 +627,43 @@ e2_status e2_step(e2_machine *machine) {
         return E2_OK;
     }
 
+    // --- Integer to scalar floating point: SCVTF / UCVTF ---
+    // Python's float formatting converts integers this way. The host cast is
+    // IEEE round-to-nearest-even, which is the architecturally default mode.
+    if ((insn & 0x7F3FFC00u) == 0x1E230000u || (insn & 0x7F3FFC00u) == 0x1E220000u) {
+        const bool wide = BIT(insn, 31) != 0;
+        const bool is_unsigned = BIT(insn, 20) != 0;
+        const bool to_double = BIT(insn, 22) != 0;
+        const unsigned rn2 = BITS(insn, 9, 5);
+        const uint64_t raw = e2_read_xzr(cpu, rn2);
+        if (to_double) {
+            double dv;
+            if (wide) {
+                dv = is_unsigned ? (double)(uint64_t)raw : (double)(int64_t)raw;
+            } else {
+                dv = is_unsigned ? (double)(uint32_t)raw : (double)(int32_t)raw;
+            }
+            uint64_t bits;
+            memcpy(&bits, &dv, 8);
+            cpu->v[rd][0] = bits;
+            cpu->v[rd][1] = 0;
+        } else {
+            float fv;
+            if (wide) {
+                fv = is_unsigned ? (float)(uint64_t)raw : (float)(int64_t)raw;
+            } else {
+                fv = is_unsigned ? (float)(uint32_t)raw : (float)(int32_t)raw;
+            }
+            uint32_t bits;
+            memcpy(&bits, &fv, 4);
+            cpu->v[rd][0] = bits;
+            cpu->v[rd][1] = 0;
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     // --- FMOV (scalar, immediate) ---
     // The 8-bit immediate expands to a float by a fixed bit pattern: bit7 is the
     // sign, bit6 picks the exponent range, bits5-4 continue the exponent and
