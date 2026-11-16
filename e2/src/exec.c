@@ -1208,6 +1208,76 @@ e2_status e2_step(e2_machine *machine) {
     }
 
     // --- SIMD: LDR / STR (unsigned immediate) ---
+    // --- SIMD&FP load/store (register offset) ---
+    // Same family as the unsigned-offset form below, but the address is
+    // Rn + (Rm << scale). Compilers use it for vectorised copies, and without
+    // it those instructions fell into the integer path: `ldr q0, [x21, x2]`
+    // was being executed as an integer register-offset load.
+    // Bit 21 separates this form from the unscaled one (`stur d3, [sp, #228]`),
+    // which has an imm9 there instead of an Rm.
+    if ((insn & 0x3F200000u) == 0x3C200000u) {
+        const unsigned size = BITS(insn, 31, 30);
+        const bool is_load = BIT(insn, 22) != 0;
+        const unsigned rm = BITS(insn, 20, 16);
+        const bool scale = BIT(insn, 12) != 0;
+        const unsigned rn2 = BITS(insn, 9, 5);
+        const unsigned rt2 = BITS(insn, 4, 0);
+        // Encodings, from an assembler:
+        //   0x3C.. -> ldr q0  (16)    0xFC.. -> ldr d0  (8)
+        //   0xBC.. -> ldr s0  (4)     0x7C.. -> ldr h0  (2)
+        // so size 0 is the 16-byte vector form and the rest are 1 << size.
+        const unsigned bytes = (size == 0) ? 16u : (1u << size);
+        uint64_t index = e2_read_xzr(cpu, rm);
+        if (scale) {
+            index <<= size;
+        }
+        const uint64_t addr = e2_read_sp(cpu, rn2) + index;
+        uint64_t lo = 0, hi = 0;
+        if (is_load) {
+            if (e2_memory_read(&machine->mem, addr, &lo, bytes > 8 ? 8 : bytes) != 0) {
+                machine->ctx.reason = "SIMD load outside mapped memory";
+                machine->ctx.fault_addr = addr;
+                return E2_FAULT;
+            }
+            if (bytes > 8 &&
+                e2_memory_read(&machine->mem, addr + 8, &hi, bytes - 8) != 0) {
+                machine->ctx.reason = "SIMD load outside mapped memory";
+                machine->ctx.fault_addr = addr;
+                return E2_FAULT;
+            }
+            if (bytes >= 16) {
+                cpu->v[rt2][0] = lo;
+                cpu->v[rt2][1] = hi;
+            } else if (bytes == 8) {
+                cpu->v[rt2][0] = lo;
+            } else {
+                const uint64_t mask = (1ULL << (bytes * 8)) - 1;
+                cpu->v[rt2][0] = (cpu->v[rt2][0] & ~mask) | (lo & mask);
+            }
+        } else {
+            if (bytes >= 16) {
+                lo = cpu->v[rt2][0];
+                hi = cpu->v[rt2][1];
+                if (e2_memory_write(&machine->mem, addr, &lo, 8) != 0 ||
+                    e2_memory_write(&machine->mem, addr + 8, &hi, 8) != 0) {
+                    machine->ctx.reason = "SIMD store outside mapped memory";
+                    machine->ctx.fault_addr = addr;
+                    return E2_FAULT;
+                }
+            } else {
+                lo = cpu->v[rt2][0];
+                if (e2_memory_write(&machine->mem, addr, &lo, bytes) != 0) {
+                    machine->ctx.reason = "SIMD store outside mapped memory";
+                    machine->ctx.fault_addr = addr;
+                    return E2_FAULT;
+                }
+            }
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     if ((insn & 0x3F000000u) == 0x3D000000u) {
         const bool is_load = BIT(insn, 22) != 0;
         const unsigned size_code = BITS(insn, 31, 30);
@@ -1737,7 +1807,10 @@ e2_status e2_step(e2_machine *machine) {
     // --- LDR / STR (register offset) ---
     // Byte-at-a-time loops over a pointer index compile to this form, so it shows
     // up immediately in any libc string routine.
-    if ((insn & 0x3B200C00u) == 0x38200800u) {
+    // Bit 26 selects between the general and the Advanced SIMD form. Masking it
+    // out made `ldr q0, [x21, x2]` look like an integer register-offset load,
+    // which wrote the vector's first lane into a general register instead.
+    if ((insn & 0x3F200C00u) == 0x38200800u) {
         const unsigned opc = BITS(insn, 23, 22);
         const bool is_load = opc != 0;
         const unsigned size_code = BITS(insn, 31, 30);
