@@ -214,3 +214,9 @@
 
 /* Plan strip above the agent conversation. */
 "Plan" = "计划";
+
+/* Remaining literals found by the localisation sweep. */
+"Running probe…" = "正在执行探测…";
+"can this process run runtime-loaded code?" = "本进程能否执行运行时载入的代码？";
+"Stop Linux session" = "停止 Linux 会话";
+"iSH Alpine runs a persistent shell inside this app. run_linux executes in that shell, and the active project is mounted read-write at /workspace, so guest commands see the same files the Swift tools do. Tier C is still experimental and is not the default runtime." = "iSH Alpine 会在本 App 内运行一个持久 shell。run_linux 在该 shell 中执行，当前项目以读写方式挂载到 /workspace，因此 guest 命令看到的就是 Swift 工具操作的同一批文件。Tier C 仍属实验特性，不是默认运行时。";
