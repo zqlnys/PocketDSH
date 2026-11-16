@@ -1006,6 +1006,33 @@ static int run_proc(int idx) {
                                         "[tstate]   tb[%d] lineno=%u frame=0x%llx\n",
                                         depth, (unsigned)((ln >> 32) & 0xFFFFFFFF),
                                         (unsigned long long)frame);
+                                // Walk the frame looking for anything shaped like
+                                // a str and print it: co_name and co_filename
+                                // are the fastest way to name the code that
+                                // raised, and the line table is unavailable.
+                                if (depth == 0 && frame != 0) {
+                                    for (uint64_t fo = 0; fo < 0x60; fo += 8) {
+                                        uint64_t cand = 0;
+                                        e2_memory_read(&p->m.mem, frame + fo, &cand, 8);
+                                        if (cand < 0x10000000ULL || cand > 0x11000000ULL)
+                                            continue;
+                                        uint64_t hdr = 0;
+                                        if (e2_memory_read(&p->m.mem, cand + 0x10,
+                                                           &hdr, 8) != 0) continue;
+                                        const unsigned clen = (unsigned)(hdr & 0xFFFFFFFF);
+                                        if (clen == 0 || clen > 120) continue;
+                                        char ctext[128] = {0};
+                                        if (e2_memory_read(&p->m.mem, cand + 0x28, ctext,
+                                                           sizeof(ctext) - 1) != 0) continue;
+                                        int ok2 = 1;
+                                        for (unsigned q = 0; q < clen; q++)
+                                            if (ctext[q] < 0x20 || ctext[q] > 0x7e) { ok2 = 0; break; }
+                                        if (ok2)
+                                            fprintf(stderr,
+                                                    "[tstate]     frame+0x%02llx -> \"%.*s\"\n",
+                                                    (unsigned long long)fo, (int)clen, ctext);
+                                    }
+                                }
                                 tb = nxt;
                             }
                             fprintf(stderr, "[tstate] message (%u chars): \"", nchars);
@@ -1072,6 +1099,23 @@ static int run_proc(int idx) {
                             fprintf(stderr, "[exc]   type+0x%x -> \"%s\"\n", off, text);
                     }
                 }
+            }
+        }
+        if (getenv("E2_TRACE_NUL") && p->m.cpu.pc == 0x1012e358) {
+            // Right before PyErr_SetString(ValueError, "embedded null
+            // character"): x19 is the UTF-8 path buffer and [sp] the length the
+            // caller believes it has, so the mismatch is visible here.
+            static int nn = 0;
+            if (++nn <= 3) {
+                char text[256] = {0};
+                e2_memory_read(&p->m.mem, p->m.cpu.x[19], text, sizeof(text) - 1);
+                uint64_t claimed = 0;
+                e2_memory_read(&p->m.mem, p->m.cpu.sp, &claimed, 8);
+                fprintf(stderr, "[nul] buffer=0x%llx claimed_len=%llu text=\"",
+                        (unsigned long long)p->m.cpu.x[19], (unsigned long long)claimed);
+                for (int q = 0; q < 200 && text[q]; q++)
+                    fputc((text[q] >= 0x20 && text[q] < 0x7f) ? text[q] : '?', stderr);
+                fprintf(stderr, "\"\n");
             }
         }
         const uint64_t pre_pc = p->m.cpu.pc;
