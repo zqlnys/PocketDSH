@@ -1476,3 +1476,31 @@ EINVAL 是正确行为）。
 下一次可以从这里反推：调用它的分支条件是什么（前面是 `ldr x0,[x20]` / `sub` / `str` /
 `cbz` 的引用计数递减），以及 `x20` 持有的异常对象是什么。
 
+### 已查明待处理异常（重要进展）
+
+通过 TPIDR_EL0 首字找到真实的 thread state（注意：**首字就是 tstate 指针**，
+不是 `TPIDR + 固定偏移`，这一点走了弯路），`+0x60` 即 `curexc_value`：
+
+```
+ValueError: embedded null character
+```
+
+23 个字符，与 `PyASCIIObject` 的 length 字段吻合。读取要点：
+
+| 偏移 | 含义 |
+| --- | --- |
+| obj+0x08 | 类型对象 |
+| obj+0x18 | `args` 元组（`dict` 在 +0x10，别搞混） |
+| tuple+0x10 | 元素个数 |
+| tuple+0x18 | 元素 0 |
+| str+0x10 | 长度 |
+| str+0x28 | **紧凑 ASCII 的字符起点**（+0x20 是 state 字，不是数据） |
+
+所以 `getpath` 阶段有个**路径字符串里混进了 NUL 字节**。下一步应查：
+`sys.executable`、`sys.prefix`、环境变量、以及 argv[0] 是如何被拼成路径的。
+
+### 调试工具
+
+`E2_TRACE_TSTATE=1` 在 `_PyErr_WriteUnraisableMsg` 处 dump thread state，
+自动解出类型名与异常消息。这是目前最有用的探针。
+

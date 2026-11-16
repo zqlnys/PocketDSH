@@ -935,9 +935,77 @@ static int run_proc(int idx) {
             // find the three exception slots.
             static int nt = 0;
             if (++nt <= 1) {
-                const uint64_t ts = p->m.cpu.tpidr_el0;
-                fprintf(stderr, "[tstate] tpidr=0x%llx\n", (unsigned long long)ts);
-                for (uint64_t off = 0; off < 0x80; off += 8) {
+                uint64_t tls0 = 0;
+                e2_memory_read(&p->m.mem, p->m.cpu.tpidr_el0, &tls0, 8);
+                const uint64_t ts = tls0 ? tls0 : p->m.cpu.tpidr_el0;
+                fprintf(stderr, "[tstate] tpidr=0x%llx tls[0]=0x%llx\n",
+                        (unsigned long long)p->m.cpu.tpidr_el0,
+                        (unsigned long long)tls0);
+                {
+                    // +0x60 held a ValueError. Read its args tuple and the first
+                    // element, which is where the message lives.
+                    const uint64_t exc = p->m.cpu.x[0] ? 0 : 0;
+                    (void)exc;
+                    uint64_t args = 0;
+                    e2_memory_read(&p->m.mem, ts + 0x60, &args, 8);
+                    uint64_t excobj = args;
+                    fprintf(stderr, "[tstate] exc=0x%llx fields:\n",
+                            (unsigned long long)excobj);
+                    for (uint64_t eo = 0; eo < 0x48; eo += 8) {
+                        uint64_t ev = 0;
+                        e2_memory_read(&p->m.mem, excobj + eo, &ev, 8);
+                        fprintf(stderr, "[tstate]    +0x%02llx = 0x%llx\n",
+                                (unsigned long long)eo, (unsigned long long)ev);
+                    }
+                    uint64_t atuple = 0;
+                    e2_memory_read(&p->m.mem, excobj + 0x18, &atuple, 8);
+                    fprintf(stderr, "[tstate] args tuple=0x%llx\n",
+                            (unsigned long long)atuple);
+                    if (atuple != 0) {
+                        for (uint64_t to = 0; to < 0x28; to += 8) {
+                            uint64_t tv = 0;
+                            e2_memory_read(&p->m.mem, atuple + to, &tv, 8);
+                            fprintf(stderr, "[tstate]    tuple+0x%02llx = 0x%llx\n",
+                                    (unsigned long long)to, (unsigned long long)tv);
+                        }
+                        uint64_t item0 = 0;
+                        e2_memory_read(&p->m.mem, atuple + 0x18, &item0, 8);
+                        if (item0 != 0) {
+                            fprintf(stderr, "[tstate] item0=0x%llx fields:\n",
+                                    (unsigned long long)item0);
+                            for (uint64_t io = 0; io < 0x30; io += 8) {
+                                uint64_t iv = 0;
+                                e2_memory_read(&p->m.mem, item0 + io, &iv, 8);
+                                fprintf(stderr, "[tstate]    item+0x%02llx = 0x%llx\n",
+                                        (unsigned long long)io, (unsigned long long)iv);
+                            }
+                            // PyASCIIObject: length at +0x10, hash at +0x18,
+                            // the state word at +0x20, and for a compact ASCII
+                            // string the characters start at +0x28, one byte
+                            // each. Reading from +0x20 with a 4-byte stride
+                            // produced scramble the first time.
+                            uint64_t hdr = 0;
+                            e2_memory_read(&p->m.mem, item0 + 0x10, &hdr, 8);
+                            const unsigned nchars = (unsigned)(hdr & 0xFFFFFFFF);
+                            char text[256] = {0};
+                            e2_memory_read(&p->m.mem, item0 + 0x28, text, sizeof(text) - 1);
+                            fprintf(stderr, "[tstate] message (%u chars): \"", nchars);
+                            for (unsigned q = 0; q < nchars && q < 200; q++)
+                                fputc((text[q] >= 0x20 && text[q] < 0x7f) ? text[q] : '?', stderr);
+                            fprintf(stderr, "\"\n");
+                            char msg[160] = {0};
+                            if (e2_memory_read(&p->m.mem, item0 + 0x20, msg,
+                                               sizeof(msg) - 1) == 0) {
+                                int printable = 1;
+                                for (int q = 0; q < 120 && msg[q]; q++)
+                                    if (msg[q] < 0x20 || msg[q] > 0x7e) { printable = 0; break; }
+                                fprintf(stderr, "[tstate] ValueError args[0]%s: \"%s\"\n",
+                                        printable ? "" : " (not text)", msg);
+                            }
+                        }
+                    }
+                }
+                for (uint64_t off = 0; off < 0x200; off += 8) {
                     uint64_t v = 0;
                     if (e2_memory_read(&p->m.mem, ts + off, &v, 8) != 0) break;
                     if (v == 0) continue;
