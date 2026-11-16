@@ -655,6 +655,126 @@ e2_status e2_step(e2_machine *machine) {
         return E2_OK;
     }
 
+    // --- SIMD: XTN / SQXTN / SQXTUN / UQXTN (narrow by half) ---
+    // size encodes the destination element width, not the source: xtn v0.2s
+    // (32-bit lanes) is size 2 and xtn v0.8b (8-bit lanes) is size 0.
+    if ((insn & 0x9F3FFC00u) == 0x0E212800u || (insn & 0x9F3FFC00u) == 0x0E214800u) {
+        const bool q = BIT(insn, 30) != 0;
+        const bool unsigned_result = BIT(insn, 29) != 0;
+        const bool saturating = (insn & 0x9F3FFC00u) == 0x0E214800u;
+        const unsigned size = BITS(insn, 23, 22);
+        const unsigned rn_v = BITS(insn, 9, 5);
+        const unsigned rd_v = BITS(insn, 4, 0);
+        const unsigned dst_esize = 8u << size;
+        const unsigned src_esize = dst_esize * 2;
+        const unsigned lanes = 64u / dst_esize;
+        const uint64_t dst_mask = (dst_esize >= 64) ? ~0ULL : ((1ULL << dst_esize) - 1);
+        for (unsigned l = 0; l < lanes; l++) {
+            const uint64_t raw = e2_v_get(cpu, rn_v, src_esize, l);
+            uint64_t out;
+            if (!saturating) {
+                out = raw & dst_mask;
+            } else {
+                // Saturate into the destination range: signed clamps to
+                // [-2^(n-1), 2^(n-1)-1], unsigned to [0, 2^n-1].
+                const int64_t svalue = (int64_t)raw;
+                const int64_t lo = unsigned_result ? 0 : -(int64_t)(1ULL << (dst_esize - 1));
+                const int64_t hi = unsigned_result ? (int64_t)(dst_mask)
+                                                   : (int64_t)(dst_mask >> 1);
+                int64_t clamped = svalue < lo ? lo : (svalue > hi ? hi : svalue);
+                out = (uint64_t)clamped & dst_mask;
+            }
+            const unsigned index = (q ? lanes : 0u) + l;
+            e2_v_set(cpu, rd_v, dst_esize, index, out);
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
+    // --- SIMD: UZP / TRN / ZIP (three-register permutes) ---
+    // One encoding family; bits 15-12 pick the permutation. CPython's string and
+    // hash helpers interleave lanes with these, so a silent gap here stops the
+    // interpreter a few million instructions in.
+    if ((insn & 0xBF200C00u) == 0x0E000800u) {
+        const bool q = BIT(insn, 30) != 0;
+        const unsigned size = BITS(insn, 23, 22);
+        const unsigned esize = 8u << size;
+        const unsigned opcode = BITS(insn, 15, 12);
+        const unsigned rm_v = BITS(insn, 20, 16);
+        const unsigned rn_v = BITS(insn, 9, 5);
+        const unsigned rd_v = BITS(insn, 4, 0);
+        const unsigned lanes = (q ? 128u : 64u) / esize;
+        const unsigned half = lanes / 2;
+        uint64_t a[16], b[16], out[16];
+        for (unsigned l = 0; l < lanes; l++) {
+            a[l] = e2_v_get(cpu, rn_v, esize, l);
+            b[l] = e2_v_get(cpu, rm_v, esize, l);
+        }
+        switch (opcode) {
+        case 1:  // UZP1
+            for (unsigned l = 0; l < lanes; l++)
+                out[l] = (l & 1u) ? b[l / 2] : a[l / 2];
+            break;
+        case 5:  // UZP2
+            for (unsigned l = 0; l < lanes; l++)
+                out[l] = (l & 1u) ? b[l / 2 + half] : a[l / 2 + half];
+            break;
+        case 2:  // TRN1
+            for (unsigned i = 0; i < half; i++) { out[2 * i] = a[2 * i]; out[2 * i + 1] = b[2 * i]; }
+            break;
+        case 6:  // TRN2
+            for (unsigned i = 0; i < half; i++) { out[2 * i] = a[2 * i + 1]; out[2 * i + 1] = b[2 * i + 1]; }
+            break;
+        case 3:  // ZIP1
+            for (unsigned i = 0; i < half; i++) { out[2 * i] = a[i]; out[2 * i + 1] = b[i]; }
+            break;
+        case 7:  // ZIP2
+            for (unsigned i = 0; i < half; i++) { out[2 * i] = a[i + half]; out[2 * i + 1] = b[i + half]; }
+            break;
+        default:
+            machine->ctx.reason = "invalid permute opcode";
+            return E2_UNIMPL;
+        }
+        for (unsigned l = 0; l < lanes; l++) {
+            e2_v_set(cpu, rd_v, esize, l, out[l]);
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
+    // --- SIMD: INS (element into element) ---
+    // Distinct from INS (general) above: the source is another vector's lane,
+    // not a general register. Both imm5 and imm4 carry element size and index,
+    // so they have to stay outside the mask - testing them fixed the family
+    // against one encoding only.
+    if ((insn & 0xFF008400u) == 0x6E000400u) {
+        const unsigned imm5 = BITS(insn, 20, 16);
+        const unsigned imm4 = BITS(insn, 14, 11);
+        const unsigned rn_v = BITS(insn, 9, 5);
+        const unsigned rd_v = BITS(insn, 4, 0);
+        unsigned esize;
+        unsigned dst_index, src_index;
+        if (imm5 & 1) {
+            esize = 8;  dst_index = (imm5 >> 1) & 0xF; src_index = imm4 & 0xF;
+        } else if (imm5 & 2) {
+            esize = 16; dst_index = (imm5 >> 2) & 0x7; src_index = (imm4 >> 1) & 0x7;
+        } else if (imm5 & 4) {
+            esize = 32; dst_index = (imm5 >> 3) & 0x3; src_index = (imm4 >> 2) & 0x3;
+        } else if (imm5 & 8) {
+            esize = 64; dst_index = (imm5 >> 4) & 0x1; src_index = (imm4 >> 3) & 0x1;
+        } else {
+            machine->ctx.reason = "invalid INS element imm5";
+            return E2_UNIMPL;
+        }
+        const uint64_t value = e2_v_get(cpu, rn_v, esize, src_index);
+        e2_v_set(cpu, rd_v, esize, dst_index, value);
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     // --- SIMD: DUP (general) ---
     // `dup v0.16b, w1` is the first instruction of musl's memset, so this is the
     // entry point for vector support.
