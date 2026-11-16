@@ -75,6 +75,19 @@ printf %x 255
 printf '%.2f\n' 3.14159
 printf '%e\n' 1234.5
 printf '%g\n' 0.000123
+printf %o 8
+printf %X 255
+printf '%-5s|' ab
+printf '%+d\n' 5
+printf '%c\n' 65
+echo -e a\tb
+seq -s, 1 3
+base32 /dev/null
+sha512sum /dev/null
+nproc
+sort -u /dev/null
+cut -d: -f1 /etc/passwd
+rev /dev/null
 od -An -tu1 /dev/null
 md5sum /dev/null
 sha256sum /dev/null
