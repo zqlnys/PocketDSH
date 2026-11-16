@@ -219,7 +219,20 @@ relocated=1  kernel_mapped=1
 
 `kernel_mapped_dso` 只设 `map`/`kernel_mapped`，**不设 `relocated`**；`relocated` 由 `reloc_all` 内部（处理完后）设置。所以第一次 `reloc_all(&ldso)` 应当正常填充 `dyn[]`。
 
-**下一轮**：直接在第一轮 `reloc_all` 的 `do_relocs` 调用点检查栈上的 `dyn[]` 实际内容，看它是被正确填充后又被覆盖，还是从一开始就不对。
+**本轮测得的输入**：`do_relocs` 的入口是 `0x40069ff8`（`stp x29, x30, [sp, #-0x30]!`），在入口处打印四个参数：
+
+```
+dso    = 0x400c2ba0   ← 正确
+rel    = 0x4000f9fd   ← 未对齐，不是合法指针
+size   = 0x0
+stride = 2 / 25 / 51  ← 乱
+```
+
+`rel` 未对齐（`...fd`）这一点很关键：**调用方算出的地址本身就不是 8 字节对齐的**，说明那个值来自未初始化或错误的数据，而不是 `laddr(p, dyn[DT_JMPREL])` 应有的结果（那必然是页内对齐的偏移）。
+
+调用点 `0x4006a264` 的前置指令是 `cmp w5, #2` + `cset w2, eq`，不像是 `2+(dyn[DT_PLTREL]==DT_RELA)` 的形态——**下一轮要确认这个调用点到底对应 `reloc_all` 里的哪一条 `do_relocs`**。
+
+过程教训：本轮两次把 `bl` 的相对偏移算错（心算 26 位符号扩展），导致探针挂在错误地址上、拿到一堆假数据。这类计算应当一律用脚本而非口算。
 
 步长错位后，`ldr x4, [x28, #8]` 读到的是 `0x910003fda9bf7bfd`——两条指令编码的拼接（`stp x29,x30` + `mov x29,sp`），因为指针滑进了 `.text`。这就是污染来源。
 
