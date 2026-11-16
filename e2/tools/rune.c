@@ -419,6 +419,11 @@ static proc_t procs[16];
 static int g_next_pid = 2;
 // Shared with debug builds of the memory layer that need the faulting pc.
 uint64_t g_dbg_pc;
+// Also publish sp, so a debug build can express a stack watch as an offset from
+// the current frame rather than an absolute address. Absolute addresses move
+// between runs, which made several stack investigations report a write in one
+// run and nothing in the next for the very same logical slot.
+uint64_t g_dbg_sp;
 uint64_t g_dbg_pc2;
 static const char *g_self_path = NULL;
 
@@ -684,6 +689,7 @@ static int run_proc(int idx) {
     while (p->alive) {
         if (g_proc_budget >= 0 && ++spent > g_proc_budget) break;
         g_dbg_pc = p->m.cpu.pc;
+        g_dbg_sp = p->m.cpu.sp;
         g_dbg_pc2 = p->m.cpu.pc;
         hist[hist_at].pc = p->m.cpu.pc;
         // Read the word at pc rather than ctx.instruction: ctx carries the
@@ -1329,6 +1335,14 @@ static int run_proc(int idx) {
                         (unsigned long long)p->m.cpu.x[1],
                         (unsigned long long)p->m.cpu.x[2],
                         (unsigned long long)p->m.cpu.x[3]);
+        }
+            (p->m.cpu.pc == 0x49440c || p->m.cpu.pc == 0x4944c4)) {
+            uint64_t slot = 0;
+            e2_memory_read(&p->m.mem, p->m.cpu.sp, &slot, 8);
+            fprintf(stderr, "[rb] pc=0x%llx sp=0x%llx [sp]=0x%llx\n",
+                    (unsigned long long)p->m.cpu.pc,
+                    (unsigned long long)p->m.cpu.sp,
+                    (unsigned long long)slot);
         }
         const uint64_t pre_pc = p->m.cpu.pc;
         // Shadow call stack. Chasing a bad argument by re-running with a probe
