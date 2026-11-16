@@ -234,6 +234,37 @@ stride = 2 / 25 / 51  ← 乱
 
 过程教训：本轮两次把 `bl` 的相对偏移算错（心算 26 位符号扩展），导致探针挂在错误地址上、拿到一堆假数据。这类计算应当一律用脚本而非口算。
 
+### 方法论修正：走 interpreter 路径，不是显式链接器路径
+
+装 `qemu-user-static` 做对照后，正常的 syscall 序列是这样的：
+
+```
+set_tid_address
+brk / brk
+mmap(PROT_NONE, MAP_ANONYMOUS|MAP_FIXED)   ← guard page
+mprotect
+getuid()
+ioctl(2, TIOCGWINSZ)
+dup3(1, 2, 0)
+write(2, ...)
+```
+
+**没有 `openat`/`read`**——因为内核已经把主程序映射好了，再把 `ld-musl` 作为 interpreter 加载并跳转。而之前的测试跑的是 `ld-musl /bin/busybox`，即"显式调用链接器"路径，那条路要 musl 自己去 openat/read/解析目标文件，是内核永远不会走的。
+
+改成模拟内核：busybox 载入 `0x40000000`、ld-musl 载入 `0x50000000`，`AT_PHDR`/`AT_ENTRY` 指向主程序、`AT_BASE` 指向解释器，然后跳到解释器入口。`loader` 为此增加了 `e2_load_elf_at()` 支持指定基址。
+
+结果：musl 真的跑起来了，并给出明确诊断——
+
+```
+Error relocating /lib/ld-musl-aarch64.so.1: unsupported relocation type 786232
+                                    786248
+                                    786264        (每次 +16)
+```
+
+`786232 = 0xBFF38` 是 ld-musl **自己 `.data` 段的地址**，说明它把一个数据数组当成了重定位表。`dyn[]` 仍然不对，但问题从"崩溃"变成了"可诊断"。
+
+**已知另一处缺口**：qemu 序列里的 `getuid` / `ioctl(TIOCGWINSZ)` / `dup3` 在 E2 里还没实现。
+
 步长错位后，`ldr x4, [x28, #8]` 读到的是 `0x910003fda9bf7bfd`——两条指令编码的拼接（`stp x29,x30` + `mov x29,sp`），因为指针滑进了 `.text`。这就是污染来源。
 
 （更早的一个卡点记录，保留作为参考：`ldr w3, [x8]`，`x8 = [dso+0x48] = 0`。）
