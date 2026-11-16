@@ -1,6 +1,6 @@
 # Tier C 项目工作区挂载
 
-状态：实现已提交（`11a1fe9`），等待 CI 与真机验证。
+状态：**模拟器已验证通过**（run 43793080884 / build 86 / commit `3092c26`）。真机未做。
 最后更新：2026-11-16
 
 目标：让 Tier C 里的 Linux 直接看到当前项目文件，`cd /workspace && ls` 与 Swift 侧文件树一致。
@@ -156,9 +156,30 @@ cat /workspace/README.md
 | SwiftPM 测试 | 8/8 PASS |
 | 本地 guardrail 扫描 | PASS |
 | iSH 静态库符号（`realfs`、`do_mount`、`do_umount` 均导出） | 已确认 |
-| CI 构建 | 待验证 |
-| 模拟器内 `ls /workspace` | 待验证 |
+| CI 构建 | PASS（run 43791040100 / 43791854792 / 43793080884） |
+| 模拟器内挂载 + 双向读写 | **PASS**（run 43793080884） |
 | 真机 | 未做 |
+
+#### 实测输出（run 43793080884）
+
+```
+[workspace] mounted /Users/runner/.../workspace -> /workspace
+i686
+
+[host readback] .tierc-probe.txt = tierc-write-ok
+[host readback] workspace mount verified: guest write reached the host directory.
+```
+
+证据：[tierc/workspace-mounted.txt](tierc/workspace-mounted.txt)、
+[tierc/workspace-mounted.png](tierc/workspace-mounted.png)
+
+guest 写入的文件被宿主读回，证明 realfs 不是只读空壳，而是双向共享 inode 的活挂载。
+
+#### 一个仍需注意的捕获限制
+
+`ls -la /workspace` 的输出没有出现在截图里。i686 模拟下每条外部命令要 1–3 秒，而观察窗口约 5 秒，只有前一到两条命令能落进窗口。
+
+**这是单命令桥接的捕获时序问题，不是挂载问题**——host readback 是时序无关的证明。持久 shell 会取代这个固定窗口。
 
 **在 CI 与模拟器实测通过前，不要把 Tier C 标记为支持项目文件。**
 

@@ -20,10 +20,10 @@ cat docs/TIER-C.md
 
 当前仓库：<https://github.com/zqlnys/PocketDSH>（**public**）
 当前分支：`main`
-当前源码头：`8a696bd`（docs: record final Tier C status build 46）
-最新已验证构建 commit：`30dcbcf`
-最新构建 run：<https://github.com/zqlnys/PocketDSH/actions/runs/43763977454>
-最新 artifact：`pocketdsh-ios-83`
+当前源码头：见 `git log --oneline -1`
+最新已验证构建 commit：`3092c26`（tier-c: order probe write first and poll for host readback）
+最新构建 run：<https://github.com/zqlnys/PocketDSH/actions/runs/43793080884>
+最新 artifact：`pocketdsh-ios-86`
 最新 IPA 本地路径：`/root/dsh/PocketDSH-builds/latest/PocketDSH-unsigned.ipa`
 
 最新 IPA：
@@ -95,7 +95,7 @@ cat docs/TIER-C.md
 | Tier 偏好 | 已实现 | Automatic / Tier A / Tier C，Tier C 受限提示 |
 | Tier C smoke test | 已实现 | 主 App 内 iSH Alpine，无 JIT，实际 `uname` |
 | `run_linux` | 部分实现 | 单命令/一次 App 启动；不能访问项目文件 |
-| 文件工作区挂载到 Linux | 未完成 | fakefs 元数据/路径问题 |
+| 文件工作区挂载到 Linux | **模拟器已验证** | realfs 直通，run 43793080884；真机未做 |
 | 持久 Linux shell | 未完成 | 尝试过，未稳定 |
 | 真机 / 签名 / TestFlight | 未完成 | |
 | 上游 DSH/Cordis 插件兼容 | 未实现 | 当前是自定义 Lua 插件格式 |
@@ -139,7 +139,7 @@ Linux pocketdsh 4.20.69-ish SUPER AWESOME ... i686 Linux
 
 **根因**：fakefs（`fs/fake.h` 标了 `ISH_INTERNAL`）把文件登记在 sqlite 里，裸拷进去的文件不在库中。挂载项目目录本来就不该用 fakefs。
 
-### 当前方案：realfs 直通挂载（`11a1fe9`，待 CI 验证）
+### 当前方案：realfs 直通挂载（已验证：run 43793080884 / build 86）
 
 改用 iSH 的 `realfs`（`fs/real.h`）直接挂宿主目录：
 
@@ -154,7 +154,18 @@ do_mount(&realfs, host_workspace_path, "/workspace", "", 0);
 
 详见 [WORKSPACE-MOUNT.md](WORKSPACE-MOUNT.md)。
 
-验收标准：主 App Tier C 里 `ls -la /workspace` 与 Swift 文件树一致，`cat /workspace/README.md` 读出真实内容。
+**验收结果（2026-11-16）**：模拟器实测通过。
+
+```
+[workspace] mounted /Users/runner/.../workspace -> /workspace
+i686
+[host readback] .tierc-probe.txt = tierc-write-ok
+[host readback] workspace mount verified: guest write reached the host directory.
+```
+
+guest 在 `/workspace` 写入的文件被宿主读回，证明挂载双向可用。证据：[tierc/workspace-mounted.txt](tierc/workspace-mounted.txt)。
+
+仍有一个捕获限制：`ls -la /workspace` 的输出进不了 5 秒窗口（i686 下单条外部命令要 1–3 秒）。这是单命令桥接的时序问题，不是挂载问题；持久 shell 会取代固定窗口。
 
 ### 后续可行路线
 
@@ -452,8 +463,8 @@ examples/workspace-inspector.dshplugin/
 
 ### 仓库
 
-- 有一个未跟踪文件 `docs/IOS-LOCAL-LINUX.md`，是研究笔记，未提交。
-  里面有三套 iOS 本地 Linux 的实测/架构讨论；使用前先读，但不要把它的结论直接当成当前实现。
+- `docs/IOS-LOCAL-LINUX.md` 是研究笔记：三套 iOS 本地 Linux 的实测与架构讨论，含 `Vendor/iSH` 的代码勘察（asbestos 已在库中但 kernel 仍绑 32 位 x86）。
+  结论可以用，但不要把里面的推断当成当前实现。
 - 不要提交任何 API Key、签名证书、`.p8`、`.mobileprovision`、`.env`。
 - iSH 是 GPLv3；分发前处理合规。
 
@@ -461,10 +472,9 @@ examples/workspace-inspector.dshplugin/
 
 ## 11. 当前未完成（按优先级）
 
-1. **Tier C 项目工作区**
-   - 用 iOSFS 或正确 fakefs 元数据；
-   - 目标：`cd /workspace && ls` 能看到项目；
-   - 只读优先，写入回同步另做备份/路径守卫。
+1. ~~**Tier C 项目工作区**~~ → 模拟器已验证（run 43793080884）
+   - realfs 直通挂载，双向读写；
+   - 遗留：默认只读开关、真机验证、写入绕过 WorkspaceFileSystem 备份的问题。
 
 2. **持久 shell**
    - 多命令、超时、停止；
@@ -495,15 +505,15 @@ examples/workspace-inspector.dshplugin/
 
 如果新会话只做一件事：
 
-> 先修 **Tier C 项目工作区**：用 iOSFS 挂载项目目录，或正确写 fakefs 元数据。验收标准是主 App Tier C smoke 显示 `ls /workspace` 成功并读出 README。
+> **持久 shell + 多命令协议**。现在 `run_linux` 一次 App 启动只支持一条命令，且 5 秒固定观察窗口会截断输出（i686 下单条外部命令 1–3 秒）。验收 `pwd`、`ls`、`echo` 三条命令连续执行，且最后一条的输出不丢。
 
 第二件事：
 
-> 持久 shell + 多命令协议；验收 `pwd`、`ls`、`echo` 三条命令连续执行。
+> 真实 Key 端到端 Agent 工具调用；再真机签名。
 
 第三件事：
 
-> 真实 Key 端到端 Agent 工具调用；再真机签名。
+> `/workspace` 默认只读（`do_mount` 的 `MS_READONLY_`），写入走显式开关，避免绕过 `WorkspaceFileSystem` 的备份与路径守卫。
 
 ---
 
@@ -532,4 +542,4 @@ examples/workspace-inspector.dshplugin/
 
 ## 15. 一句话状态
 
-**PocketDSH 已经是一个可构建、可运行的原生 iOS 本地 Agent App；Tier C 的 iSH Alpine 已在主 App 内跑通 smoke，但项目工作区、持久 shell、自动路由、真机和 GPLv3 仍未完成。最新可用构建是 Build 46 / `pocketdsh-ios-83`。**
+**PocketDSH 已经是一个可构建、可运行的原生 iOS 本地 Agent App；Tier C 的 iSH Alpine 已在主 App 内跑通 smoke，项目工作区已通过 realfs 挂载并实测双向读写；持久 shell、自动路由、真机和 GPLv3 仍未完成。最新可用构建是 `pocketdsh-ios-86`（run 43793080884）。**

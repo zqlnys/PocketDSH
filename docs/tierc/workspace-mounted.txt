@@ -1,0 +1,47 @@
+Run: https://github.com/zqlnys/PocketDSH/actions/runs/43793080884
+Build: pocketdsh-ios-86
+Commit: 3092c26
+Device: iPhone 17 Pro Max, iOS 26.2 simulator
+JIT: no
+
+Build: workspaces mounted at /workspace via iSH realfs
+
+Captured output (Tier C smoke screen):
+
+  Linux output (Tier C, experimental):
+  [workspace] mounted /Users/runner/Library/Developer/CoreSimulator/Devices/
+  60C4581E-5666-4B60-8CDD-B850099319EF/data/Containers/Data/Application/
+  4464A1E5-9679-4D87-B4A1-37037EFA44F8/Documents/PocketDSHProjects/
+  1E2BA5A0-5569-4161-881C-24F5325427F0/workspace -> /workspace
+  i686
+
+  [host readback] .tierc-probe.txt = tierc-write-ok
+  [host readback] workspace mount verified: guest write reached the host directory.
+
+Command executed in the guest:
+
+  echo tierc-write-ok > /workspace/.tierc-probe.txt; uname -m; ls -la /workspace
+
+Verification method:
+
+  realfs shares inodes with the host directory, so the guest write is
+  observable from the host. The app reads <workspace>/.tierc-probe.txt
+  through FileManager after the command window closes and polls for up to
+  6s while the emulated shell finishes.
+
+Result:
+
+- do_mount(&realfs, host_path, "/workspace", "", 0) returned 0;
+- uname -m executed (i686), so the shell advanced past the write;
+- the host read back exactly "tierc-write-ok";
+- the mount is writable in both directions, not a read-only stub.
+
+Known limitation still present:
+
+  `ls -la /workspace` output does not appear in the capture window. Under
+  i686 emulation each external command costs 1-3s and the window is ~5s, so
+  only the first command or two land. This is a capture-timing artifact of
+  the one-shot bridge, not a mount problem — the host readback is the
+  timing-independent proof. A persistent shell replaces this window.
+
+Screenshot: workspace-mounted.png

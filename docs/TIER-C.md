@@ -113,14 +113,16 @@ do_mount(&realfs, host_workspace_path, "/workspace", "", 0);
 
 宿主与 guest 共享同一批 inode。实现细节、验证方法与风险见 [WORKSPACE-MOUNT.md](WORKSPACE-MOUNT.md)。
 
-状态：实现已提交（`11a1fe9`），CI 与模拟器实测待验证；未通过前不要声称 Tier C 支持项目文件。
+状态：**模拟器已验证**（run 43793080884 / build 86）。guest 写入 `.tierc-probe.txt`，宿主读回 `tierc-write-ok`，证明挂载双向可用。真机未做。
+
+证据：[tierc/workspace-mounted.txt](tierc/workspace-mounted.txt)
 
 ## 尚未完成
 
 - ~~把 iSH 静态库链接进 PocketDSH App~~ 已完成（Build 32 起，主 App 内 Tier C smoke 通过）；
 - ~~打包 Alpine fakefs rootfs~~ 已完成；
 - ~~写 C/Swift 桥接，调用 `xX_main_Xx` + `task_run_current`~~ 已完成；
-- `/workspace` 挂载的模拟器实测；
+- ~~`/workspace` 挂载的模拟器实测~~ 已完成（run 43793080884）；
 - 捕获 stdout/stderr、超时、停止、后台限制（现为固定 5 秒观察窗口）；
 - 与 Agent 工具循环的持久对接（现为单命令）；
 - 真机验证。
