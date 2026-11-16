@@ -13,6 +13,11 @@ typedef struct {
     uint64_t pc;
     uint32_t instruction;
     const char *reason;
+    /// Guest address involved in a fault, when the fault has one. Printing it
+    /// with the reason saves guessing which load went out of range.
+    uint64_t fault_addr;
+    /// Register involved in a fault, or 0xFF when not applicable.
+    unsigned fault_reg;
     uint16_t svc_number;
 } e2_exec_context;
 

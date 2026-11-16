@@ -1576,6 +1576,7 @@ e2_status e2_step(e2_machine *machine) {
             uint64_t value = 0;
             if (e2_memory_read(&machine->mem, addr, &value, bytes) != 0) {
                 machine->ctx.reason = "load outside mapped memory";
+                machine->ctx.fault_addr = addr;
                 return E2_FAULT;
             }
             if (opc == 3 && size_code == 3) {   // PRFM: no destination register
@@ -1594,6 +1595,7 @@ e2_status e2_step(e2_machine *machine) {
             uint64_t value = e2_read_xzr(cpu, rd);
             if (e2_memory_write(&machine->mem, addr, &value, bytes) != 0) {
                 machine->ctx.reason = "store outside mapped memory";
+                machine->ctx.fault_addr = addr;
                 return E2_FAULT;
             }
         }
@@ -1625,6 +1627,7 @@ e2_status e2_step(e2_machine *machine) {
             uint64_t value = 0;
             if (e2_memory_read(&machine->mem, addr, &value, bytes) != 0) {
                 machine->ctx.reason = "unscaled load outside mapped memory";
+                machine->ctx.fault_addr = addr;
                 return E2_FAULT;
             }
             if (opc == 3 && size_code == 3) {   // PRFM: no destination register
@@ -1728,6 +1731,7 @@ e2_status e2_step(e2_machine *machine) {
             uint64_t value = 0;
             if (e2_memory_read(&machine->mem, addr, &value, bytes) != 0) {
                 machine->ctx.reason = "load outside mapped memory";
+                machine->ctx.fault_addr = addr;
                 machine->ctx.svc_number = (uint16_t)(addr & 0xFFFF);
                 return E2_FAULT;
             }
@@ -1747,6 +1751,7 @@ e2_status e2_step(e2_machine *machine) {
             uint64_t value = e2_read_xzr(cpu, rd);
             if (e2_memory_write(&machine->mem, addr, &value, bytes) != 0) {
                 machine->ctx.reason = "store outside mapped memory";
+                machine->ctx.fault_addr = addr;
                 machine->ctx.svc_number = (uint16_t)(addr & 0xFFFF);
                 return E2_FAULT;
             }
