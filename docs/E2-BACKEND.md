@@ -819,6 +819,43 @@ busybox ls                      列出全部 17 个目录，exit 0
 
 **M2（syscall 层 + busybox 基础命令）达成。**
 
+## M3：sh 脚本、管道、重定向
+
+进入 M3 后先修了一个真实的 MOVI 缺陷，再补上 shell 需要的文件原语。
+
+**MOVI 的 `cmode` 表几乎全错。** 用汇编器逐项反查（不靠记忆），得到的真实映射与直觉相反——`cmode 0xE` 才是字节通道，`0x0` 是 32 位通道：
+
+| cmode | 元素 | 移位 |
+| --- | --- | --- |
+| 0x0 / 0x2 / 0x4 / 0x6 | 32 位 | 0 / 8 / 16 / 24 |
+| 0x8 / 0xA | 16 位 | 0 / 8 |
+| 0xC / 0xD | 32 位 | msl 8 / 16 |
+| 0xE (op=0) | 8 位 | — |
+| 0xE (op=1) | 64 位 | — |
+
+旧代码把 0x0 当字节通道、0x2 当 16 位、0x6 当 64 位，所以任何非全零的向量常量都是错的。
+
+**另一个标志位错误**：musl 的 aarch64 `fcntl.h` 里 `O_DIRECTORY` 是 `040000`（0x4000），而 `0x20000` 是 `O_LARGEFILE`。把后者当成 `O_DIRECTORY` 让所有重定向以 `EINVAL` 失败。
+
+新增的文件操作（全部可选、空指针检查，保持解释器不含策略）：
+
+- `pipe2`
+- `dup3`
+- `fcntl`（`F_DUPFD` / `F_DUPFD_CLOEXEC` / FD/FL 查询）
+
+验证结果：
+
+```
+sh -c 'echo hello'                        hello
+sh -c 'echo a; echo b'                    a, b
+sh -c 'x=5; echo $x'                      5
+sh -c 'for i in 1 2 3; do echo $i; done'  1 2 3
+sh -c 'if true; then echo yes; fi'        yes
+sh -c 'echo hi > /tmp/o.txt'              文件内容为 hi，exit 0
+```
+
+管道仍需要 fork/exec，是下一步。
+
 另一个纠正：被拒绝的字符是 **`0xff`**，不是空格——终端把它渲染成了不可见字符，导致前一轮在字符串里找一个根本不存在的空格。
 
 步长错位后，`ldr x4, [x28, #8]` 读到的是 `0x910003fda9bf7bfd`——两条指令编码的拼接（`stp x29,x30` + `mov x29,sp`），因为指针滑进了 `.text`。这就是污染来源。
