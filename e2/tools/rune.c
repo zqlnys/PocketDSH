@@ -28,6 +28,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <dirent.h>
+#include <elf.h>
 #include <time.h>
 #include <unistd.h>
 #include "e2/exec.h"
@@ -222,6 +223,107 @@ static const e2_file_ops FS = {fs_open, fs_read, fs_write, fs_close, fs_stat,
 
 
 // --- processes -----------------------------------------------------------
+
+// Returns the PT_INTERP path of an ELF image, or NULL for a static binary.
+static const char *elf_interp(const uint8_t *img, size_t n) {
+    if (n < sizeof(Elf64_Ehdr)) return NULL;
+    const Elf64_Ehdr *eh = (const Elf64_Ehdr *)img;
+    if (memcmp(eh->e_ident, ELFMAG, SELFMAG) != 0) return NULL;
+    if (eh->e_phoff == 0 || eh->e_phoff + (size_t)eh->e_phnum * sizeof(Elf64_Phdr) > n) return NULL;
+    const Elf64_Phdr *ph = (const Elf64_Phdr *)(img + eh->e_phoff);
+    for (unsigned i = 0; i < eh->e_phnum; i++) {
+        if (ph[i].p_type == PT_INTERP && ph[i].p_offset < n) {
+            return (const char *)(img + ph[i].p_offset);
+        }
+    }
+    return NULL;
+}
+
+// Builds the initial image in `m` exactly the way the Linux kernel does: the
+// program at the low base, its interpreter above it, argv/envp/auxv on the new
+// stack, and the entry point taken from the interpreter when there is one.
+// Returns 0 on success, negative errno otherwise.
+static int start_image(e2_machine *m, const char *path, char args[][64], int nargs,
+                       char envs[][96], int nenv) {
+    size_t size = 0;
+    uint8_t *img = load_file(path, &size);
+    if (img == NULL) return -2;   // ENOENT
+
+    e2_memory_destroy(&m->mem);
+    e2_machine_init(m, 0, 1 << 20);
+
+    const char *interp_path = elf_interp(img, size);
+    e2_loaded_image app = {0}, ld = {0};
+    e2_load_result r;
+    uint64_t entry;
+    if (interp_path != NULL) {
+        char host[2048];
+        host_path(host, sizeof(host), interp_path);
+        size_t ld_size = 0;
+        uint8_t *ld_img = load_file(host, &ld_size);
+        if (ld_img == NULL) { free(img); return -2; }
+        r = e2_load_elf_at(m, img, size, 0x40000000ULL, &app);
+        if (r != E2_LOAD_OK) { free(img); free(ld_img); return -8; }
+        if (getenv("E2_TRACE_LOAD"))
+            fprintf(stderr, "[load] app ok bias=0x%llx entry=0x%llx ld_size=%zu\n",
+                    (unsigned long long)app.load_bias, (unsigned long long)app.entry, ld_size);
+        r = e2_load_elf_at(m, ld_img, ld_size, 0x50000000ULL, &ld);
+        free(ld_img);
+        if (getenv("E2_TRACE_LOAD"))
+            fprintf(stderr, "[load] ld result=%s bias=0x%llx entry=0x%llx\n",
+                    e2_load_result_name(r), (unsigned long long)ld.load_bias,
+                    (unsigned long long)ld.entry);
+        if (r != E2_LOAD_OK) { free(img); return -8; }
+        entry = ld.entry;
+    } else {
+        r = e2_load_elf_full(m, img, size, true, &app);
+        if (r != E2_LOAD_OK) { free(img); return -8; }
+        entry = app.entry;
+    }
+    free(img);
+    if (getenv("E2_TRACE_LOAD"))
+        fprintf(stderr, "[load] interp=%s app_entry=0x%llx app_bias=0x%llx ld_entry=0x%llx ld_bias=0x%llx entry=0x%llx\n",
+                interp_path ? interp_path : "-", (unsigned long long)app.entry,
+                (unsigned long long)app.load_bias, (unsigned long long)ld.entry,
+                (unsigned long long)ld.load_bias, (unsigned long long)entry);
+
+    uint64_t top = m->cpu.sp - 64, strs = top - 2048, cur = strs;
+    uint64_t argp[16], envp[16];
+    for (int i = 0; i < nargs; i++) {
+        size_t l = strlen(args[i]) + 1;
+        e2_memory_write(&m->mem, cur, args[i], l);
+        argp[i] = cur;
+        cur += (l + 15) & ~15ULL;
+    }
+    for (int i = 0; i < nenv; i++) {
+        size_t l = strlen(envs[i]) + 1;
+        e2_memory_write(&m->mem, cur, envs[i], l);
+        envp[i] = cur;
+        cur += (l + 15) & ~15ULL;
+    }
+    uint64_t sp = (strs - 512) & ~15ULL;
+    // AT_* come from <elf.h>.
+    uint64_t st[80];
+    int k = 0;
+    st[k++] = (uint64_t)nargs;
+    for (int i = 0; i < nargs; i++) st[k++] = argp[i];
+    st[k++] = 0;
+    for (int i = 0; i < nenv; i++) st[k++] = envp[i];
+    st[k++] = 0;
+    st[k++] = AT_PAGESZ; st[k++] = 4096;
+    st[k++] = AT_PHDR;   st[k++] = app.phdr_addr;
+    st[k++] = AT_PHENT;  st[k++] = app.phentsize;
+    st[k++] = AT_PHNUM;  st[k++] = app.phnum;
+    st[k++] = AT_BASE;   st[k++] = ld.entry ? ld.load_bias : 0;
+    st[k++] = AT_ENTRY;  st[k++] = app.entry;
+    st[k++] = AT_EXECFN; st[k++] = argp[0];
+    st[k++] = AT_NULL;   st[k++] = 0;
+    e2_memory_write(&m->mem, sp, st, (size_t)k * 8);
+    m->cpu.sp = sp;
+    m->cpu.pc = entry;
+    return 0;
+}
+
 typedef struct {
     procctx pc;   // must stay first: file ops cast ctx to procctx
     e2_machine m;
@@ -306,27 +408,11 @@ static long p_fork(void *ctx, const e2_machine *parent) {
 // machine's memory, which is about to be discarded.
 static int p_execve(void *ctx, e2_machine *m, const char *path, uint64_t argv,
                     uint64_t envp) {
-    (void)ctx;
     char args[8][64]; int nargs = 0;
     for (int i = 0; i < 8; i++) {
         uint64_t ptr = 0;
-        const int rc = e2_memory_read(&m->mem, argv + (uint64_t)i * 8, &ptr, 8);
-        if (i == 0 && getenv("E2_TRACE_EXEC")) {
-            fprintf(stderr, "[exec] regions=%u sp=0x%llx\n", m->mem.count,
-                    (unsigned long long)m->cpu.sp);
-            for (unsigned k = 0; k < m->mem.count; k++)
-                fprintf(stderr, "   [%u] 0x%llx + 0x%llx prot=%d\n", k,
-                        (unsigned long long)m->mem.regions[k].base,
-                        (unsigned long long)m->mem.regions[k].size,
-                        m->mem.regions[k].prot);
-        }
-        if (getenv("E2_TRACE_EXEC"))
-            fprintf(stderr, "[exec] path=%s argv[i=%d] slot=0x%llx rc=%d ptr=0x%llx\n",
-                    path, i, (unsigned long long)(argv + (uint64_t)i * 8), rc,
-                    (unsigned long long)ptr);
-        if (rc != 0 || ptr == 0) break;
+        if (e2_memory_read(&m->mem, argv + (uint64_t)i * 8, &ptr, 8) != 0 || ptr == 0) break;
         if (e2_memory_read(&m->mem, ptr, args[nargs], sizeof(args[0])) != 0) break;
-        if (getenv("E2_TRACE_EXEC")) fprintf(stderr, "[exec]   -> \"%s\"\n", args[nargs]);
         nargs++;
     }
     char envs[8][96]; int nenv = 0;
@@ -337,21 +423,25 @@ static int p_execve(void *ctx, e2_machine *m, const char *path, uint64_t argv,
         nenv++;
     }
 
-    // The image in the guest root is dynamically linked, which this backend
-    // cannot load yet. Real systems symlink applets to busybox, so substitute
-    // the static binary we are already running and let argv[0] pick the applet.
-    const char *load_path = g_self_path;
+    // The guest's own /bin/busybox is dynamically linked and now loadable, so
+    // resolve the real path first and fall back to the running binary only if
+    // it is missing.
+    char host[2048]; host_path(host, sizeof(host), path);
+    if (access(host, R_OK) != 0 && g_self_path != NULL) {
+        if (nargs == 0) {
+            const char *base = strrchr(path, '/');
+            snprintf(args[0], sizeof(args[0]), "%s", base ? base + 1 : path);
+            nargs = 1;
+        }
+        snprintf(host, sizeof(host), "%s", g_self_path);
+    }
     if (nargs == 0) {
         const char *base = strrchr(path, '/');
         snprintf(args[0], sizeof(args[0]), "%s", base ? base + 1 : path);
         nargs = 1;
     }
-    size_t sz; uint8_t *img = load_file(load_path, &sz);
-    if (!img) return -2;   // ENOENT
 
-    // execve closes every descriptor marked FD_CLOEXEC. A shell relies on this
-    // to drop the pipe end it does not want the child to keep open - without it
-    // a reader never sees EOF.
+    // execve closes FD_CLOEXEC descriptors before the new image starts.
     {
         const int tab = ((const procctx *)ctx)->fdtab;
         for (int i = 0; i < 64; i++) {
@@ -363,47 +453,7 @@ static int p_execve(void *ctx, e2_machine *m, const char *path, uint64_t argv,
             g_cloexec[tab][i] = 0;
         }
     }
-
-    // A fresh image needs a fresh address space *including the stack*, so go
-    // through e2_machine_init rather than rebuilding only the mapping table.
-    e2_memory_destroy(&m->mem);
-    e2_machine_init(m, 0, 1 << 20);
-
-    e2_loaded_image info = {0};
-    e2_load_result r = e2_load_elf_full(m, img, sz, true, &info);
-    free(img);
-    if (r != E2_LOAD_OK) return -8;   // ENOEXEC
-
-    uint64_t top = m->cpu.sp - 64, strs = top - 1024, cur = strs;
-    uint64_t argp[8], envp2[8];
-    for (int i = 0; i < nargs; i++) {
-        size_t l = strlen(args[i]) + 1;
-        e2_memory_write(&m->mem, cur, args[i], l);
-        argp[i] = cur; cur += (l + 15) & ~15ULL;
-    }
-    for (int i = 0; i < nenv; i++) {
-        size_t l = strlen(envs[i]) + 1;
-        e2_memory_write(&m->mem, cur, envs[i], l);
-        envp2[i] = cur; cur += (l + 15) & ~15ULL;
-    }
-    uint64_t sp = (strs - 512) & ~15ULL;
-    enum { AT_NULL=0, AT_PHDR=3, AT_PHENT=4, AT_PHNUM=5, AT_PAGESZ=6, AT_BASE=7, AT_ENTRY=9 };
-    uint64_t st[64]; int k = 0;
-    st[k++] = (uint64_t)nargs;
-    for (int i = 0; i < nargs; i++) st[k++] = argp[i];
-    st[k++] = 0;
-    for (int i = 0; i < nenv; i++) st[k++] = envp2[i];
-    st[k++] = 0;
-    st[k++] = AT_PAGESZ; st[k++] = 4096;
-    st[k++] = AT_PHDR;  st[k++] = info.phdr_addr;
-    st[k++] = AT_PHENT; st[k++] = info.phentsize;
-    st[k++] = AT_PHNUM; st[k++] = info.phnum;
-    st[k++] = AT_ENTRY; st[k++] = info.entry;
-    st[k++] = AT_BASE;  st[k++] = 0;
-    st[k++] = AT_NULL;  st[k++] = 0;
-    e2_memory_write(&m->mem, sp, st, (size_t)k * 8);
-    m->cpu.sp = sp;
-    return 0;
+    return start_image(m, host, args, nargs, envs, nenv);
 }
 
 static long p_wait4(void *ctx, int pid, uint64_t status_ptr, int options) {
@@ -477,9 +527,13 @@ static int run_proc(int idx) {
                         (unsigned long long)pn, (long long)p->m.cpu.x[0]);
             if (st == E2_HALTED) { p->alive = 0; break; }
             if (st != E2_OK) {
-                snprintf(g_reason, sizeof(g_reason), "%s pid=%d pc=0x%llx",
-                         p->m.ctx.reason ? p->m.ctx.reason : "?", p->pid,
-                         (unsigned long long)p->m.cpu.pc);
+                {
+                    uint32_t word = 0;
+                    e2_memory_read(&p->m.mem, p->m.cpu.pc, &word, 4);
+                    snprintf(g_reason, sizeof(g_reason), "%s pid=%d pc=0x%llx insn=0x%08x",
+                             p->m.ctx.reason ? p->m.ctx.reason : "?", p->pid,
+                             (unsigned long long)p->m.cpu.pc, word);
+                }
                 g_fault = 1;
                 if (getenv("E2_TRACE_GREP")) {
                     fprintf(stderr, "[fault] pid=%d regions=%u\n", p->pid, p->m.mem.count);
@@ -493,9 +547,9 @@ static int run_proc(int idx) {
             continue;
         }
         if (st != E2_OK) {
-            snprintf(g_reason, sizeof(g_reason), "%s pid=%d pc=0x%llx",
+            snprintf(g_reason, sizeof(g_reason), "%s pid=%d pc=0x%llx insn=0x%08x",
                      p->m.ctx.reason ? p->m.ctx.reason : "?", p->pid,
-                     (unsigned long long)p->m.cpu.pc);
+                     (unsigned long long)p->m.cpu.pc, p->m.ctx.instruction);
             g_fault = 1;
             if (getenv("E2_TRACE_GREP")) {
                 fprintf(stderr, "[fault] pid=%d regions=%u\n", p->pid, p->m.mem.count);
@@ -513,57 +567,26 @@ static int run_proc(int idx) {
 int main(int argc, char **argv) {
     const char *path = argc > 1 ? argv[1] : "/tmp/bbs/bin/busybox.static";
     g_self_path = path;
-    // busybox picks its applet from argv[0]'s basename, so present it as "busybox"
-    // and pass the real arguments after it.
-    const char *ga[32]; int nargs = 0;
-    ga[nargs++] = "busybox";
-    for (int i = 2; i < argc && nargs < 30; i++) ga[nargs++] = argv[i];
-    size_t size; uint8_t *img = load_file(path, &size);
-    if (!img) { fprintf(stderr, "cannot load %s\n", path); return 1; }
-
     fd_init();
-    e2_machine m; e2_machine_init(&m, 0, 1 << 20);
-    e2_loaded_image info = {0};
-    e2_load_result r = e2_load_elf_full(&m, img, size, true, &info);
-    if (r != E2_LOAD_OK) { fprintf(stderr, "load failed: %s\n", e2_load_result_name(r)); return 1; }
+    e2_machine m;
+    e2_machine_init(&m, 0, 1 << 20);
 
-    // Lay argv strings at the top of the stack, pointer array below.
-    uint64_t top = m.cpu.sp - 64, strs = top - 1024;
-    uint64_t argp[32]; int n = 0;
-    uint64_t cur = strs;
-    for (int i = 0; i < nargs && n < 30; i++) {
-        size_t l = strlen(ga[i]) + 1;
-        e2_memory_write(&m.mem, cur, ga[i], l);
-        argp[n++] = cur; cur += (l + 15) & ~15ULL;
+    char args[16][64]; int nargs = 0;
+    // busybox picks its applet from argv[0]'s basename, so present it as "busybox".
+    snprintf(args[nargs++], sizeof(args[0]), "busybox");
+    for (int i = 2; i < argc && nargs < 16; i++)
+        snprintf(args[nargs++], sizeof(args[0]), "%s", argv[i]);
+    char envs[8][96]; int nenv = 0;
+    snprintf(envs[nenv++], sizeof(envs[0]), "PATH=/bin:/sbin:/usr/bin:/usr/sbin");
+    snprintf(envs[nenv++], sizeof(envs[0]), "HOME=/root");
+    snprintf(envs[nenv++], sizeof(envs[0]), "TERM=xterm");
+    snprintf(envs[nenv++], sizeof(envs[0]), "PWD=/");
+    snprintf(envs[nenv++], sizeof(envs[0]), "LANG=C");
+
+    if (start_image(&m, path, args, nargs, envs, nenv) != 0) {
+        fprintf(stderr, "cannot load %s\n", path);
+        return 1;
     }
-    uint64_t sp = (strs - 512) & ~15ULL;
-    enum { AT_NULL=0, AT_PHDR=3, AT_PHENT=4, AT_PHNUM=5, AT_PAGESZ=6, AT_BASE=7, AT_ENTRY=9 };
-    uint64_t stack[64]; int k = 0;
-    stack[k++] = (uint64_t)n;
-    for (int i = 0; i < n; i++) stack[k++] = argp[i];
-    stack[k++] = 0;   // argv terminator
-    // Minimal environment; envp must be a NULL-terminated pointer array on the stack.
-    {
-        const char *env[] = {"PATH=/bin:/sbin:/usr/bin:/usr/sbin", "HOME=/root",
-                             "TERM=xterm", "PWD=/", NULL};
-        uint64_t ev = cur;
-        for (int i = 0; env[i]; i++) {
-            size_t l = strlen(env[i]) + 1;
-            e2_memory_write(&m.mem, ev, env[i], l);
-            stack[k++] = ev;
-            ev += (l + 15) & ~15ULL;
-        }
-    }
-    stack[k++] = 0;   // envp terminator
-    stack[k++] = AT_PAGESZ; stack[k++] = 4096;
-    stack[k++] = AT_PHDR;  stack[k++] = info.phdr_addr;
-    stack[k++] = AT_PHENT; stack[k++] = info.phentsize;
-    stack[k++] = AT_PHNUM; stack[k++] = info.phnum;
-    stack[k++] = AT_ENTRY; stack[k++] = info.entry;
-    stack[k++] = AT_BASE;  stack[k++] = 0;
-    stack[k++] = AT_NULL;  stack[k++] = 0;
-    e2_memory_write(&m.mem, sp, stack, (size_t)k * 8);
-    m.cpu.sp = sp;
 
     // Hand the loaded image to the process table and run it as pid 1.
     procs[1].used = 1;

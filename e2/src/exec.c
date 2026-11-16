@@ -641,13 +641,13 @@ e2_status e2_step(e2_machine *machine) {
         write_reg(cpu, rd, cpu->v[rn2][0] & 0xFFFFFFFFULL, false);
         cpu->pc = next_pc; machine->instructions++; return E2_OK;
     }
-    if ((insn & 0xFFFFFC00u) == 0x9E270000u) {      // fmov Dd, Xn
+    if ((insn & 0xFFFFFC00u) == 0x9E670000u) {      // fmov Dd, Xn
         const unsigned rn2 = BITS(insn, 9, 5);
         cpu->v[rd][0] = e2_read_xzr(cpu, rn2);
         cpu->v[rd][1] = 0;
         cpu->pc = next_pc; machine->instructions++; return E2_OK;
     }
-    if ((insn & 0xFFFFFC00u) == 0x9E260000u) {      // fmov Xd, Dn
+    if ((insn & 0xFFFFFC00u) == 0x9E660000u) {      // fmov Xd, Dn
         const unsigned rn2 = BITS(insn, 9, 5);
         write_reg(cpu, rd, cpu->v[rn2][0], true);
         cpu->pc = next_pc; machine->instructions++; return E2_OK;
