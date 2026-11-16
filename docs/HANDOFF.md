@@ -21,9 +21,10 @@ cat docs/TIER-C.md
 当前仓库：<https://github.com/zqlnys/PocketDSH>（**public**）
 当前分支：`main`
 当前源码头：见 `git log --oneline -1`
-最新已验证构建 commit：`928c1a8`（tier-c: show only the checks that apply to the current mount mode）
-最新构建 run：<https://github.com/zqlnys/PocketDSH/actions/runs/43808219268>
-最新 artifact：`pocketdsh-ios-98`
+最新已验证构建 commit：`afe6128`（fix: Lab screenshots, and a plist that leaked into the shipped bundle）
+最新构建 run：<https://github.com/zqlnys/PocketDSH/actions/runs/43818797679>（发布版）
+Lab 构建 run：<https://github.com/zqlnys/PocketDSH/actions/runs/43818797674>
+最新 artifact：`pocketdsh-ios-102`（发布版）/ `pocketdsh-lab-2`（Lab 版）
 最新 IPA 本地路径：`/root/dsh/PocketDSH-builds/latest/PocketDSH-unsigned.ipa`
 
 最新 IPA：
@@ -67,6 +68,17 @@ cat docs/TIER-C.md
 
 ---
 
+## 1.5 两个构建目标（重要）
+
+- **PocketDSH**（发布版）：不编译、不链接任何 iSH 代码，桥接头只暴露原创的执行探针。**无 GPL 义务，可以上架。** Tier C 编译成 stub。
+- **PocketDSH-Lab**（开发版）：链接 iSH，完整 Tier C。**GPLv3 衍生作品，绝不发布。**
+
+验证方法（发布版二进制必须全部 absent）：`asbestos`、`fakefs`、`realfs`、`pocket_shell`、`pocket_ish`、`4.20.69`、`libish`。实测通过。
+
+CI 也分开了：`ios.yml` 构建发布版，`tierc-lab.yml` 构建 Lab 版并跑 Tier C 截图。
+
+详见 [BUILD-TARGETS.md](BUILD-TARGETS.md)。
+
 ## 2. 当前真实可用能力
 
 | 能力 | 状态 | 说明 |
@@ -95,8 +107,8 @@ cat docs/TIER-C.md
 | Tier 偏好 | 已实现 | Automatic / Tier A / Tier C，Tier C 受限提示 |
 | Tier C smoke test | 已实现 | 主 App 内 iSH Alpine，无 JIT，实际 `uname` |
 | `run_linux` | **已接入持久 shell** | 复用同一会话，每条 ~0.4s；会话不可用时回退一次性桥接并说明 |
-| 持久 Linux shell | **模拟器已验证** | 6 条命令同一会话，每条 0.1s，run 43796926038 |
-| 文件工作区挂载到 Linux | **模拟器已验证** | realfs 直通，run 43793080884；真机未做 |
+| 持久 Linux shell | **模拟器已验证（Lab 版）** | 6 条命令同一会话，每条 0.4s；发布版不含此能力 |
+| 文件工作区挂载到 Linux | **模拟器已验证（Lab 版）** | realfs 直通 + 只读包装层；真机未做 |
 | 真机 / 签名 / TestFlight | 未完成 | |
 | 上游 DSH/Cordis 插件兼容 | 未实现 | 当前是自定义 Lua 插件格式 |
 
@@ -310,6 +322,7 @@ docs/SYSTEM-ACTIONS.md
 docs/TIER-C.md
 docs/WORKSPACE-MOUNT.md   ← Tier C 项目工作区挂载实现
 docs/PERSISTENT-SHELL.md  ← Tier C 持久 shell 设计与验证
+docs/BUILD-TARGETS.md     ← 发布版 / Lab 版的许可边界与验证方法
 docs/BUILD.md
 docs/BUILD-INSTALL.md
 docs/PHASE1-VALIDATION.md

@@ -24,7 +24,7 @@
 | 未签名 arm64 IPA | **已生成** | 5,295,073 bytes，SHA-256 `237d0175…0780` |
 | 插件系统 | **已实现并测试** | 安装 / 加载 / 配置 / 启停 / 卸载 / 工具接入 |
 | 系统动作 | **部分实现，未真机验证** | 真实提醒 + 电话/消息准备，必须用户确认 |
-| JIT / 运行时状态 | **Tier C 可用（实验性）** | iSH Alpine 持久 shell；项目挂载在 `/workspace`；默认仍 Tier A |
+| 构建目标 | **发布版无 GPL 代码** | `PocketDSH` 不含 iSH，可上架；`PocketDSH-Lab` 含完整 Tier C |
 | 首次启动引导 | **已实现** | API Key 弹窗，可跳过并继续本地工作区 |
 | 模型 / 推理强度 | **已实现** | 当前 DeepSeek V4 模型名 + low/high/max，思考模式默认关闭 |
 | 纯 Linux iOS 构建 | **受阻** | 需要 Apple Xcode.xip + xtool Darwin SDK；本机没有该文件 |
@@ -153,7 +153,8 @@ Agent 只会拿到相对路径。绝对路径、`..`、symlink 逃逸都会被 `
 - 未实现：Linux 用户态 ABI、完整系统仿真、Cordis/Node 原生插件、SSH/SFTP。
 - 未验证：真机安装、IPA 签名、TestFlight。
 - 纯 Linux 构建未完成；当前 IPA 来自 GitHub macOS Runner。
-- Tier C 可用（实验性）：`run_linux` 在一个持久 iSH Alpine shell 里执行，每条命令约 0.4s；当前项目通过 realfs 直通挂载在 `/workspace`，guest 与 Swift 工具看同一批文件；Tier 状态只在会话真的在跑时才报告 Tier C。默认运行时仍是 Tier A，GPLv3 分发合规待处理。
+- **两个构建目标**：`PocketDSH` 是发布版，不编译也不链接任何 iSH 代码，二进制里没有 GPL 组件，可以上架；`PocketDSH-Lab` 是开发版，含完整 Tier C（iSH Alpine 持久 shell、`/workspace` realfs 挂载、只读挂载），是 GPLv3 衍生作品，不发布。详见 [构建目标与许可边界](docs/BUILD-TARGETS.md)。
+- Tier C（仅 Lab 版）：`run_linux` 在一个持久 iSH Alpine shell 里执行，每条命令约 0.4s；项目目录通过 realfs 直通挂载在 `/workspace`。
 
 ## 文档
 
@@ -166,6 +167,7 @@ Agent 只会拿到相对路径。绝对路径、`..`、symlink 逃逸都会被 `
 - [Tier C 本地 Linux 可行性](docs/TIER-C.md)
 - [Tier C 项目工作区挂载](docs/WORKSPACE-MOUNT.md)
 - [Tier C 持久 shell](docs/PERSISTENT-SHELL.md)
+- [构建目标与许可边界](docs/BUILD-TARGETS.md)
 - [iOS 本地 Linux 三方案调研](docs/IOS-LOCAL-LINUX.md)
 - [构建与安装](docs/BUILD-INSTALL.md)
 
