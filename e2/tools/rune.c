@@ -732,6 +732,23 @@ static int run_proc(int idx) {
             }
             if (ng < 8) ng++;
         }
+        if (getenv("E2_TRACE_WINDOW")) {
+            static long wmark = -1;
+            static uint64_t wbuf[400];
+            static int wn = 0;
+            if (wmark < 0) wmark = atol(getenv("E2_TRACE_WINDOW"));
+            if (p->m.instructions >= (uint64_t)wmark && wn < 400) {
+                wbuf[wn++] = p->m.cpu.pc;
+                if (wn == 400) {
+                    fprintf(stderr, "[window]");
+                    for (int q = 0; q < 400; q++) {
+                        if (q % 8 == 0) fprintf(stderr, "\n  ");
+                        fprintf(stderr, " %llx", (unsigned long long)wbuf[q]);
+                    }
+                    fprintf(stderr, "\n");
+                }
+            }
+        }
         const uint64_t pre_pc = p->m.cpu.pc;
         e2_status st = e2_step(&p->m);
         if (getenv("E2_TRACE_AFTER") && pre_pc == 0x50013e94) {

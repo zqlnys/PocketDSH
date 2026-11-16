@@ -1578,8 +1578,16 @@ e2_status e2_step(e2_machine *machine) {
                 machine->ctx.reason = "load outside mapped memory";
                 return E2_FAULT;
             }
+            if (opc == 3 && size_code == 3) {   // PRFM: no destination register
+                cpu->pc = next_pc;
+                machine->instructions++;
+                return E2_OK;
+            }
             value = apply_load_opc(value, opc, bytes, size_code == 3);
-            write_reg(cpu, rd, value, size_code == 3);
+            // The destination width follows the instruction, not the access
+            // size: LDRSB/LDRSH/LDRSW always write a 64-bit register, while
+            // their 32-bit forms and LDRB/LDRH/LDR(W) write 32.
+            write_reg(cpu, rd, value, (opc == 2) || (size_code == 3));
         } else {
             // Storing XZR is legal and common (zero-init loops); reading x[31]
             // would take a byte from the neighbouring stack slot instead.
@@ -1619,8 +1627,16 @@ e2_status e2_step(e2_machine *machine) {
                 machine->ctx.reason = "unscaled load outside mapped memory";
                 return E2_FAULT;
             }
+            if (opc == 3 && size_code == 3) {   // PRFM: no destination register
+                cpu->pc = next_pc;
+                machine->instructions++;
+                return E2_OK;
+            }
             value = apply_load_opc(value, opc, bytes, size_code == 3);
-            write_reg(cpu, rd, value, size_code == 3);
+            // The destination width follows the instruction, not the access
+            // size: LDRSB/LDRSH/LDRSW always write a 64-bit register, while
+            // their 32-bit forms and LDRB/LDRH/LDR(W) write 32.
+            write_reg(cpu, rd, value, (opc == 2) || (size_code == 3));
         } else {
             uint64_t value = e2_read_xzr(cpu, rd);
             if (e2_memory_write(&machine->mem, addr, &value, bytes) != 0) {
