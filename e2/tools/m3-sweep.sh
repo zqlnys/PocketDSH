@@ -85,6 +85,10 @@ echo hi | tee /tmp/m3o | wc -l
 printf 'aaa\n' > /tmp/m3in; grep a /tmp/m3in
 printf 'aaa\n' > /tmp/m3in; grep -F a /tmp/m3in
 printf 'aaa\n' > /tmp/m3in; sed s/a/A/ /tmp/m3in
+yes | head -3
+seq 1000 | head -2
+seq 5 | tail -1
+cat /tmp/m3in | wc -l
 EOF
 
 # Known failures: the BRE engine. grep, sed and awk without -F all die at

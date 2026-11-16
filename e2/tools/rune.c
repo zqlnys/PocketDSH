@@ -43,7 +43,26 @@ typedef struct { int fdtab; } procctx;
 // Children only run when someone calls run_proc for them. That used to happen
 // exclusively inside wait4, which deadlocks the moment a parent reads a pipe
 // before waiting - which is exactly what $(...) does.
+// How many instructions a process may run before yielding to its siblings.
+// Without this the scheduler runs each child to completion, which deadlocks any
+// pipeline whose producer never finishes on its own - `yes | head -1` being the
+// textbook case: head never runs, so the pipe never breaks.
+#define PROC_QUANTUM_DEFAULT 20000
+static long proc_quantum(void) {
+    static long q = -1;
+    if (q < 0) {
+        const char *e = getenv("E2_QUANTUM");
+        q = e ? atol(e) : PROC_QUANTUM_DEFAULT;
+    }
+    return q;
+}
+static long g_proc_budget = -1;
+
 static int pump_children_for_tab(int tab);
+// Writing to a pipe whose reader has gone raises SIGPIPE on a real system, and
+// the default action terminates the writer. Without that, `yes | head -1` runs
+// forever: the writer never learns the reader left.
+static void note_write_error(int tab, int err);
 static struct { int used, host; } g_fds[16][64];
 static void *g_dirs[16][64];
 static unsigned char g_cloexec[16][64];
@@ -124,7 +143,11 @@ static long fs_write(void *c, int fd, const void *b, size_t n, long long o) {
     (void)o;
     if (fd < 0 || fd >= 64 || !TAB(c)[fd].used) return -EBADF;
     ssize_t r = write(TAB(c)[fd].host, b, n);
-    return r < 0 ? -errno : (long)r;
+    if (r < 0) {
+        note_write_error(((const procctx *)c)->fdtab, errno);
+        return -errno;
+    }
+    return (long)r;
 }
 static int fs_close(void *c, int fd) {
     if (fd < 0 || fd >= 64 || !TAB(c)[fd].used) return -EBADF;
@@ -490,21 +513,38 @@ static int p_execve(void *ctx, e2_machine *m, const char *path, uint64_t argv,
     return start_image(m, host, args, nargs, envs, nenv);
 }
 
-/// Runs one live child of the process owning `tab`, returning how many ran.
+/// Terminates the writer when its reader has gone.
 ///
-/// Called from fs_read when a pipe has no data: the writer is a child that will
-/// never execute otherwise, because children only advance inside wait4.
-static int pump_children_for_tab(int tab) {
-    proc_t *self = NULL;
+/// Only EPIPE is treated as fatal. A real SIGPIPE can be caught or ignored, but
+/// nothing in this rootfs does that, and hanging forever is far worse than
+/// being wrong about the rare handler case.
+static void note_write_error(int tab, int err) {
+    if (err != EPIPE) return;
     for (int i = 0; i < 16; i++) {
-        if (procs[i].used && procs[i].pc.fdtab == tab) { self = &procs[i]; break; }
+        if (!procs[i].used || procs[i].pc.fdtab != tab) continue;
+        if (!procs[i].alive) return;
+        procs[i].alive = 0;
+        procs[i].exit_status = 141;  // 128 + SIGPIPE
+        return;
     }
-    if (self == NULL) return 0;
+}
+
+/// Runs the processes that could make progress on `tab`'s pipe, returning how
+/// many ran.
+///
+/// Called from fs_read when a pipe has no data. It deliberately runs *peers*,
+/// not just children: in `ls | wc -l` the reader has no children of its own, and
+/// returning "none to run" there means reporting end-of-file on a pipe that the
+/// sibling is about to write to.
+static int pump_children_for_tab(int tab) {
     int ran = 0;
-    for (int i = 1; i < 16; i++) {
+    for (int i = 0; i < 16; i++) {
         proc_t *c = &procs[i];
-        if (!c->used || !c->alive || c->ppid != self->pid) continue;
+        if (!c->used || !c->alive) continue;
+        if (c->pc.fdtab == tab) continue;   // that is us
+        g_proc_budget = proc_quantum();
         run_proc(i);
+        g_proc_budget = -1;
         ran++;
     }
     return ran;
@@ -517,7 +557,24 @@ static long p_wait4(void *ctx, int pid, uint64_t status_ptr, int options) {
         proc_t *c = &procs[i];
         if (!c->used || c->ppid != self->pid) continue;
         if (pid > 0 && c->pid != pid) continue;
-        if (c->alive) run_proc(i);
+        // Round-robin until this child exits. Running it for one quantum and
+        // then reaping would reap a live process; running it to completion
+        // starves its siblings, and a producer that never finishes on its own
+        // then keeps the consumer from ever running - `yes | head -1` hangs
+        // exactly that way.
+        while (c->alive) {
+            g_proc_budget = proc_quantum();
+            run_proc(i);
+            g_proc_budget = -1;
+            for (int j = 1; j < 16; j++) {
+                if (j == i) continue;
+                proc_t *other = &procs[j];
+                if (!other->used || !other->alive || other->ppid != self->pid) continue;
+                g_proc_budget = proc_quantum();
+                run_proc(j);
+                g_proc_budget = -1;
+            }
+        }
         const int code = c->exit_status & 0xFF;
         const uint32_t status = (uint32_t)(code << 8);
         uint8_t *dst = e2_memory_host_ptr(&self->m.mem, status_ptr, 4, E2_PROT_WRITE);
@@ -559,6 +616,7 @@ static void dump_shadow(const char *why) {
 
 static int run_proc(int idx) {
     proc_t *p = &procs[idx];
+    long spent = 0;
     e2_syscall_env env = {.exit = p_exit, .files = &FS, .ctx = p,
                           .fork = p_fork, .execve = p_execve, .wait4 = p_wait4};
     snprintf(env.cwd, sizeof(env.cwd), "%s",
@@ -574,6 +632,7 @@ static int run_proc(int idx) {
     long syscalls_seen = 0;
     long guard = 0;
     while (p->alive) {
+        if (g_proc_budget >= 0 && ++spent > g_proc_budget) break;
         g_dbg_pc = p->m.cpu.pc;
         g_dbg_pc2 = p->m.cpu.pc;
         hist[hist_at].pc = p->m.cpu.pc;
