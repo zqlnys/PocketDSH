@@ -21,9 +21,9 @@ cat docs/TIER-C.md
 当前仓库：<https://github.com/zqlnys/PocketDSH>（**public**）
 当前分支：`main`
 当前源码头：见 `git log --oneline -1`
-最新已验证构建 commit：`3092c26`（tier-c: order probe write first and poll for host readback）
-最新构建 run：<https://github.com/zqlnys/PocketDSH/actions/runs/43793080884>
-最新 artifact：`pocketdsh-ios-86`
+最新已验证构建 commit：`72fbe9f`（tier-c: only tear down the session when the shell itself exits）
+最新构建 run：<https://github.com/zqlnys/PocketDSH/actions/runs/43796926038>
+最新 artifact：`pocketdsh-ios-89`
 最新 IPA 本地路径：`/root/dsh/PocketDSH-builds/latest/PocketDSH-unsigned.ipa`
 
 最新 IPA：
@@ -94,9 +94,9 @@ cat docs/TIER-C.md
 | JIT 探测 | 已实现 | mmap 可执行映射探测，不执行动态代码 |
 | Tier 偏好 | 已实现 | Automatic / Tier A / Tier C，Tier C 受限提示 |
 | Tier C smoke test | 已实现 | 主 App 内 iSH Alpine，无 JIT，实际 `uname` |
-| `run_linux` | 部分实现 | 单命令/一次 App 启动；不能访问项目文件 |
+| `run_linux` | 部分实现 | 仍走一次性桥接；持久 shell 已可用但尚未接进工具 |
+| 持久 Linux shell | **模拟器已验证** | 6 条命令同一会话，每条 0.1s，run 43796926038 |
 | 文件工作区挂载到 Linux | **模拟器已验证** | realfs 直通，run 43793080884；真机未做 |
-| 持久 Linux shell | 未完成 | 尝试过，未稳定 |
 | 真机 / 签名 / TestFlight | 未完成 | |
 | 上游 DSH/Cordis 插件兼容 | 未实现 | 当前是自定义 Lua 插件格式 |
 
@@ -309,6 +309,7 @@ docs/DSH-COMPATIBILITY.md
 docs/SYSTEM-ACTIONS.md
 docs/TIER-C.md
 docs/WORKSPACE-MOUNT.md   ← Tier C 项目工作区挂载实现
+docs/PERSISTENT-SHELL.md  ← Tier C 持久 shell 设计与验证
 docs/BUILD.md
 docs/BUILD-INSTALL.md
 docs/PHASE1-VALIDATION.md
@@ -476,10 +477,10 @@ examples/workspace-inspector.dshplugin/
    - realfs 直通挂载，双向读写；
    - 遗留：默认只读开关、真机验证、写入绕过 WorkspaceFileSystem 备份的问题。
 
-2. **持久 shell**
-   - 多命令、超时、停止；
-   - 不能阻塞 SwiftUI 主线程；
-   - 任务结束/App 切换要稳定。
+2. ~~**持久 shell**~~ → 模拟器已验证（run 43796926038）
+   - 单会话 `/bin/sh`，pipe + sentinel 定界；
+   - 6 条命令连续执行，每条 0.1s，外部命令退出不再杀掉会话；
+   - 遗留：接进 `run_linux` 工具、与一次性 runner 的互斥、真机。
 
 3. **Tier 自动路由**
    - 初始化成功才启用 Tier C；
@@ -505,7 +506,7 @@ examples/workspace-inspector.dshplugin/
 
 如果新会话只做一件事：
 
-> **持久 shell + 多命令协议**。现在 `run_linux` 一次 App 启动只支持一条命令，且 5 秒固定观察窗口会截断输出（i686 下单条外部命令 1–3 秒）。验收 `pwd`、`ls`、`echo` 三条命令连续执行，且最后一条的输出不丢。
+> **把持久 shell 接进 `run_linux` 工具**。桥接层已经跑通（build 89），但 Agent 仍然走一次性路径。需要处理持久会话与一次性 runner 的互斥（两者共用 iSH 全局 mount/pid 状态），并让每次 Agent 调用复用同一个会话。
 
 第二件事：
 
@@ -542,4 +543,4 @@ examples/workspace-inspector.dshplugin/
 
 ## 15. 一句话状态
 
-**PocketDSH 已经是一个可构建、可运行的原生 iOS 本地 Agent App；Tier C 的 iSH Alpine 已在主 App 内跑通 smoke，项目工作区已通过 realfs 挂载并实测双向读写；持久 shell、自动路由、真机和 GPLv3 仍未完成。最新可用构建是 `pocketdsh-ios-86`（run 43793080884）。**
+**PocketDSH 已经是一个可构建、可运行的原生 iOS 本地 Agent App；Tier C 的 iSH Alpine 已在主 App 内跑通，项目工作区通过 realfs 双向挂载，持久 shell 可连续执行多命令（每条 0.1s）；未完成的是把持久 shell 接进 `run_linux`、Tier 自动路由、真机与 GPLv3。最新可用构建是 `pocketdsh-ios-89`（run 43796926038）。**

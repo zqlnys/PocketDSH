@@ -1,0 +1,60 @@
+Run: https://github.com/zqlnys/PocketDSH/actions/runs/43796926038
+Build: pocketdsh-ios-89
+Commit: 72fbe9f
+Device: iPhone 17 Pro Max, iOS 26.2 simulator
+JIT: no
+
+Build: persistent shell with sentinel-delimited commands
+
+Captured output (Tier C smoke screen):
+
+  Persistent shell started.
+
+  [1/6 +0.1s] $ pwd
+  /
+
+  [2/6 +0.1s] $ uname -m
+  i686
+
+  [3/6 +0.1s] $ echo alive-after-external
+  alive-after-external
+
+  [4/6 +0.1s] $ echo tierc-write-ok > /workspace/.tierc-probe.txt
+
+  [5/6 +0.1s] $ read v < /workspace/.tierc-probe.txt; echo got:$v
+  got:tierc-write-ok
+
+  [6/6 +0.1s] $ ls /workspace
+  README.md
+
+  still running: yes
+
+  [host readback] .tierc-probe.txt = tierc-write-ok
+  [host readback] workspace mount verified: guest write reached the host directory.
+
+What each line proves:
+
+- Six commands run in ONE session; the previous bridge started a whole
+  emulated kernel per command.
+- `uname -m` is an external command. Before the exit_hook fix it took the
+  session down with it, and the next line reported `shell error -32`.
+  `alive-after-external` proves the session survived a forked child.
+- `read v < /workspace/...` is a shell builtin, so the mount is readable
+  without spawning anything: got:tierc-write-ok.
+- `ls /workspace` lists README.md — the real project file through realfs,
+  not an empty mount point.
+- `still running: yes` — the session is reusable, not single-shot.
+- Host readback still matches, so the mount remains a two-way share.
+
+Timing:
+
+  Every command reports +0.1s. The 1-3s per-command cost seen in earlier
+  builds was entirely the per-command kernel startup (xX_main_Xx + mounts),
+  not the command itself. Keeping one shell removes it.
+
+Known limitation:
+
+  Terminal sessions are serialized. A second pocket_shell_start() returns
+  "another shell session is active" until the first is stopped.
+
+Screenshot: persistent-shell.png
