@@ -24,6 +24,10 @@
 
 extern const char *uname_hostname_override;
 
+/// Defined in libish (fs/real.c) and exported, but fs/real.h never declares it,
+/// so the read-only wrapper needs its own prototype to reuse the real one.
+int realfs_mount(struct mount *mount);
+
 /// Emitted by the shell after every command so the host can find the boundary
 /// without guessing at timing.
 static const char kSentinel[] = "__POCKET_DONE__";
