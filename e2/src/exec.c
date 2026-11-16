@@ -606,6 +606,65 @@ e2_status e2_step(e2_machine *machine) {
         return E2_OK;
     }
 
+    // --- SIMD: MOVI (immediate) ---
+    // libc clears vector registers with `movi vD.16b, #0` before using them, so
+    // this appears before any vector arithmetic.
+    if ((insn & 0x9FF80400u) == 0x0F000400u) {
+        const bool q = BIT(insn, 30) != 0;
+        const bool op = BIT(insn, 29) != 0;
+        const unsigned cmode = BITS(insn, 15, 12);
+        const unsigned imm8 = (BITS(insn, 18, 16) << 5) | BITS(insn, 9, 5);
+        const unsigned rd_v = BITS(insn, 4, 0);
+
+        cpu->v[rd_v][0] = 0;
+        cpu->v[rd_v][1] = 0;
+
+        if (cmode == 0x0) {
+            // movi Vd.8b/16b, #imm8
+            const unsigned lanes = q ? 16u : 8u;
+            for (unsigned i = 0; i < lanes; i++) {
+                e2_v_set(cpu, rd_v, 8, i, imm8);
+            }
+        } else if (cmode == 0x2) {
+            // movi Vd.4h/8h, #imm8
+            const unsigned lanes = q ? 8u : 4u;
+            for (unsigned i = 0; i < lanes; i++) {
+                e2_v_set(cpu, rd_v, 16, i, imm8);
+            }
+        } else if (cmode == 0x4) {
+            // movi Vd.2s/4s, #imm8
+            const unsigned lanes = q ? 4u : 2u;
+            for (unsigned i = 0; i < lanes; i++) {
+                e2_v_set(cpu, rd_v, 32, i, imm8);
+            }
+        } else if (cmode == 0x6) {
+            // movi Vd.2d, #imm8 (Q must be 1)
+            if (q) {
+                e2_v_set(cpu, rd_v, 64, 0, imm8);
+                e2_v_set(cpu, rd_v, 64, 1, imm8);
+            }
+        } else if (cmode == 0x8 || cmode == 0xA || cmode == 0xC) {
+            // movi Vd.{2,4,8}s, #imm8, lsl #8/16/24
+            const unsigned shift = (cmode == 0x8) ? 8u : (cmode == 0xA ? 16u : 24u);
+            const unsigned lanes = q ? 4u : 2u;
+            for (unsigned i = 0; i < lanes; i++) {
+                e2_v_set(cpu, rd_v, 32, i, (uint64_t)imm8 << shift);
+            }
+        } else if (cmode == 0xE && op) {
+            // movi Vd.2d, #imm8 (op=1 variant) - all bits set if imm8 bit set
+            const uint64_t pattern = (imm8 & 0x01) ? ~0ULL : 0ULL;
+            cpu->v[rd_v][0] = pattern;
+            cpu->v[rd_v][1] = pattern;
+        } else {
+            machine->ctx.reason = "unimplemented MOVI cmode";
+            return E2_UNIMPL;
+        }
+
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     // --- SIMD: LDR / STR (unsigned immediate) ---
     if ((insn & 0x3F000000u) == 0x3D000000u) {
         const bool is_load = BIT(insn, 22) != 0;
@@ -1040,6 +1099,52 @@ e2_status e2_step(e2_machine *machine) {
         return E2_OK;
     }
 
+    // --- SIMD LDR / STR (unscaled / pre-index / post-index) ---
+    // The single-register vector forms share the immediate-group layout with the
+    // integer ones but set V. libc spills vector state with these around calls.
+    if ((insn & 0x3B200000u) == 0x38000000u && BIT(insn, 26) != 0) {
+        const bool is_load = BIT(insn, 22) != 0;
+        const unsigned size_code = BITS(insn, 31, 30);
+        const unsigned mode = BITS(insn, 11, 10);
+        const int64_t imm9 = (int64_t)sign_extend(BITS(insn, 20, 12), 9);
+        const unsigned bytes = 1u << size_code;
+        const unsigned rt_v = BITS(insn, 4, 0);
+
+        uint64_t base = e2_read_sp(cpu, rn);
+        uint64_t addr;
+        if (mode == 1) {
+            addr = base;
+        } else {
+            addr = (uint64_t)((int64_t)base + imm9);
+        }
+
+        const size_t chunk = bytes > 8 ? 8 : bytes;
+        if (is_load) {
+            if (e2_memory_read(&machine->mem, addr, &cpu->v[rt_v][0], chunk) != 0 ||
+                (bytes > 8 &&
+                 e2_memory_read(&machine->mem, addr + 8, &cpu->v[rt_v][1], 8) != 0)) {
+                machine->ctx.reason = "simd load outside mapped memory";
+                return E2_FAULT;
+            }
+        } else {
+            if (e2_memory_write(&machine->mem, addr, &cpu->v[rt_v][0], chunk) != 0 ||
+                (bytes > 8 &&
+                 e2_memory_write(&machine->mem, addr + 8, &cpu->v[rt_v][1], 8) != 0)) {
+                machine->ctx.reason = "simd store outside mapped memory";
+                return E2_FAULT;
+            }
+        }
+
+        if (mode == 1) {
+            e2_write_sp(cpu, rn, (uint64_t)((int64_t)base + imm9));
+        } else if (mode == 3) {
+            e2_write_sp(cpu, rn, addr);
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     // --- LDR / STR (register offset) ---
     // Byte-at-a-time loops over a pointer index compile to this form, so it shows
     // up immediately in any libc string routine.
@@ -1126,6 +1231,40 @@ e2_status e2_step(e2_machine *machine) {
             default:
                 machine->ctx.reason = "unimplemented system register";
                 return E2_UNIMPL;
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
+    // --- LDXR / LDAXR / STXR / STLXR (exclusive access) ---
+    // libc's atomics and locks are built on these. With a single interpreter
+    // thread there is no way for the reservation to be lost between the load
+    // and the store, so the store always reports success; the acquire/release
+    // ordering they imply is free because execution is strictly sequential.
+    if ((insn & 0x3F000000u) == 0x08000000u) {
+        const unsigned size_code = BITS(insn, 31, 30);
+        const unsigned rs = BITS(insn, 20, 16);
+        const unsigned rn2 = BITS(insn, 9, 5);
+        const unsigned rt = BITS(insn, 4, 0);
+        const bool is_load = BIT(insn, 22) != 0;
+        const unsigned bytes = 1u << size_code;
+        const uint64_t addr = e2_read_xzr(cpu, rn2);
+
+        if (is_load) {
+            uint64_t value = 0;
+            if (e2_memory_read(&machine->mem, addr, &value, bytes) != 0) {
+                machine->ctx.reason = "exclusive load outside mapped memory";
+                return E2_FAULT;
+            }
+            write_reg(cpu, rt, value, size_code == 3);
+        } else {
+            const uint64_t value = e2_read_xzr(cpu, rt);
+            if (e2_memory_write(&machine->mem, addr, &value, bytes) != 0) {
+                machine->ctx.reason = "exclusive store outside mapped memory";
+                return E2_FAULT;
+            }
+            write_reg(cpu, rs, 0, size_code == 3);  // 0 = succeeded
         }
         cpu->pc = next_pc;
         machine->instructions++;
