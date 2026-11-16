@@ -854,7 +854,21 @@ sh -c 'if true; then echo yes; fi'        yes
 sh -c 'echo hi > /tmp/o.txt'              文件内容为 hi，exit 0
 ```
 
-管道仍需要 fork/exec，是下一步。
+**fork / exec / wait 已接通**（库内 `e2_memory_clone` + `e2_machine_clone`，宿主侧 16 槽进程表与协作式调度）。
+
+一个真实的架构错误也被修掉：**fd 表原本是全局的**。fork 必须复制描述符表、exec 必须保留它，而全局表让子进程的 `dup3` 直接改写了父进程的描述符。现在每个进程拥有自己的表，`fork` 用 `dup()` 逐项复制——子进程可以独立关闭，管道数据仍然共享，这正是 shell 依赖的 EOF 语义。
+
+当前状态：
+
+```
+ls                        列出根目录
+echo hi > file            文件内容为 hi
+cat file                  hi
+echo x | cat              x（cat 从管道读、写到终端）
+echo hello                hello
+```
+
+**仍未解决**：脚本里的外部命令会丢失参数。`sh -c 'cat /tmp/o2.txt'` 只跑了 5847 条指令（带不带路径都是这个数），cat 收到空参数后从 stdin 读，输出为空。内建命令不受影响。说明 shell 传给 `execve` 的参数块没有被正确读出——下一轮从这里入手。
 
 另一个纠正：被拒绝的字符是 **`0xff`**，不是空格——终端把它渲染成了不可见字符，导致前一轮在字符串里找一个根本不存在的空格。
 
