@@ -13,6 +13,17 @@
 #define E2_SYS_clone 220
 #define E2_SYS_execve 221
 #define E2_SYS_wait4 260
+
+/// Operations for the optional `pathop` callback.
+#define E2_PATHOP_MKDIR 1
+#define E2_PATHOP_UNLINK 2
+#define E2_PATHOP_RMDIR 3
+#define E2_PATHOP_RENAME 4
+#define E2_PATHOP_SYMLINK 5
+#define E2_PATHOP_LINK 6
+#define E2_PATHOP_CHMOD 7
+#define E2_PATHOP_ACCESS 8
+#define E2_PATHOP_UTIME 9
 #define E2_SYS_getcwd 17
 #define E2_SYS_chdir 49
 #define E2_SYS_openat 56
@@ -74,6 +85,12 @@ typedef struct {
     /// Optional: without it, poll reports every open descriptor as ready, which
     /// is correct for regular files and for pipes that hold data.
     int (*pollable)(void *ctx, int fd, int events);
+    /// Filesystem mutations that do not go through an open descriptor, selected
+    /// by `op` (see E2_PATHOP_*). `a` and `b` are guest-relative paths, `mode`
+    /// is a permission or timestamp. Returns 0 or a negative errno. Optional:
+    /// without it every mutating call reports ENOSYS, which is why mkdir, rm,
+    /// ln, chmod and touch all failed at once.
+    int (*pathop)(void *ctx, int op, const char *a, const char *b, unsigned mode);
 } e2_file_ops;
 
 /// Everything the syscall layer needs from its host. The iOS layer will provide

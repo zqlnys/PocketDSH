@@ -36,6 +36,12 @@ while IFS= read -r cmd; do
         pass=$((pass + 1))
     fi
 done <<'EOF'
+rm -rf /tmp/m2d; mkdir -p /tmp/m2d; mkdir /tmp/m2d/d && ls /tmp/m2d
+rm -rf /tmp/m2d; mkdir -p /tmp/m2d; echo hi > /tmp/m2d/a; cp /tmp/m2d/a /tmp/m2d/b && cat /tmp/m2d/b
+rm -rf /tmp/m2d; mkdir -p /tmp/m2d; echo x > /tmp/m2d/a; mv /tmp/m2d/a /tmp/m2d/c && ls /tmp/m2d
+rm -rf /tmp/m2d; mkdir -p /tmp/m2d; ln -s target /tmp/m2d/l && readlink /tmp/m2d/l
+rm -rf /tmp/m2d; mkdir -p /tmp/m2d; touch /tmp/m2d/t; chmod 700 /tmp/m2d/t && ls -l /tmp/m2d/t
+rm -rf /tmp/m2d; mkdir -p /tmp/m2d; touch /tmp/m2d/t && rm /tmp/m2d/t && ls /tmp/m2d | wc -l
 printf 'x1\ny2\nz3\n' > /tmp/m2t; od -c /tmp/m2t
 printf 'x1\ny2\nz3\n' > /tmp/m2t; xxd /tmp/m2t
 printf 'x1\ny2\nz3\n' > /tmp/m2t; cut -c1 /tmp/m2t

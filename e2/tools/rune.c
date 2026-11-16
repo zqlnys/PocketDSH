@@ -192,12 +192,27 @@ static int fs_opendir(void *c, const char *path) {
     closedir(d); return -24;
 }
 static long fs_readdir(void *c, int h, void *buf, size_t buf_size) {
-    (void)buf_size;
     if (h < 0 || h >= 64 || !DIRTAB(c)[h]) return 0;
     struct dirent *e = readdir((DIR *)DIRTAB(c)[h]);
     if (!e) return 0;
-    memcpy(buf, e, sizeof(*e));
-    return 1;
+    // getdents64 returns the length of the record, not a count. Returning 1 made
+    // every recursive walk (find, ls -R) read a single byte per call and stop:
+    // the top-level listing looked fine only because it asks once per entry.
+    const size_t name_len = strlen(e->d_name) + 1;
+    size_t reclen = 19 + name_len;          // 8 + 8 + 2 + 1 header
+    reclen = (reclen + 7) & ~(size_t)7;     // 8-byte aligned
+    if (reclen > buf_size) return 0;
+    uint8_t *out = (uint8_t *)buf;
+    memset(out, 0, reclen);
+    uint64_t ino = (uint64_t)e->d_ino;
+    int64_t off = (int64_t)e->d_off;
+    uint16_t rl = (uint16_t)reclen;
+    memcpy(out, &ino, 8);
+    memcpy(out + 8, &off, 8);
+    memcpy(out + 16, &rl, 2);
+    out[18] = (uint8_t)e->d_type;
+    memcpy(out + 19, e->d_name, name_len);
+    return (long)reclen;
 }
 static long long fs_clock(void *c) {
     (void)c; struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -282,9 +297,65 @@ static int fs_pollable(void *c, int fd, int events) {
     return events;
 }
 
+// Filesystem mutations, resolved under the guest root. Without these mkdir, rm,
+// ln, chmod and touch all failed together - they are the syscalls behind every
+// one of those commands.
+static int fs_pathop(void *c, int op, const char *a, const char *b, unsigned mode) {
+    (void)c;
+    char ha[2048], hb[2048];
+    // A symlink's target is stored verbatim: it is a guest path, not something
+    // to resolve now. Host-resolving it made readlink report /tmp/alpine-root/...
+    if (op == E2_PATHOP_SYMLINK) {
+        snprintf(ha, sizeof(ha), "%s", a);
+    } else {
+        host_path(ha, sizeof(ha), a);
+    }
+    if (b != NULL && b[0] != '\0') host_path(hb, sizeof(hb), b);
+
+    switch (op) {
+    case E2_PATHOP_MKDIR:
+        if (mkdir(ha, mode ? mode : 0755) != 0) return -errno;
+        return 0;
+    case E2_PATHOP_UNLINK:
+        if (unlink(ha) != 0) return -errno;
+        return 0;
+    case E2_PATHOP_RMDIR:
+        if (rmdir(ha) != 0) return -errno;
+        return 0;
+    case E2_PATHOP_RENAME:
+        if (rename(ha, hb) != 0) return -errno;
+        return 0;
+    case E2_PATHOP_SYMLINK:
+        if (symlink(ha, hb) != 0) return -errno;
+        return 0;
+    case E2_PATHOP_LINK:
+        if (link(ha, hb) != 0) return -errno;
+        return 0;
+    case E2_PATHOP_CHMOD:
+        if (chmod(ha, mode) != 0) return -errno;
+        return 0;
+    case E2_PATHOP_ACCESS: {
+        // faccessat's mode uses R_OK/W_OK/X_OK, which already match F_OK-style
+        // bit values here; the host check is the same idea.
+        if (access(ha, (int)mode) != 0) return -errno;
+        return 0;
+    }
+    case E2_PATHOP_UTIME: {
+        struct timespec ts[2];
+        ts[0].tv_sec = (time_t)mode;
+        ts[0].tv_nsec = 0;
+        ts[1] = ts[0];
+        if (utimensat(AT_FDCWD, ha, ts, 0) != 0) return -errno;
+        return 0;
+    }
+    default:
+        return -ENOSYS;
+    }
+}
+
 static const e2_file_ops FS = {fs_open, fs_read, fs_write, fs_close, fs_stat,
                                fs_opendir, fs_readdir, fs_clock, fs_pipe, fs_dup3,
-                               fs_fcntl, fs_readlink, fs_pollable};
+                               fs_fcntl, fs_readlink, fs_pollable, fs_pathop};
 
 
 

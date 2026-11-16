@@ -3219,3 +3219,60 @@ python 的两段多余输出发生在：
 「让 `getpath.py` 不那么关键」入手（例如提供一个最简 `sys.path`），
 或者逐段复现它用到的 Python 操作。
 
+## 文件修改类系统调用整片缺失
+
+系统测文件操作时发现 `mkdir`、`ln`、`chmod`、`rmdir`、`touch` **全部**报
+「Function not implemented」，`mv` 也无法改名。
+
+原因是 **aarch64 上一整类「不经过打开的 fd」的文件系统调用都没有实现**：
+
+| 系统调用 | 号 | 作用 |
+| --- | --- | --- |
+| `mkdirat` | 34 | 建目录 |
+| `unlinkat` | 35 | 删文件 / 删目录 |
+| `symlinkat` | 36 | 建符号链接 |
+| `linkat` | 37 | 建硬链接 |
+| `renameat` | 38 | 改名 |
+| `faccessat` | 48 | 权限检查 |
+| `fchmodat` | 53 | 改权限 |
+| `utimensat` | 88 | 改时间戳 |
+| `umask` | 166 | 创建掩码 |
+
+### 实现方式
+
+在文件层加了一个**可选的** `pathop` 回调，用一个 op 码区分九种操作，
+而不是加九个回调：
+
+```c
+int (*pathop)(void *ctx, int op, const char *a, const char *b, unsigned mode);
+```
+
+### 顺带修掉的两个细节
+
+**1. 符号链接的目标不能解析。** 最初把目标路径也做了宿主映射，于是
+`readlink` 返回 `/tmp/alpine-root/f1` 而不是 `f1`。目标是**要被原样保存的客方路径**。
+
+**2. `umask` 返回的是「之前的掩码」**，不是设置是否成功。返回 ENOSYS 会让
+busybox 的 `mkdir -p` 在第一个 `EEXIST` 之后就停下。
+
+**3. `getdents64` 返回的是记录长度，不是条目数。** 原来固定返回 1，
+导致每次只拿到一个字节——`ls` 顶层还能显示，但 `find` 和 `ls -R` 一走到子目录就停。
+现在按 Linux `dirent64` 布局构造记录（`ino/off/reclen/type/name`，8 字节对齐）。
+
+### 结果
+
+| 命令 | 之前 | 现在 |
+| --- | --- | --- |
+| `mkdir` / `mkdir -p` | 失败 | ✅ |
+| `touch` | Function not implemented | ✅ |
+| `chmod` | 同上 | ✅ |
+| `cp` | 失败 | ✅ |
+| `mv` | 无法改名 | ✅ |
+| `ln -s` + `readlink` | 返回宿主路径 | ✅ 返回 `f1` |
+| `rm` / `rm -rf` | 失败 | ✅ |
+
+M2 从 85 扩到 **91**，加入建目录、复制、改名、符号链接、改权限、删除。
+
+**残留**：`find` 与 `ls -R` 的递归仍会失败——目录被分配到了 fd 0/1/2，
+把标准输出挤掉。这指向 fd 表初始化的另一处问题，是下一轮的目标。
+

@@ -181,6 +181,33 @@ static long sys_poll(e2_machine *m, e2_syscall_env *env, uint64_t fds_addr, uint
     return ready;
 }
 
+/// Runs one filesystem mutation through the optional `pathop` callback.
+///
+/// The `*at` calls take a directory descriptor in a0 and the path in a1; only the
+/// two-argument forms are needed here because nothing in this sandbox passes
+/// AT_FDCWD anything but -100, and the harness resolves relative to the guest
+/// root regardless.
+static long sys_pathop(e2_machine *m, e2_syscall_env *env, int op,
+                       uint64_t path_a, uint64_t path_b, unsigned mode) {
+    if (env->files == NULL || env->files->pathop == NULL) {
+        return -E2_ENOSYS;
+    }
+    char a[2048];
+    const int rc = read_guest_string(m, path_a, a, sizeof(a));
+    if (rc != 0) {
+        return rc;
+    }
+    char b[2048];
+    b[0] = '\0';
+    if (path_b != 0) {
+        const int rc2 = read_guest_string(m, path_b, b, sizeof(b));
+        if (rc2 != 0) {
+            return rc2;
+        }
+    }
+    return env->files->pathop(env->ctx, op, a, b, mode);
+}
+
 e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
     // One line per syscall, opt-in. Comparing this against qemu's -strace is the
     // fastest way to see which operation a program takes and where the two
@@ -225,6 +252,43 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
                 E2_RETURN(-E2_ENOSYS);
             }
             E2_RETURN(sys_writev(m, env, (int)a0, a1, (int)a2));
+        }
+        case 166: {  // umask
+            // Returns the PREVIOUS mask and installs the new one. Reporting
+            // ENOSYS here made busybox's mkdir -p stop after its first EEXIST.
+            static unsigned current_umask = 022;
+            const unsigned previous = current_umask;
+            current_umask = (unsigned)a0 & 0777u;
+            E2_RETURN(previous);
+        }
+        case 34:  // mkdirat
+            E2_RETURN(sys_pathop(m, env, E2_PATHOP_MKDIR, a1, 0, (unsigned)a2));
+        case 35:  // unlinkat
+            // AT_REMOVEDIR (0x200) in a2 selects rmdir over unlink.
+            E2_RETURN(sys_pathop(m, env,
+                                 ((unsigned)a2 & 0x200u) ? E2_PATHOP_RMDIR : E2_PATHOP_UNLINK,
+                                 a1, 0, 0));
+        case 36:  // symlinkat(target, newdirfd, linkpath)
+            E2_RETURN(sys_pathop(m, env, E2_PATHOP_SYMLINK, a0, a2, 0));
+        case 37:  // linkat(olddirfd, oldpath, newdirfd, newpath, flags)
+            E2_RETURN(sys_pathop(m, env, E2_PATHOP_LINK, a1, a3, 0));
+        case 38:  // renameat(olddirfd, oldpath, newdirfd, newpath)
+            E2_RETURN(sys_pathop(m, env, E2_PATHOP_RENAME, a1, a3, 0));
+        case 48:  // faccessat
+            E2_RETURN(sys_pathop(m, env, E2_PATHOP_ACCESS, a1, 0, (unsigned)a2));
+        case 53:  // fchmodat
+            E2_RETURN(sys_pathop(m, env, E2_PATHOP_CHMOD, a1, 0, (unsigned)a2));
+        case 88: {  // utimensat
+            unsigned mode = 0;
+            if (a2 != 0) {
+                // Two timespecs; only the modification second is used.
+                int64_t ts[4];
+                if (e2_memory_read(&m->mem, a2, ts, sizeof(ts)) != 0) {
+                    E2_RETURN(-E2_EFAULT);
+                }
+                mode = (unsigned)ts[2];
+            }
+            E2_RETURN(sys_pathop(m, env, E2_PATHOP_UTIME, a1, 0, mode));
         }
         case 7: {  // poll
             E2_RETURN(sys_poll(m, env, a0, a1, (long)(int32_t)a2));
