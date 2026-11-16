@@ -733,6 +733,49 @@ e2_status e2_step(e2_machine *machine) {
         return E2_OK;
     }
 
+    // --- SIMD: LD1 / ST1, one element into one lane ---
+    // `ld1 {v0.d}[1], [x0]` loads a single element into one lane of a register.
+    // Index comes from Q and S; the element width is size=00 (32-bit) or
+    // 01 (64-bit) in the forms the compiler emits here.
+    if ((insn & 0xBF9F8400u) == 0x0D008400u || (insn & 0xBF9F8400u) == 0x0D008000u) {
+        const bool is_load = BIT(insn, 22) != 0;
+        const unsigned q = BIT(insn, 30);
+        const unsigned s_bit = BIT(insn, 12);
+        const unsigned size2 = BITS(insn, 11, 10);
+        const unsigned rn2 = BITS(insn, 9, 5);
+        const unsigned vt = BITS(insn, 4, 0);
+        const unsigned esize = (size2 == 0) ? 32u : 64u;
+        const unsigned lanes = 128u / esize;
+        const unsigned idx = ((q << 1) | s_bit) & (lanes - 1);
+        const uint64_t addr = e2_read_sp(cpu, rn2);
+        const unsigned bytes = esize / 8;
+        if (is_load) {
+            uint64_t v = 0;
+            if (e2_memory_read(&machine->mem, addr, &v, bytes) != 0) {
+                machine->ctx.reason = "ld1 lane outside mapped memory";
+                return E2_FAULT;
+            }
+            const unsigned bit_off = idx * esize;
+            const int half = bit_off / 64;
+            const unsigned off = bit_off % 64;
+            const uint64_t mask = esize == 64 ? ~0ULL : ((1ULL << esize) - 1);
+            cpu->v[vt][half] = (cpu->v[vt][half] & ~(mask << off)) | ((v & mask) << off);
+        } else {
+            const unsigned bit_off = idx * esize;
+            const int half = bit_off / 64;
+            const unsigned off = bit_off % 64;
+            const uint64_t mask = esize == 64 ? ~0ULL : ((1ULL << esize) - 1);
+            const uint64_t v = (cpu->v[vt][half] >> off) & mask;
+            if (e2_memory_write(&machine->mem, addr, &v, bytes) != 0) {
+                machine->ctx.reason = "st1 lane outside mapped memory";
+                return E2_FAULT;
+            }
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     // --- SIMD: MOVI (immediate) ---
     // libc clears vector registers with `movi vD.16b, #0` before using them, so
     // this appears before any vector arithmetic.
