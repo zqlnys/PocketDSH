@@ -323,6 +323,7 @@ docs/TIER-C.md
 docs/WORKSPACE-MOUNT.md   ← Tier C 项目工作区挂载实现
 docs/PERSISTENT-SHELL.md  ← Tier C 持久 shell 设计与验证
 docs/BUILD-TARGETS.md     ← 发布版 / Lab 版的许可边界与验证方法
+docs/EXECUTION-PROBE.md   ← 真机能否执行运行时加载代码（已定论：不能）
 docs/BUILD.md
 docs/BUILD-INSTALL.md
 docs/PHASE1-VALIDATION.md
@@ -527,6 +528,21 @@ examples/workspace-inspector.dshplugin/
    - 如要做，先明确只支持纯 JS 子集还是远程 Host。
 
 ---
+
+## 11.5 后端路线的实测结论（2026-11-16）
+
+**iOS 真机不能执行运行时加载的代码。** 两条路径都堵：
+
+| 路径 | 真机结果 |
+| --- | --- |
+| 文件映射 + `mprotect(PROT_EXEC)` | `EACCES` |
+| 匿名页 + 拷贝代码 + 跳转 | 进程被内核终止，无信号 |
+
+测试用的是自签构建（带 `get-task-allow`），比商店版宽松，连它都不行。
+
+**因此**：native userland 路线排除，重写后端必须自带 aarch64 解释器，工期 4–6 个月（不是 1–2 个月）。
+
+详见 [EXECUTION-PROBE.md](EXECUTION-PROBE.md)。
 
 ## 12. 下一步建议
 
