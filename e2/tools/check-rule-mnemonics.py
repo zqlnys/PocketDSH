@@ -59,6 +59,10 @@ RULES = [
     ("FP to int (in FP reg)", 0xFFBFFC00, 0x5EA1B800),
     ("SIMD shift immediate", 0x8F000400, 0x0F000400),
     ("Int to FP fixed point", 0xFF3F0000, 0x1E020000),
+    # MOVI and MVNI share this mask; bit 29 selects the complement. A rule that
+    # ignored that bit ran mvni as movi, which is how the regex engine ended up
+    # with zero where it needed all ones.
+    ("MOVI/MVNI", 0x9FF80400, 0x0F000400),
 ]
 
 # llvm reports "unknown" for words that are data rather than instructions; a
@@ -112,6 +116,7 @@ FAMILY = {
                               "sshr", "ushr", "ssra", "usra", "srsra", "ursra",
                               "sri", "sli", "sqshl", "uqshl", "sqshrn", "uqshrn",
                               "shll", "sshll", "ushll", "sqshlu", "scvtf", "ucvtf"},
+    "MOVI/MVNI": {"movi", "mvni", "movi", "orr", "bic", "fmov", "mvni"},
     "Int to FP fixed point": {"scvtf", "ucvtf"},
     "FP to int (in FP reg)": {"fcvtzs", "fcvtzu", "fcvtms", "fcvtps", "fcvtns",
                               "fcvtas", "fcvtmu", "fcvtpu", "fcvtnu", "fcvtau",
