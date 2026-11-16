@@ -856,6 +856,27 @@ static int run_proc(int idx) {
                         (unsigned long long)p->m.cpu.x[19], (unsigned long long)p->m.cpu.x[22],
                         (unsigned long long)p->m.cpu.x[23]);
         }
+        if (getenv("E2_TRACE_FIELD")) {
+            // Watch one 8-byte word across the whole run. Answers the question
+            // "was this never written, or written and then cleared" - which
+            // decides whether to look at the store or at the allocation.
+            static uint64_t last = 0;
+            static int armed = 0;
+            static uint64_t prev_pc = 0;
+            const uint64_t where = strtoull(getenv("E2_TRACE_FIELD"), NULL, 0);
+            uint64_t now = 0;
+            if (e2_memory_read(&p->m.mem, where, &now, 8) == 0) {
+                if (armed && now != last) {
+                    fprintf(stderr, "[field] instr=%llu executed_pc=0x%llx 0x%llx -> 0x%llx\n",
+                            (unsigned long long)p->m.instructions,
+                            (unsigned long long)prev_pc,
+                            (unsigned long long)last, (unsigned long long)now);
+                }
+                last = now;
+                armed = 1;
+            }
+            prev_pc = p->m.cpu.pc;
+        }
         const uint64_t pre_pc = p->m.cpu.pc;
         // Shadow call stack. Chasing a bad argument by re-running with a probe
         // one frame up, over and over, was the slowest part of the last few
