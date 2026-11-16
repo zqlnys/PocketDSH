@@ -213,7 +213,13 @@ relocated=1  kernel_mapped=1
 
 **所以 `dyn[]` 从未被填充**，里面是栈垃圾——`dyn[DT_JMPREL]` 恰好是 `0x40013ba0`、`dyn[DT_PLTREL]` 不是 7，这正好解释了 stride 为什么是 2。
 
-已排除的：`ldso->dynv = 0x400bfd98` 正确，`.dynamic` 内容正确（`DT_PLTREL=7`、`DT_JMPREL=0x13ba0`、`DT_PLTRELSZ=144`），`syms = 0x40005d28` 也正确。**数据全对，是控制流跳过了填充。**
+已排除的：`ldso->dynv = 0x400bfd98` 正确，`.dynamic` 内容正确（`DT_PLTREL=7`、`DT_JMPREL=0x13ba0`、`DT_PLTRELSZ=144`），`syms = 0x40005d28` 也正确。
+
+**但这里有个自相矛盾**：`syms = base + dyn[DT_SYMTAB]`（`0x5d28`）是**正确**的，说明 `decode_vec` 确实正确填充了 `dyn[]`；那么 `dyn[DT_PLTREL]` 也就应该是 7、stride 应该是 3。实测 stride 却是 2。
+
+`kernel_mapped_dso` 只设 `map`/`kernel_mapped`，**不设 `relocated`**；`relocated` 由 `reloc_all` 内部（处理完后）设置。所以第一次 `reloc_all(&ldso)` 应当正常填充 `dyn[]`。
+
+**下一轮**：直接在第一轮 `reloc_all` 的 `do_relocs` 调用点检查栈上的 `dyn[]` 实际内容，看它是被正确填充后又被覆盖，还是从一开始就不对。
 
 步长错位后，`ldr x4, [x28, #8]` 读到的是 `0x910003fda9bf7bfd`——两条指令编码的拼接（`stp x29,x30` + `mov x29,sp`），因为指针滑进了 `.text`。这就是污染来源。
 
