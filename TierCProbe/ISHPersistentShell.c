@@ -16,6 +16,7 @@
 #include "fs/fd.h"
 #include "fs/real.h"
 #include "kernel/calls.h"
+#include "kernel/errno.h"
 #include "kernel/fs.h"
 #include "kernel/init.h"
 #include "kernel/task.h"
@@ -37,6 +38,7 @@ struct pocket_shell {
     pthread_mutex_t io_lock;
     volatile int running;
     volatile int exited;
+    int workspace_read_only;
     char *rootfs;
     char *workspace;
     char error[256];
@@ -52,6 +54,83 @@ static void set_error(char *error, size_t size, const char *text) {
         snprintf(error, size, "%s", text);
     }
 }
+
+// MARK: - Read-only realfs
+
+/// realfs stores MS_READONLY_ in mount->flags but never consults it, so a
+/// read-only workspace needs a wrapper that refuses writes outright. Reads are
+/// forwarded verbatim; every mutating entry point returns EROFS.
+static struct fd *readonly_open(struct mount *mount, const char *path, int flags, int mode) {
+    if ((flags & O_ACCMODE_) != O_RDONLY_ || (flags & (O_CREAT_ | O_TRUNC_ | O_APPEND_))) {
+        return ERR_PTR(_EROFS);
+    }
+    return realfs_open(mount, path, flags, mode);
+}
+
+static int ro_link(struct mount *m, const char *src, const char *dst) {
+    (void)m; (void)src; (void)dst; return _EROFS;
+}
+static int ro_unlink(struct mount *m, const char *path) {
+    (void)m; (void)path; return _EROFS;
+}
+static int ro_rmdir(struct mount *m, const char *path) {
+    (void)m; (void)path; return _EROFS;
+}
+static int ro_rename(struct mount *m, const char *src, const char *dst) {
+    (void)m; (void)src; (void)dst; return _EROFS;
+}
+static int ro_symlink(struct mount *m, const char *target, const char *link) {
+    (void)m; (void)target; (void)link; return _EROFS;
+}
+static int ro_mknod(struct mount *m, const char *path, mode_t_ mode, dev_t_ dev) {
+    (void)m; (void)path; (void)mode; (void)dev; return _EROFS;
+}
+static int ro_mkdir(struct mount *m, const char *path, mode_t_ mode) {
+    (void)m; (void)path; (void)mode; return _EROFS;
+}
+static int ro_setattr(struct mount *m, const char *path, struct attr attr) {
+    (void)m; (void)path; (void)attr; return _EROFS;
+}
+static int ro_fsetattr(struct fd *fd, struct attr attr) {
+    (void)fd; (void)attr; return _EROFS;
+}
+static int ro_utime(struct mount *m, const char *path, struct timespec atime, struct timespec mtime) {
+    (void)m; (void)path; (void)atime; (void)mtime; return _EROFS;
+}
+
+static int readonly_umount(struct mount *mount) {
+    if (mount->root_fd >= 0) {
+        close(mount->root_fd);
+        mount->root_fd = -1;
+    }
+    return 0;
+}
+
+static const struct fs_ops readonly_realfs = {
+    .name = "real-ro", .magic = 0x7265616c,
+    .mount = realfs_mount,
+    .umount = readonly_umount,
+    .statfs = realfs_statfs,
+
+    .open = readonly_open,
+    .readlink = realfs_readlink,
+
+    .link = ro_link,
+    .unlink = ro_unlink,
+    .rmdir = ro_rmdir,
+    .rename = ro_rename,
+    .symlink = ro_symlink,
+    .mknod = ro_mknod,
+    .mkdir = ro_mkdir,
+
+    .stat = realfs_stat,
+    .fstat = realfs_fstat,
+    .setattr = ro_setattr,
+    .fsetattr = ro_fsetattr,
+    .utime = ro_utime,
+    .getpath = realfs_getpath,
+    .flock = realfs_flock,
+};
 
 /// Set while a shell thread is live so the exit hook can flip its flags.
 static pocket_shell *g_exiting_shell = NULL;
@@ -89,7 +168,7 @@ static struct fd *fd_wrap_host(int host_fd, int flags) {
     return fd;
 }
 
-static void pocket_mount_workspace(const char *workspace) {
+static void pocket_mount_workspace(const char *workspace, int read_only) {
     if (workspace == NULL || workspace[0] == '\0') {
         return;
     }
@@ -102,13 +181,14 @@ static void pocket_mount_workspace(const char *workspace) {
     }
 
     do_umount(POCKET_WORKSPACE_POINT);
-    int err = do_mount(&realfs, workspace, POCKET_WORKSPACE_POINT, "", 0);
+    const struct fs_ops *fs = read_only ? &readonly_realfs : &realfs;
+    int err = do_mount(fs, workspace, POCKET_WORKSPACE_POINT, "", 0);
     if (err < 0) {
         dprintf(STDOUT_FILENO, "[workspace] mount failed: errno=%d\n", err);
         return;
     }
-    dprintf(STDOUT_FILENO, "[workspace] mounted %s -> %s\n",
-            workspace, POCKET_WORKSPACE_POINT);
+    dprintf(STDOUT_FILENO, "[workspace] mounted %s -> %s (%s)\n",
+            workspace, POCKET_WORKSPACE_POINT, read_only ? "read-only" : "read-write");
 }
 
 static int install_stdio(pocket_shell *shell) {
@@ -154,7 +234,7 @@ static void *shell_thread(void *argument) {
     create_some_device_nodes();
     do_mount(&procfs, "proc", "/proc", "", 0);
     do_mount(&devptsfs, "devpts", "/dev/pts", "", 0);
-    pocket_mount_workspace(shell->workspace);
+    pocket_mount_workspace(shell->workspace, shell->workspace_read_only);
 
     if (install_stdio(shell) != 0) {
         snprintf(shell->error, sizeof(shell->error), "failed to install stdio pipes");
@@ -176,6 +256,7 @@ static void *shell_thread(void *argument) {
 }
 
 pocket_shell *pocket_shell_start(const char *rootfs, const char *workspace,
+                                 int workspace_read_only,
                                  char *error, size_t error_size) {
     // Callers may hand us an uninitialised buffer; normalise it before any path
     // can read from it.
@@ -216,6 +297,7 @@ pocket_shell *pocket_shell_start(const char *rootfs, const char *workspace,
 
     shell->rootfs = strdup(rootfs);
     shell->workspace = workspace != NULL ? strdup(workspace) : NULL;
+    shell->workspace_read_only = workspace_read_only;
     pthread_mutex_init(&shell->io_lock, NULL);
     shell->running = 1;
 

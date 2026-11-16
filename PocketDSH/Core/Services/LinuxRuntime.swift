@@ -27,8 +27,14 @@ final class LinuxRuntime: ObservableObject {
     private var rootfsURL: URL?
     private var prepared = false
 
+    /// When true the project is mounted read-only at /workspace. Reads work as
+    /// usual; every write returns EROFS. Off by default: the current product
+    /// behaviour is read-write, and flipping the default is a product decision.
+    var workspaceReadOnly = false
+
     private var session: PersistentShellSession?
     private var sessionWorkspace: URL?
+    private var sessionReadOnly = false
     private var lastSessionError = ""
 
     /// True when a persistent session is alive and reusable.
@@ -82,6 +88,7 @@ final class LinuxRuntime: ObservableObject {
         guard let existing = session else { return }
         session = nil
         sessionWorkspace = nil
+        sessionReadOnly = false
         state = .idle
         await Task.detached { existing.stop() }.value
     }
@@ -89,7 +96,9 @@ final class LinuxRuntime: ObservableObject {
     // MARK: - Session lifecycle
 
     private func ensureSession(workspace: URL?) async -> PersistentShellSession? {
-        if let session, session.isRunning, sessionWorkspace == workspace {
+        if let session, session.isRunning,
+           sessionWorkspace == workspace,
+           sessionReadOnly == workspaceReadOnly {
             return session
         }
 
@@ -105,7 +114,12 @@ final class LinuxRuntime: ObservableObject {
 
         state = .starting
         var error = ""
-        guard let created = PersistentShellSession(rootfs: root, workspace: workspace, error: &error) else {
+        guard let created = PersistentShellSession(
+            rootfs: root,
+            workspace: workspace,
+            workspaceReadOnly: workspaceReadOnly,
+            error: &error
+        ) else {
             lastSessionError = error.isEmpty ? "shell failed to start" : error
             state = .failed(lastSessionError)
             return nil
@@ -113,6 +127,7 @@ final class LinuxRuntime: ObservableObject {
 
         session = created
         sessionWorkspace = workspace
+        sessionReadOnly = workspaceReadOnly
         lastSessionError = ""
 
         // Give the emulated kernel a moment to finish exec'ing /bin/sh before the

@@ -21,7 +21,12 @@ typedef struct pocket_shell pocket_shell;
 
 /// Starts a shell. `workspace` may be NULL to skip the /workspace mount.
 /// Returns NULL on failure and writes a reason into `error` when provided.
+///
+/// `workspace_read_only` mounts the workspace through a wrapper that rejects
+/// every write (iSH's realfs stores mount flags but never enforces them, so the
+/// flag alone would be cosmetic). Pass 0 for the read-write behaviour.
 pocket_shell *pocket_shell_start(const char *rootfs, const char *workspace,
+                                 int workspace_read_only,
                                  char *error, size_t error_size);
 
 /// Sends one command and collects output until the sentinel arrives or the

@@ -15,15 +15,20 @@ final class PersistentShellSession: @unchecked Sendable {
 
     /// Starts the shell for `rootfs`, optionally mounting `workspace` at
     /// `/workspace`. Returns nil and fills `error` when the guest fails to boot.
-    init?(rootfs: URL, workspace: URL?, error: inout String) {
+    /// `workspaceReadOnly` mounts the project through a wrapper that rejects
+    /// writes. iSH's realfs records the mount flag but never enforces it, so the
+    /// flag alone would be cosmetic and the guest would silently mutate project
+    /// files outside WorkspaceFileSystem's backups and path guards.
+    init?(rootfs: URL, workspace: URL?, workspaceReadOnly: Bool = false, error: inout String) {
         var buffer = [CChar](repeating: 0, count: 256)
+        let readOnlyFlag: Int32 = workspaceReadOnly ? 1 : 0
         let created: OpaquePointer? = rootfs.path.withCString { rootPointer in
             if let workspace {
                 return workspace.path.withCString { workspacePointer in
-                    pocket_shell_start(rootPointer, workspacePointer, &buffer, buffer.count)
+                    pocket_shell_start(rootPointer, workspacePointer, readOnlyFlag, &buffer, buffer.count)
                 }
             }
-            return pocket_shell_start(rootPointer, nil, &buffer, buffer.count)
+            return pocket_shell_start(rootPointer, nil, readOnlyFlag, &buffer, buffer.count)
         }
         guard let created else {
             error = String(cString: buffer)
