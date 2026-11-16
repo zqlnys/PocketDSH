@@ -671,8 +671,12 @@ e2_status e2_step(e2_machine *machine) {
     // 32x32 -> 64 widen-multiply with accumulate. `umull xD, wN, wM` is UMADDL
     // with Ra=XZR; compilers emit these for any 32-bit multiply whose result is
     // held in 64 bits, so they appear in ordinary integer code.
+    //
+    // Unsigned is selected by bit 23, not bit 22: UMADDL is 101 while SMADDL is
+    // 001 in bits 23-21. Testing bit 22 sign-extended the operands, so an
+    // unsigned product came back as 0xFFFFFFFF_00000000.
     if ((insn & 0x7F200000u) == 0x1B200000u) {
-        const bool is_unsigned = BIT(insn, 22) != 0;
+        const bool is_unsigned = BIT(insn, 23) != 0;
         const bool is_sub = BIT(insn, 15) != 0;
         const unsigned rm = BITS(insn, 20, 16);
         const unsigned ra = BITS(insn, 14, 10);
@@ -693,9 +697,9 @@ e2_status e2_step(e2_machine *machine) {
         return E2_OK;
     }
 
-    // --- SMULH / UMULH (Ra field is 11111; bit 22 selects signed vs unsigned) ---
+    // --- SMULH / UMULH (Ra field is 11111; bit 23 selects signed vs unsigned) ---
     if ((insn & 0x7FE0FC00u) == 0x1B407C00u || (insn & 0x7FE0FC00u) == 0x1BC07C00u) {
-        const bool is_unsigned = BIT(insn, 22) != 0;
+        const bool is_unsigned = BIT(insn, 23) != 0;
         const unsigned rm = BITS(insn, 20, 16);
         const unsigned rn2 = BITS(insn, 9, 5);
 

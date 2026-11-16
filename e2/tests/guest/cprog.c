@@ -97,15 +97,14 @@ void _start(void) {
     emit_num(point_sum(p));
     emit("\n");
 
-    // Report the raw buffer too, so a wrong checksum can be traced to the fill
-    // loop or to the checksum loop.
-    emit("data=");
-    for (int i = 0; i < 8; i++) {
-        emit_num(data[i]);
-        emit(",");
-    }
+    // Report through an explicitly-typed int so a byte-vs-int difference in the
+    // call path is visible rather than conflated with the renderer.
+    emit("d0=");
+    { int v0 = (int)data[0]; emit_num(v0); }
     emit("\n");
-
+    emit("d1=");
+    { int v1 = (int)data[1]; emit_num(v1); }
+    emit("\n");
     emit("idx=");
     { int t = 0; for (int i = 0; i < 32; i++) t += data[i]; emit_num(t); }
     emit("\n");

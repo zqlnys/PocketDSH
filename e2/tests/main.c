@@ -565,6 +565,47 @@ static void test_function_calls(void) {
     free(image);
 }
 
+/// Multiplication families: 32-bit wraparound, 64-bit product, multiply-add,
+/// multiply-subtract, and widen-multiply. The widen case is what caught the
+/// signed/unsigned selector being the wrong bit.
+static void test_multiplication(void) {
+    printf("multiplication families\n");
+    FILE *f = fopen("tests/guest/mul.elf", "rb");
+    if (f == NULL) {
+        printf("  SKIP (tests/guest/mul.elf not built)\n");
+        return;
+    }
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    uint8_t *image = (uint8_t *)malloc((size_t)size);
+    if (image == NULL || fread(image, 1, (size_t)size, f) != (size_t)size) {
+        fclose(f);
+        free(image);
+        CHECK(0, "could not read mul.elf");
+        return;
+    }
+    fclose(f);
+
+    e2_machine m;
+    e2_machine_init(&m, 0, 1 << 20);
+    e2_loaded_image info = {0};
+    e2_load_result lr = e2_load_elf_full(&m, image, (size_t)size, true, &info);
+    CHECK(lr == E2_LOAD_OK, "load: %s", e2_load_result_name(lr));
+
+    if (lr == E2_LOAD_OK) {
+        capture cap = {0};
+        e2_syscall_env env = {.write = capture_write, .exit = capture_exit, .ctx = &cap};
+        e2_status st = run_program(&m, &env, 100000);
+        CHECK(st == E2_HALTED, "expected halt, got %s (%s)", e2_status_name(st),
+              m.ctx.reason ? m.ctx.reason : "-");
+        CHECK(cap.status == 0, "failing case index %d", cap.status);
+    }
+
+    e2_machine_destroy(&m);
+    free(image);
+}
+
 static void test_pie_relocation(void) {
     printf("PIE load bias and RELATIVE relocation\n");
     e2_machine m;
@@ -696,6 +737,7 @@ int main(void) {
     test_load_real_elf();
     test_recursive_fib_elf();
     test_simd_memset_elf();
+    test_multiplication();
     test_function_calls();
     test_compiled_c_program();
     test_pie_relocation();
