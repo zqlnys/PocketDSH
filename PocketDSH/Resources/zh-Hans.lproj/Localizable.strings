@@ -227,3 +227,8 @@
 /* API key test button in Settings. */
 "Test" = "测试";
 "Enter a key first." = "请先输入密钥。";
+
+/* Settings group headers. */
+"Connection" = "连接";
+"About this build" = "关于此构建";
+"Tier C · Experimental" = "Tier C · 实验性";

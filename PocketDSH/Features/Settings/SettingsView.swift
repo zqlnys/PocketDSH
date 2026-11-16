@@ -23,14 +23,29 @@ struct SettingsView: View {
                     .ignoresSafeArea()
 
                 ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 18) {
+                    // Nine cards in one column is a long scroll with nothing to
+                    // aim at. Grouping them gives the screen three landmarks -
+                    // what the agent talks to, what runs locally, and what this
+                    // build is - so a setting can be found by category rather
+                    // than by scrolling until it appears.
+                    VStack(alignment: .leading, spacing: PocketSpacing.lg) {
+                        SectionLabel(title: "Connection")
                         apiKeyCard
                         modelCard
                         languageCard
+
+                        SectionLabel(title: "Workspace")
+                            .padding(.top, PocketSpacing.sm)
                         pluginsCard
+
+                        SectionLabel(title: "Local runtime")
+                            .padding(.top, PocketSpacing.sm)
                         runtimeCard
                         jitCard
                         tierCCard
+
+                        SectionLabel(title: "About this build")
+                            .padding(.top, PocketSpacing.sm)
                         compatibilityCard
                         aboutCard
                     }
