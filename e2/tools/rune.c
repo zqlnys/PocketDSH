@@ -39,6 +39,11 @@ static const char *ROOT = "/tmp/alpine-root";
 // One descriptor table per process: fork must copy it and exec must keep it, so
 // a single global table let a child's dup3 rewrite the parent's descriptors.
 typedef struct { int fdtab; } procctx;
+
+// Children only run when someone calls run_proc for them. That used to happen
+// exclusively inside wait4, which deadlocks the moment a parent reads a pipe
+// before waiting - which is exactly what $(...) does.
+static int pump_children_for_tab(int tab);
 static struct { int used, host; } g_fds[16][64];
 static void *g_dirs[16][64];
 static unsigned char g_cloexec[16][64];
@@ -105,8 +110,15 @@ static int fs_open(void *c, const char *path, int fl, int m) {
 }
 static long fs_read(void *c, int fd, void *b, size_t n, long long o) {
     if (fd < 0 || fd >= 64 || !TAB(c)[fd].used) return -EBADF;
-    ssize_t r = o < 0 ? read(TAB(c)[fd].host, b, n) : pread(TAB(c)[fd].host, b, n, o);
-    return r < 0 ? -errno : (long)r;
+    for (;;) {
+        ssize_t r = o < 0 ? read(TAB(c)[fd].host, b, n) : pread(TAB(c)[fd].host, b, n, o);
+        if (r >= 0) return (long)r;
+        if (errno != EAGAIN && errno != EWOULDBLOCK) return -errno;
+        // Nothing to read yet. A child can only make progress if we run it, so
+        // do that and try again; when no child is left the pipe really is at
+        // end of file.
+        if (!pump_children_for_tab(((const procctx *)c)->fdtab)) return 0;
+    }
 }
 static long fs_write(void *c, int fd, const void *b, size_t n, long long o) {
     (void)o;
@@ -167,6 +179,9 @@ static int fs_pipe(void *c, int fds[2]) {
     const int tab = ((const procctx *)c)->fdtab;
     int p[2];
     if (pipe(p) != 0) return -errno;
+    // The read end never blocks the harness: fs_read turns EAGAIN into "run the
+    // writer", which is what keeps a parent that reads before waiting alive.
+    fcntl(p[0], F_SETFL, fcntl(p[0], F_GETFL, 0) | O_NONBLOCK);
     host_ref(p[0]);
     host_ref(p[1]);
     const int a = fd_alloc_tab(tab, p[0]);
@@ -473,6 +488,26 @@ static int p_execve(void *ctx, e2_machine *m, const char *path, uint64_t argv,
         }
     }
     return start_image(m, host, args, nargs, envs, nenv);
+}
+
+/// Runs one live child of the process owning `tab`, returning how many ran.
+///
+/// Called from fs_read when a pipe has no data: the writer is a child that will
+/// never execute otherwise, because children only advance inside wait4.
+static int pump_children_for_tab(int tab) {
+    proc_t *self = NULL;
+    for (int i = 0; i < 16; i++) {
+        if (procs[i].used && procs[i].pc.fdtab == tab) { self = &procs[i]; break; }
+    }
+    if (self == NULL) return 0;
+    int ran = 0;
+    for (int i = 1; i < 16; i++) {
+        proc_t *c = &procs[i];
+        if (!c->used || !c->alive || c->ppid != self->pid) continue;
+        run_proc(i);
+        ran++;
+    }
+    return ran;
 }
 
 static long p_wait4(void *ctx, int pid, uint64_t status_ptr, int options) {
@@ -1245,9 +1280,17 @@ static int run_proc(int idx) {
                             (unsigned long long)off, (unsigned long long)v);
                 }
             }
-            if (getenv("E2_TRACE_REGIONS"))
+            if (getenv("E2_TRACE_REGIONS")) {
                 fprintf(stderr, "[regions] %u in use (max %d)\n",
                         p->m.mem.count, E2_MAX_REGIONS);
+                for (unsigned k = 0; k < p->m.mem.count; k++) {
+                    const e2_region *rg = &p->m.mem.regions[k];
+                    const uint64_t lo = rg->base, hi = rg->base + rg->size;
+                    fprintf(stderr, "[region] 0x%llx..0x%llx prot=%d%s\n",
+                            (unsigned long long)lo, (unsigned long long)hi, rg->prot,
+                            (lo <= 0x10006000ULL && 0x10006000ULL < hi) ? "  <-- covers fault" : "");
+                }
+            }
             if (getenv("E2_TRACE_CODE")) {
                 // The binary on disk and the image in memory are not always at
                 // the same offsets, so disassembling the file can mislead. Dump
