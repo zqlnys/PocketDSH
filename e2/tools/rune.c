@@ -495,6 +495,7 @@ static int run_proc(int idx) {
     // preceding instructions rather than the faulting one.
     struct { uint64_t pc, insn, x0, x1, x19, x20, x23; } hist[256];
     unsigned hist_at = 0, hist_n = 0;
+    long syscalls_seen = 0;
     long guard = 0;
     while (p->alive) {
         hist[hist_at].pc = p->m.cpu.pc;
@@ -514,7 +515,31 @@ static int run_proc(int idx) {
         hist[hist_at].x23 = p->m.cpu.x[23];
         hist_at = (hist_at + 1) % 256;
         if (hist_n < 256) hist_n++;
-        if (++guard > 400000000L) { snprintf(g_reason, sizeof(g_reason), "instruction cap"); g_fault = 1; break; }
+        if (getenv("E2_TRACE_PROGRESS") && (guard % 5000000L) == 0 && guard > 0) {
+            // Sampling the pc tells "slow" from "stuck": a loop shows the same
+            // handful of addresses every sample.
+            fprintf(stderr, "[progress] %ld instr pc=0x%llx syscalls_so_far=%ld\n",
+                    guard, (unsigned long long)p->m.cpu.pc, syscalls_seen);
+        }
+        if (++guard > 60000000L) {
+            snprintf(g_reason, sizeof(g_reason), "instruction cap");
+            g_fault = 1;
+            if (getenv("E2_TRACE_HIST")) {
+                fprintf(stderr, "[hist] loop body:\n");
+                for (unsigned k = 0; k < hist_n; k++) {
+                    const unsigned hidx = (hist_at + 256 - hist_n + k) % 256;
+                    fprintf(stderr, "  pc=0x%llx insn=0x%08llx x0=0x%llx x1=0x%llx x19=0x%llx x20=0x%llx x23=0x%llx\n",
+                            (unsigned long long)hist[hidx].pc,
+                            (unsigned long long)hist[hidx].insn,
+                            (unsigned long long)hist[hidx].x0,
+                            (unsigned long long)hist[hidx].x1,
+                            (unsigned long long)hist[hidx].x19,
+                            (unsigned long long)hist[hidx].x20,
+                            (unsigned long long)hist[hidx].x23);
+                }
+            }
+            break;
+        }
         if (getenv("E2_TRACE_GREP") && p->m.cpu.pc == 0x4c4408) {
             static int ng = 0;
             if (ng == 0) {
@@ -538,6 +563,7 @@ static int run_proc(int idx) {
                 fprintf(stderr, "[p%d] sys %llu a0=%llu a1=%llu a2=%llu\n", p->pid,
                         (unsigned long long)pn, (unsigned long long)p->m.cpu.x[0],
                         (unsigned long long)p->m.cpu.x[1], (unsigned long long)p->m.cpu.x[2]);
+            syscalls_seen++;
             st = e2_service_syscall(&p->m, &env);
             const long long a0_before = (long long)p->m.cpu.x[0];
             (void)a0_before;
