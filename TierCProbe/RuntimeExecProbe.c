@@ -65,6 +65,50 @@ static void restore_signal_guards(const struct sigaction old_actions[3]) {
     }
 }
 
+/// Maps an anonymous RWX page, copies the machine code into it and runs it.
+///
+/// This is the loader shape a native userland would use when file-backed
+/// execution is refused: the bytes never live in a signed file, they are copied
+/// into memory the process owns.
+static void probe_anonymous_execution(pocket_exec_probe_result *out, long page) {
+    out->anon_execute_status = -1;
+
+    void *mapping = mmap(NULL, (size_t)page,
+                         PROT_READ | PROT_WRITE | PROT_EXEC,
+                         MAP_PRIVATE | MAP_ANON, -1, 0);
+    if (mapping == MAP_FAILED) {
+        out->anon_exec_map_errno = errno;
+        return;
+    }
+    out->anon_exec_map_errno = 0;
+
+    memcpy(mapping, kReturnFortyTwo, sizeof(kReturnFortyTwo));
+#if defined(__APPLE__)
+    sys_icache_invalidate(mapping, (size_t)page);
+#else
+    __builtin___clear_cache((char *)mapping, (char *)mapping + page);
+#endif
+
+    struct sigaction old_actions[3];
+    if (install_signal_guards(old_actions) != 0) {
+        munmap(mapping, (size_t)page);
+        return;
+    }
+
+    g_caught_signal = 0;
+    if (sigsetjmp(g_jump, 1) == 0) {
+        int (*code)(void) = (int (*)(void))mapping;
+        int value = code();
+        out->anon_execute_status = 0;
+        out->execute_value = value;
+    } else {
+        out->anon_execute_status = (int)g_caught_signal;
+    }
+
+    restore_signal_guards(old_actions);
+    munmap(mapping, (size_t)page);
+}
+
 static int probe_anonymous_exec(pocket_exec_probe_result *out) {
     long page = sysconf(_SC_PAGESIZE);
     if (page <= 0) {
@@ -152,6 +196,7 @@ int pocket_exec_probe(pocket_exec_probe_result *out) {
     }
 
     probe_anonymous_exec(out);
+    probe_anonymous_execution(out, page);
 
     char path[1024];
     int map_errno = 0;
@@ -166,9 +211,9 @@ int pocket_exec_probe(pocket_exec_probe_result *out) {
         }
         unlink(path);
         snprintf(out->detail, sizeof(out->detail),
-                 "anon_exec=%d file_map=%d file_protect=%d execution=skipped",
-                 out->anonymous_exec_errno, out->file_map_errno,
-                 out->file_protect_errno);
+                 "anon_map=%d anon_exec=%d file_map=%d file_protect=%d file_exec=skipped",
+                 out->anonymous_exec_errno, out->anon_execute_status,
+                 out->file_map_errno, out->file_protect_errno);
         return 0;
     }
 
@@ -197,16 +242,9 @@ int pocket_exec_probe(pocket_exec_probe_result *out) {
     munmap(mapping, (size_t)page);
     unlink(path);
 
-    if (out->execute_status == 0) {
-        snprintf(out->detail, sizeof(out->detail),
-                 "anon_exec=%d file_map=%d file_protect=%d executed=ok value=%d",
-                 out->anonymous_exec_errno, out->file_map_errno,
-                 out->file_protect_errno, out->execute_value);
-    } else {
-        snprintf(out->detail, sizeof(out->detail),
-                 "anon_exec=%d file_map=%d file_protect=%d executed=signal:%d",
-                 out->anonymous_exec_errno, out->file_map_errno,
-                 out->file_protect_errno, out->execute_status);
-    }
+    snprintf(out->detail, sizeof(out->detail),
+             "anon_map=%d anon_exec=%d file_map=%d file_protect=%d file_exec=%d",
+             out->anonymous_exec_errno, out->anon_execute_status,
+             out->file_map_errno, out->file_protect_errno, out->execute_status);
     return 0;
 }

@@ -21,29 +21,36 @@ enum ExecutionProbe {
         let fileProtectErrno: Int32
         let executeStatus: Int32
         let executeValue: Int32
+        let anonExecMapErrno: Int32
+        let anonExecuteStatus: Int32
         let detail: String
 
-        var executedSuccessfully: Bool {
+        /// File-backed path: code lives in a file, mapping is promoted to exec.
+        /// Refused when the file is not code-signed.
+        var fileBackedExecuted: Bool {
             executeStatus == 0 && executeValue == 42
         }
 
-        /// Mapping and permission promotion both worked, so only the execution
-        /// step decided the outcome.
-        var codeWasMappable: Bool {
-            fileMapErrno == 0 && fileProtectErrno == 0
+        /// Anonymous path: code is copied into memory the process owns.
+        /// This is the loader shape that matters if files must be signed.
+        var anonymousExecuted: Bool {
+            anonExecuteStatus == 0 && executeValue == 42
         }
 
         var verdict: String {
-            if executedSuccessfully {
-                return "Executed loaded code (returned 42). A native aarch64 userland is viable."
+            if fileBackedExecuted {
+                return "File-backed execution works (returned 42). A native aarch64 userland is viable."
             }
-            if codeWasMappable {
-                return "Code mapped and was marked executable, but running it faulted (signal \(executeStatus)). The backend will need an interpreter."
+            if anonymousExecuted {
+                return "Anonymous-page execution works (returned 42). A native userland is viable with a loader that copies ELF segments into memory."
             }
-            if fileMapErrno != 0 {
-                return "Could not map the code file (errno \(fileMapErrno))."
+            if anonExecuteStatus > 0 {
+                return "Anonymous page was mapped but running copied code faulted (signal \(anonExecuteStatus)). The backend will need an interpreter."
             }
-            return "mprotect(PROT_EXEC) was refused (errno \(fileProtectErrno)). The backend will need an interpreter."
+            if fileProtectErrno != 0 {
+                return "Neither path executes runtime code: file mapping was refused (errno \(fileProtectErrno)) and the anonymous page could not run copied code. The backend will need an interpreter."
+            }
+            return "Could not establish either execution path."
         }
 
         var environmentNote: String {
@@ -65,6 +72,8 @@ enum ExecutionProbe {
                 fileProtectErrno: 0,
                 executeStatus: -1,
                 executeValue: 0,
+                anonExecMapErrno: 0,
+                anonExecuteStatus: -1,
                 detail: "probe failed to run (status \(status))"
             )
         }
@@ -74,6 +83,8 @@ enum ExecutionProbe {
             fileProtectErrno: result.file_protect_errno,
             executeStatus: result.execute_status,
             executeValue: result.execute_value,
+            anonExecMapErrno: result.anon_exec_map_errno,
+            anonExecuteStatus: result.anon_execute_status,
             detail: withUnsafeBytes(of: result.detail) { raw in
                 String(cString: raw.bindMemory(to: CChar.self).baseAddress!)
             }

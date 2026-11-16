@@ -34,11 +34,21 @@ struct ExecProbeView: View {
                             report.fileProtectErrno == 0
                                 ? "granted"
                                 : "denied (errno \(report.fileProtectErrno))")
-                        row("execute loaded code",
+                        row("execute code mapped from file",
                             report.executeStatus == 0
                                 ? "returned \(report.executeValue)"
                                 : report.executeStatus > 0
                                     ? "faulted (signal \(report.executeStatus))"
+                                    : "not attempted")
+                        row("map anonymous page writable+executable",
+                            report.anonExecMapErrno == 0
+                                ? "granted"
+                                : "denied (errno \(report.anonExecMapErrno))")
+                        row("execute code copied into anonymous page",
+                            report.anonExecuteStatus == 0
+                                ? "returned \(report.executeValue)"
+                                : report.anonExecuteStatus > 0
+                                    ? "faulted (signal \(report.anonExecuteStatus))"
                                     : "not attempted")
 
                         Divider().overlay(PocketTheme.stroke)

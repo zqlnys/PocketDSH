@@ -25,7 +25,21 @@ typedef struct {
     /// -1 when execution was not attempted (mapping or mprotect failed).
     /// 0 when the loaded code ran and returned.
     /// Otherwise the signal number that fired.
+    ///
+    /// This path maps the code from a file, so it is refused when the file is
+    /// not code-signed. The anonymous path below covers the other loader shape.
     int execute_status;
+
+    /// 0 when an anonymous page was mapped writable+executable, otherwise errno.
+    int anon_exec_map_errno;
+
+    /// -1 when the anonymous execution was not attempted.
+    /// 0 when code copied into an anonymous page ran and returned 42.
+    /// Otherwise the signal number that fired.
+    ///
+    /// This is the loader shape that matters if file-backed execution is refused:
+    /// read the ELF, copy its segments into anonymous executable memory, jump.
+    int anon_execute_status;
 
     /// Return value from the loaded code when execute_status == 0.
     int execute_value;
