@@ -35,12 +35,50 @@
 | 插件受控操作工作区 | workspace.read/write/search 权限 | **已实现** |
 | Cordis 插件加载 | 需要 Node + Cordis 运行时 | 未实现 |
 | Node 原生扩展 | iOS 不能加载任意 `.node` 原生模块 | 不兼容 |
-| Bash / PowerShell / tmux | iOS 无 fork/exec 和系统 shell | 不兼容 |
+| Bash / PowerShell / tmux | iOS 无系统 shell；App 内自带 E2 Linux 后端可提供自有 shell（见下） | 部分替代 |
 | ripgrep 二进制工具 | 不能启动任意二进制；本地用 Swift 搜索 | 不兼容 |
 | MCP 客户端 | 未实现；需要独立传输与权限模型 | 未实现 |
 | DSH session log 格式 | 自有 JSON 格式 | 未实现 |
 | DSH profile / bundle 配置 | 自有 SwiftUI/AppState | 不兼容 |
 | 子 Agent / Agent Team | 未实现 | 未实现 |
+
+## App 内 Linux 后端（E2）
+
+E2 是自写的 aarch64 解释器 + syscall 层，不复用 iSH 的 GPL 代码。它改变的不只是
+「能不能跑 Linux 程序」，而是上面几条「不兼容」的前提。
+
+| 里程碑 | 状态 | 可复现证据 |
+| --- | --- | --- |
+| M1 解释器跑通 hello world | 完成 | 78 项单指令/程序测试 |
+| M2 syscall 层 + busybox 基础命令 | 完成 | `busybox ls` 列出目录，105,783 条指令，exit 0 |
+| M3 sh 脚本 / 管道 / 重定向 | 完成 | `ls \| wc -l` = 17、`echo hi \| cat`、`printf ... \| wc -l` = 2 |
+| M4 python 脚本 | **未完成** | CPython 3.12.13 能启动并打印版本；执行代码仍失败 |
+
+因此：
+
+- **shell 不再是「不兼容」**，而是「由自有后端提供、与系统 shell 不同」；
+- 后端跑在解释器里，**没有真实 fork/exec 到 iOS 系统**，语义边界与真机进程不同；
+- **iOS 薄封装尚未开始**，上述结果全部来自 Linux 上的 `tools/rune` 宿主。
+  Xcode 工程改动无法在 Linux 验证，所以不宣称已可用。
+
+## 与桌面 DSH 的工具对比
+
+桌面 DSH 的工具集（`bash`、`read`、`write`、`edit`、`glob`、`grep`、`web_search`、
+`web_fetch`、`todo_write`、`subagent`、`skill`、`schedule_*`、`present`）与 PocketDSH
+当前提供的 11 个工具相比，缺口是：
+
+| 桌面 DSH 能力 | PocketDSH | 说明 |
+| --- | --- | --- |
+| `web_search` / `web_fetch` | **缺失** | 最值得补：Agent 无法查资料，只能读本地文件 |
+| `todo_write` | **缺失** | 多步任务无进度可视化 |
+| `subagent` / 并行委派 | **缺失** | 单 Agent 串行执行 |
+| `skill` 技能目录 | **缺失** | 无按需加载的能力包 |
+| `bash` | 部分 | `run_linux` 依赖 E2，M4 未完成 |
+| `grep` 正则 | 部分 | `search_files` 是字面搜索，非正则 |
+| `schedule_*` | 等价 | 有 `schedule_alert` / `schedule_reminder`，但只到通知/提醒 |
+| `present` 交付物 | **缺失** | 无文件卡片式交付 |
+
+按对体验的影响排序，补的优先级应是：**web 抓取 → todo 进度 → present**。
 
 ## 工具名称映射
 
