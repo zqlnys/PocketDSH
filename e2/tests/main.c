@@ -1783,6 +1783,36 @@ static void test_scalar_immediates(void) {
         e2_memory_destroy(&m.mem);
     }
 
+    {
+        // fmov between a general register and an FP register moves the BITS, not
+        // the value: fmov d1, x0 with x0 holding a double's pattern gives that
+        // double back. musl's pow ends with exactly this pair, so getting it
+        // wrong corrupts the result at the last step.
+        e2_machine m;
+        e2_machine_init(&m, 0, 1 << 20);
+        const uint64_t at = 0x30000000ULL;
+        e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+
+        const double two = 2.0;
+        uint64_t bits = 0;
+        memcpy(&bits, &two, 8);
+        uint32_t insn = 0x9E670001u;   // fmov d1, x0
+        e2_memory_write(&m.mem, at, &insn, 4);
+        m.cpu.x[0] = bits;
+        m.cpu.pc = at;
+        e2_step(&m);
+        CHECK(m.cpu.v[1][0] == bits, "fmov d1, x0 copies the bits verbatim");
+
+        uint32_t back = 0x9E660001u;   // fmov x1, d0
+        e2_memory_write(&m.mem, at, &back, 4);
+        memcpy(&m.cpu.v[0][0], &two, 8);
+        m.cpu.x[1] = 0;
+        m.cpu.pc = at;
+        e2_step(&m);
+        CHECK(m.cpu.x[1] == bits, "fmov x1, d0 copies the bits back");
+        e2_memory_destroy(&m.mem);
+    }
+
     // UMOV moves a vector element into a general register. musl's memset does
     // `mov x1, v0.d[0]` to materialise the replicated byte pattern, so a broken
     // UMOV silently turned every memset into a zero fill. It used to decode as
