@@ -627,6 +627,39 @@ e2_status e2_step(e2_machine *machine) {
         return E2_OK;
     }
 
+    // --- FMOV (scalar, immediate) ---
+    // The 8-bit immediate expands to a float by a fixed bit pattern: bit7 is the
+    // sign, bit6 picks the exponent range, bits5-4 continue the exponent and
+    // bits3-0 start the fraction. Verified against the assembler:
+    //   #0.5 -> imm8 0x60 -> exp 126,  #2.0 -> imm8 0x00 -> exp 128.
+    if ((insn & 0xFF201FE0u) == 0x1E201000u) {
+        const unsigned ftype = BITS(insn, 23, 22);
+        const unsigned imm8 = BITS(insn, 20, 13);
+        const unsigned b6 = (imm8 >> 6) & 1;
+        const unsigned c = (imm8 >> 5) & 1;
+        const unsigned d = (imm8 >> 4) & 1;
+        const uint64_t frac = (uint64_t)(imm8 & 0xF);
+        if (ftype == 0) {                      // single
+            const unsigned exp = ((1u - b6) << 7) | (b6 ? 0x7Cu : 0u) | (c << 1) | d;
+            const uint32_t bits = ((uint32_t)(imm8 >> 7) << 31) | (exp << 23) |
+                                  ((uint32_t)frac << 19);
+            cpu->v[rd][0] = bits;
+            cpu->v[rd][1] = 0;
+        } else if (ftype == 1) {               // double
+            const unsigned exp = ((1u - b6) << 10) | (b6 ? 0x3FCu : 0u) | (c << 1) | d;
+            const uint64_t bits = ((uint64_t)(imm8 >> 7) << 63) | ((uint64_t)exp << 52) |
+                                  (frac << 48);
+            cpu->v[rd][0] = bits;
+            cpu->v[rd][1] = 0;
+        } else {
+            machine->ctx.reason = "unimplemented FMOV immediate type";
+            return E2_UNIMPL;
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     // --- FMOV between a general register and a scalar FP register ---
     // Shells and printf format float output through these, so they show up as
     // soon as a program that prints a number runs.
