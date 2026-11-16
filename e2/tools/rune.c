@@ -487,7 +487,7 @@ static long p_wait4(void *ctx, int pid, uint64_t status_ptr, int options) {
 }
 
 static int g_fault = 0;
-static char g_reason[96];
+static char g_reason[512];
 
 static int run_proc(int idx) {
     proc_t *p = &procs[idx];
@@ -732,6 +732,22 @@ static int run_proc(int idx) {
             }
             if (ng < 8) ng++;
         }
+        if (getenv("E2_TRACE_CALLER") && p->m.cpu.pc == 0x101a61ac) {
+            static int nc = 0;
+            if (++nc < 12)
+                fprintf(stderr, "[caller] struct=0x%llx field+8=0x%llx x0=0x%llx\n",
+                        (unsigned long long)p->m.cpu.x[19],
+                        (unsigned long long)p->m.cpu.x[0],
+                        (unsigned long long)p->m.cpu.x[0]);
+        }
+        if (getenv("E2_TRACE_ENTRY") && p->m.cpu.pc == 0x101669a4) {
+            static int ne = 0;
+            if (++ne < 40)
+                fprintf(stderr, "[entry] x0=0x%llx lr=0x%llx tpidr=0x%llx\n",
+                        (unsigned long long)p->m.cpu.x[0],
+                        (unsigned long long)p->m.cpu.x[30],
+                        (unsigned long long)p->m.cpu.tpidr_el0);
+        }
         if (getenv("E2_TRACE_WINDOW")) {
             static long wmark = -1;
             static uint64_t wbuf[400];
@@ -823,7 +839,7 @@ static int run_proc(int idx) {
         }
         if (st != E2_OK) {
             snprintf(g_reason, sizeof(g_reason),
-                     "%s addr=0x%llx pid=%d pc=0x%llx insn=0x%08x x0=0x%llx x1=0x%llx x2=0x%llx x19=0x%llx x21=0x%llx sp=0x%llx",
+                     "%s addr=0x%llx pid=%d pc=0x%llx insn=0x%08x x0=0x%llx x1=0x%llx x2=0x%llx x19=0x%llx x21=0x%llx x30=0x%llx sp=0x%llx",
                      p->m.ctx.reason ? p->m.ctx.reason : "?",
                      (unsigned long long)p->m.ctx.fault_addr, p->pid,
                      (unsigned long long)p->m.cpu.pc, p->m.ctx.instruction,
@@ -831,6 +847,7 @@ static int run_proc(int idx) {
                      (unsigned long long)p->m.cpu.x[2],
                      (unsigned long long)p->m.cpu.x[19],
                      (unsigned long long)p->m.cpu.x[21],
+                     (unsigned long long)p->m.cpu.x[30],
                      (unsigned long long)p->m.cpu.sp);
             g_fault = 1;
             if (getenv("E2_TRACE_TABLE")) {

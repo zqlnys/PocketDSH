@@ -251,6 +251,7 @@ e2_load_result e2_load_elf(e2_machine *machine, const uint8_t *image, size_t siz
 #define R_AARCH64_GLOB_DAT 1025
 #define R_AARCH64_JUMP_SLOT 1026
 #define R_AARCH64_RELATIVE 1027
+#define R_AARCH64_ABS64 257
 
 typedef struct {
     uint32_t st_name;
@@ -338,6 +339,7 @@ e2_load_result e2_apply_relative_relocations(e2_machine *machine,
                 }
                 break;
             }
+            case R_AARCH64_ABS64:
             case R_AARCH64_GLOB_DAT:
             case R_AARCH64_JUMP_SLOT: {
                 // A self-contained interpreter binds these to its own symbols.
@@ -361,7 +363,10 @@ e2_load_result e2_apply_relative_relocations(e2_machine *machine,
                 if (sym.st_shndx == 0) {
                     return E2_LOAD_UNSUPPORTED;  // undefined: needs an external resolver
                 }
-                const uint64_t value = base + sym.st_value;
+                // ABS64 adds the addend; GLOB_DAT/JUMP_SLOT do not.
+                const uint64_t addend =
+                    (type == R_AARCH64_ABS64) ? (uint64_t)entry.r_addend : 0;
+                const uint64_t value = base + sym.st_value + addend;
                 if (e2_memory_write(&machine->mem, base + entry.r_offset, &value,
                                     sizeof(value)) != 0) {
                     return E2_LOAD_NO_MEMORY;
