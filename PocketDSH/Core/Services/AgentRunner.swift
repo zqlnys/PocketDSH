@@ -125,6 +125,35 @@ final class AgentRunner: ObservableObject {
         }
     }
 
+    /// Re-runs the last user turn.
+    ///
+    /// The assistant's reply and everything after it are dropped first: retrying means
+    /// asking the same question again, not appending a second copy of it. The user
+    /// message itself stays, so the transcript still reads as a conversation.
+    func retryLastMessage() {
+        guard !isRunning else { return }
+        guard let lastUser = messages.lastIndex(where: { $0.role == .user }) else { return }
+        guard let key = keychain.apiKey(), !key.isEmpty else {
+            errorMessage = "Add a DeepSeek API key in Settings before running the agent."
+            return
+        }
+
+        messages = Array(messages.prefix(through: lastUser))
+        if let lastUserEvent = events.lastIndex(where: { $0.kind == .user }) {
+            events = Array(events.prefix(through: lastUserEvent))
+        }
+        errorMessage = nil
+        cancelRequested = false
+        isRunning = true
+        pluginRuntime.reload()
+        currentStep = 0
+        save()
+
+        runTask = Task { [weak self] in
+            await self?.runLoop(apiKey: key)
+        }
+    }
+
     func cancel() {
         guard isRunning else { return }
         cancelRequested = true

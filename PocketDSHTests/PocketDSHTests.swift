@@ -358,6 +358,26 @@ final class PocketDSHTests: XCTestCase {
         XCTAssertTrue(name.range(of: "^[A-Za-z0-9_-]+$", options: .regularExpression) != nil)
     }
 
+    func testRetryTruncatesToTheLastUserTurn() {
+        // Retrying means asking the same question again, so everything after the last
+        // user message has to go - otherwise the model sees its own failed answer and
+        // the duplicate question both.
+        var messages = [
+            LLMMessage(role: .user, content: "first"),
+            LLMMessage(role: .assistant, content: "reply one"),
+            LLMMessage(role: .user, content: "second"),
+            LLMMessage(role: .assistant, content: "bad reply"),
+            LLMMessage(role: .user, content: "third"),
+            LLMMessage(role: .assistant, content: "another"),
+        ]
+        let lastUser = messages.lastIndex(where: { $0.role == .user })
+        XCTAssertNotNil(lastUser)
+        messages = Array(messages.prefix(through: lastUser!))
+        XCTAssertEqual(messages.count, 5)
+        XCTAssertEqual(messages.last?.content, "third")
+        XCTAssertEqual(messages.filter { $0.role == .assistant }.count, 2)
+    }
+
     func testExportedTranscriptContainsTheRun() {
         // Copy and share both hand the user `exportMarkdown()`, so what it contains
         // is the thing worth pinning: a transcript that omits tool calls or the plan

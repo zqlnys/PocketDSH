@@ -76,7 +76,7 @@ E2 是自写的 aarch64 解释器 + syscall 层，不复用 iSH 的 GPL 代码�
 | `subagent` | 有 `subagent` | 独立会话、只回传最终答案；最多嵌套 2 层，防止无限递归；子 Agent 与父共享工具状态，但看不到父的对话 |
 | 并行委派 | **缺失** | 子 Agent 串行执行，不并行 |
 | `skill` 技能目录 | 有 `use_skill` | 工作区 `skills/*.md`；无参列出、给名加载 |
-| `bash` | 部分 | `run_linux` 依赖 E2，M4 未完成 |
+| `bash` | 部分 | `run_linux` 依赖 E2（解释器本身已通过 545 项验证），M4/CPython 未完成 |
 | `grep` 正则 | 有 | `search_files` 默认字面搜索；传 `regex: true` 走 `NSRegularExpression`，模式非法会报错而不是静默返回空 |
 | `schedule_*` | 等价 | 有 `schedule_alert` / `schedule_reminder`，但只到通知/提醒 |
 | `present` 交付物 | 有 `present` | 校验文件存在；对话上方以卡片显示，点击跳到文件页 |
@@ -119,3 +119,5 @@ PocketDSH 是 DSH 体验启发的原生 iPhone Agent，**不是上游 DSH 或 ds
 1. 导入/导出 DSH session JSON 的只读投影；
 2. 用 WebSocket/HTTP 连接桌面 DSH 的 MCP/ACP（作为可选远程扩展，不替代本地工作区）；
 3. 重新实现部分工具语义，但不加载 Cordis 插件。
+
+| 会话内重试 | 有 | 菜单里的「Retry last message」丢弃最后一条回复后重跑该轮 |

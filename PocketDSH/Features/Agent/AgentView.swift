@@ -93,6 +93,15 @@ struct AgentView: View {
                         }
                         .disabled(agent.events.isEmpty)
 
+                        // Re-asking the same question is the common case after a bad
+                        // answer, and doing it by hand means retyping or copying it.
+                        Button {
+                            agent.retryLastMessage()
+                        } label: {
+                            Label("Retry last message", systemImage: "arrow.clockwise")
+                        }
+                        .disabled(agent.isRunning || !agent.messages.contains { $0.role == .user })
+
                         Button(role: .destructive) {
                             agent.resetConversation()
                         } label: {
