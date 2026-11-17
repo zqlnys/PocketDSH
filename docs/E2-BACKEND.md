@@ -5616,3 +5616,43 @@ seq 1100 | cat | wc -l   →  1042           ❌
 **换观测点**：不再看「谁停了」，而是**逐指令追踪 `cat` 从最后一次写之后到停止之间的执行**。
 既然所有系统调用层面的解释都排除了，剩下的差异只能在用户态代码走的路径上。
 
+## 找到了 `wc` 的 stdin 无效，并修掉一处双重释放
+
+不再只追踪 `read() == 0`，把**读取失败**也打印出来：
+
+```
+[rzero] tab=4 fd=0 host=5              ← cat 的正常 EOF
+[rerr]  tab=3 fd=0 host=-1 errno=9     ← wc 的 fd 0 指向 host=-1（EBADF）
+```
+
+**`wc` 的 stdin 是无效的**——不是读不到数据，是根本没有有效的描述符可读。
+
+### 顺带确认并修掉了一处双重释放
+
+追踪 `fd_table_release` 的调用，清楚看到：
+
+```
+[fdrelease] tab=1 fd0used=1 fd0host=0
+[fdrelease] tab=2 fd0used=1 fd0host=0
+[fdrelease] tab=3 fd0used=1 fd0host=3
+[fdrelease] tab=4 fd0used=1 fd0host=5
+[fdrelease] tab=2 fd0used=0 fd0host=-1   ← 同一个 tab 第二次
+```
+
+**`p_exit` 在子进程死亡时已经释放过一次，`p_wait4` 又释放一次。**
+
+第二次遍历时槽位已清空，所以目前无害——但**释放次数是错的**，
+一旦 `fd_table_release` 不再幂等就会变成双重释放。
+
+**已移除 `p_wait4` 里的那次调用**，现在每个进程正好释放一次。
+
+### 仍未解决的
+
+**`wc` 的 fd 0 为什么会是 `-1`。**
+
+`fd_table_release` 的追踪显示 tab 3 释放时 `fd0host=3` 是有效的——
+说明 `-1` 出现在释放**之前**，而 `fd_table_copy` 又没有任何一次复制过无效值。
+
+剩下的可能：**tab 3 在某个时刻被两个进程共用**，
+或者 `p_execve` 的 cloexec 清理把 stdin 也关掉了。
+
