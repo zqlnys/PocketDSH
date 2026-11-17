@@ -200,6 +200,38 @@ def check_tool_specs(root: pathlib.Path) -> bool:
     return True
 
 
+def check_test_classes(root: pathlib.Path) -> bool:
+    """Every test function must live inside an XCTestCase subclass.
+
+    A `func testSomething()` at file scope compiles and reads correctly but is never
+    discovered, so it silently contributes nothing - the same class of problem as a
+    test that runs but asserts nothing.
+    """
+    tests = root / "PocketDSHTests/PocketDSHTests.swift"
+    if not tests.exists():
+        print("  tests not found, skipping")
+        return True
+    depth = 0
+    in_case = False
+    orphan = []
+    total = 0
+    for number, line in enumerate(tests.read_text(errors="replace").split("\n"), 1):
+        if depth == 0:
+            in_case = bool(re.search(r"class \w+: XCTestCase", line))
+        if re.search(r"func test\w+\(", line):
+            total += 1
+            if not in_case:
+                orphan.append(f"line {number}")
+        depth += line.count("{") - line.count("}")
+        if depth < 0:
+            depth = 0
+    if orphan:
+        print("  test functions outside a test case: " + ", ".join(orphan))
+        return False
+    print(f"  {total} tests, all inside XCTestCase subclasses")
+    return True
+
+
 def main() -> int:
     root = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
     results = [
@@ -207,6 +239,7 @@ def main() -> int:
         ("tool handling", check_tool_handling(root)),
         ("tool specs", check_tool_specs(root)),
         ("test labels", check_test_labels(root)),
+        ("test classes", check_test_classes(root)),
         ("brace balance", check_braces(root)),
     ]
     for name, ok in results:
