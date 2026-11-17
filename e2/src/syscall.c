@@ -503,6 +503,15 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             }
             // env->cwd is its own fixed buffer; copy at most what fits rather than
             // letting the compiler infer a truncation.
+            // Check the directory really exists before reporting success: a host
+            // that accepts any string makes `cd` lie.
+            if (files != NULL && files->opendir != NULL) {
+                const int probe = files->opendir(env->ctx, path);
+                if (probe < 0) {
+                    E2_RETURN(probe);
+                }
+                files->close(env->ctx, probe);
+            }
             if (path[0] == '/') {
                 snprintf(env->cwd, sizeof(env->cwd), "%.*s",
                          (int)(sizeof(env->cwd) - 1), path);

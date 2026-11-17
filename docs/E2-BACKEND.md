@@ -4476,7 +4476,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 | 项目 | 实测值 | 命令 |
 | --- | --- | --- |
 | 单指令测试 | **172 项，0 失败** | `make test` |
-| M2 扫描 | **144 通过，0 失败** | `tools/m2-sweep.sh` |
+| M2 扫描 | **149 通过，0 失败** | `tools/m2-sweep.sh` |
 | M3 扫描 | **95 通过，0 失败** | `tools/m3-sweep.sh` |
 | 差分对比 | **67 一致，0 不同** | `tools/diff-test.sh` |
 | 解码规则重叠 | **无** | `make overlaps` |
@@ -4802,4 +4802,47 @@ case E2_SYS_lseek: {
 我把所有**看得见的**东西都排除了，却没排除「它调用的系统调用本身是假的」。
 
 **`diff` 的实现没问题，是它脚下的一块地板是画的。**
+
+## `cd` 假装成功：工作目录从来没有真正生效
+
+`tar -C /tmp/ar/d .` 一直失败，报 `./tmp/fc/l: No such file or directory`——
+它在从 `/` 开始遍历，说明 `-C` 的 chdir 没起作用。
+
+### 两层问题
+
+**第一层**：`chdir` 更新的是 `env->cwd`，而 **`host_path` 从不读它**——相对路径一律按根目录解析。
+
+**第二层**：`env` 是**每次调度都重新创建**的（`e2_syscall_env env = {...}` 在 `run_proc` 里），
+所以 `chdir` 写进去的值**在下一个时间片就没了**。
+
+### 修法
+
+| 改动 | 原因 |
+| --- | --- |
+| `procctx` 增加 `cwd` 字段 | 工作目录属于进程，不属于一次调度 |
+| `host_path` 读 `g_cur_cwd` | 相对路径要按 guest 认为的位置解析 |
+| `chdir` 先 `opendir` 探测 | 目录不存在就不能报成功 |
+| `p_fork` 复制父进程 cwd | 子进程继承工作目录 |
+| 调度循环同步 `env.cwd` → `pc.cwd` | 让改动活过时间片 |
+
+### 验证
+
+```sh
+$ cd /tmp/ar/d && pwd && ls && cat 1
+/tmp/ar/d
+1
+1
+$ cd /tmp && echo x > rel.txt && cat rel.txt
+x
+$ tar cf t.tar -C /tmp/ar/d . && tar tf t.tar
+./
+./1
+```
+
+### 与上一轮的共同点
+
+**`lseek` 不 seek，`chdir` 不 chdir**——两个都是「接口在，行为不在」。
+
+`cd` 之所以看起来正常，是因为 shell 自己维护 `$PWD` 字符串，而 `pwd` 读的就是那个字符串。
+**只有真正去访问文件时，才会发现脚下是空的。**
 

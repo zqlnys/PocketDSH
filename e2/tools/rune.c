@@ -39,7 +39,13 @@
 static const char *ROOT = "/tmp/alpine-root";
 // One descriptor table per process: fork must copy it and exec must keep it, so
 // a single global table let a child's dup3 rewrite the parent's descriptors.
-typedef struct { int fdtab; } procctx;
+typedef struct {
+    int fdtab;
+    // The guest's working directory, as it sees it. Lives here rather than in the
+    // syscall env because that struct is rebuilt on every scheduling turn, so a
+    // chdir recorded there was forgotten before the next file was opened.
+    char cwd[1024];
+} procctx;
 
 // Children only run when someone calls run_proc for them. That used to happen
 // exclusively inside wait4, which deadlocks the moment a parent reads a pipe
@@ -130,9 +136,18 @@ static uint8_t *load_file(const char *p, size_t *n) {
     if (fread(b, 1, (size_t)s, f) != (size_t)s) { fclose(f); free(b); return NULL; }
     fclose(f); *n = (size_t)s; return b;
 }
+// The cwd of whichever process is running. host_path is reached from the file-op
+// callbacks, which receive a procctx; setting this once per turn keeps relative
+// paths resolving where the guest thinks they are.
+static const char *g_cur_cwd = "/";
 static void host_path(char *out, size_t n, const char *p) {
-    if (p[0] == '/') snprintf(out, n, "%s%s", ROOT, p);
-    else snprintf(out, n, "%s/%s", ROOT, p);
+    if (p[0] == '/') {
+        snprintf(out, n, "%s%s", ROOT, p);
+    } else if (strcmp(p, ".") == 0) {
+        snprintf(out, n, "%s%s", ROOT, g_cur_cwd);
+    } else {
+        snprintf(out, n, "%s%s/%s", ROOT, g_cur_cwd, p);
+    }
 }
 static int fs_open(void *c, const char *path, int fl, int m) {
     (void)m;
@@ -720,6 +735,9 @@ static long p_fork(void *ctx, const e2_machine *parent) {
     fd_table_copy(slot, self->pc.fdtab);
     c->pid = g_next_pid++;
     c->ppid = self->pid;
+    // A child inherits the working directory; without this every forked command
+    // started at / and relative paths resolved to the wrong place.
+    snprintf(c->pc.cwd, sizeof(c->pc.cwd), "%s", self->pc.cwd);
     c->alive = 1;
     c->used = 1;
     c->exit_status = 0;
@@ -927,8 +945,13 @@ static int run_proc(int idx) {
     long spent = 0;
     e2_syscall_env env = {.exit = p_exit, .files = &FS, .ctx = p,
                           .fork = p_fork, .execve = p_execve, .wait4 = p_wait4};
-    snprintf(env.cwd, sizeof(env.cwd), "%s",
-             getenv("E2_CWD") ? getenv("E2_CWD") : "/");
+    // A process starts at the root unless it has moved; E2_CWD still forces one.
+    if (p->pc.cwd[0] == '\0') {
+        snprintf(p->pc.cwd, sizeof(p->pc.cwd), "%s",
+                 getenv("E2_CWD") ? getenv("E2_CWD") : "/");
+    }
+    snprintf(env.cwd, sizeof(env.cwd), "%s", p->pc.cwd);
+    g_cur_cwd = p->pc.cwd;
     env.pid = p->pid;
     env.ppid = p->ppid;
     if (getenv("E2_TRACE_WAIT"))
@@ -1614,6 +1637,12 @@ static int run_proc(int idx) {
         }
         g_global_step++;
         e2_status st = e2_step(&p->m);
+        // A chdir inside the step changed env.cwd; keep the process copy in step so
+        // the change survives to the next scheduling turn.
+        if (strcmp(p->pc.cwd, env.cwd) != 0) {
+            snprintf(p->pc.cwd, sizeof(p->pc.cwd), "%s", env.cwd);
+            g_cur_cwd = p->pc.cwd;
+        }
         if (g_shadow_on) {
             const uint32_t w = pre_insn;
             const bool is_bl = (w & 0xFC000000u) == 0x94000000u;

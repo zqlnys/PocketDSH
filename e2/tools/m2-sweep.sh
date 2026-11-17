@@ -45,6 +45,13 @@ while IFS= read -r cmd; do
         pass=$((pass + 1))
     fi
 done <<'EOF'
+# chdir updated a string nothing read, and forked children started at /. Both
+# showed up as `cd` appearing to work while relative paths resolved to /.
+printf 'z\n' > /tmp/m2d1; cd /tmp && cat m2d1
+mkdir -p /tmp/m2dir && cd /tmp/m2dir && pwd
+mkdir -p /tmp/m2dir2 && echo k > /tmp/m2dir2/f && cd /tmp/m2dir2 && cat f
+cd /tmp && cd / && pwd
+sh -c 'cd /tmp && pwd'
 # lseek never moved the cursor, so any second read of the same descriptor saw EOF.
 printf 'a\nb\n' > /tmp/m2l1; printf 'a\nc\n' > /tmp/m2l2; diff /tmp/m2l1 /tmp/m2l2 | wc -l
 printf 'a\nb\n' > /tmp/m2l1; printf 'a\nb\n' > /tmp/m2l3; diff /tmp/m2l1 /tmp/m2l3; echo same
