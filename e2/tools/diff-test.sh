@@ -220,6 +220,15 @@ printf 'abc\n' | sha1sum | cut -c1-16
 printf 'abc\n' | md5sum | cut -c1-16
 printf 'abc\n' | base64
 printf 'abc\n' | od -An -tx1
+printf 'c\na\nb\n' | sort -r | tr '\n' ' '
+seq 5 | awk '{t+=$1; if($1%2) o+=$1} END{print t,o}'
+printf 'x1\ny2\n' | sed 's/[0-9]//'
+echo 'a,b,c' | awk -F, '{print NF}'
+printf 'z\nb\n' | sort -u | wc -l
+seq 4 | tac | head -2
+printf 'q\n' | sed 's/q/Q/;s/Q/!/'
+echo 'A B' | tr -s ' ' '_'
+seq 3 | awk 'NR%2'
 sh /tmp/dtbig
 EOF
 echo "diff test: $pass same, $fail different"
