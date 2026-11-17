@@ -4476,7 +4476,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 | 项目 | 实测值 | 命令 |
 | --- | --- | --- |
 | 单指令测试 | **172 项，0 失败** | `make test` |
-| M2 扫描 | **128 通过，0 失败** | `tools/m2-sweep.sh` |
+| M2 扫描 | **132 通过，0 失败** | `tools/m2-sweep.sh` |
 | M3 扫描 | **95 通过，0 失败** | `tools/m3-sweep.sh` |
 | 差分对比 | **67 一致，0 不同** | `tools/diff-test.sh` |
 | 解码规则重叠 | **无** | `make overlaps` |
@@ -4594,4 +4594,21 @@ out=$(timeout "$LIMIT" "$RUNE" "$BUSYBOX" sh -c "$cmd" ...)
 
 这和上一轮那个 `|| true` 是同一个错误：**让指标好看的东西，往往是在掩盖什么**。
 区别只是这次不是我主动写的，而是工具本身的漏洞——**但结果一样，数字不实**。
+
+### `chown` 同样未实现
+
+和 `truncate` 一起来的还有这个：
+
+```
+$ chown 0:0 /tmp/sc/h
+chown: /tmp/sc/h: Function not implemented
+```
+
+系统调用 **54（fchownat）/ 55（fchown）也没有分支**。
+
+沙箱里所有文件本来就属于同一个用户，所以 `chown` **实际什么都不用做**——
+但「Function not implemented」会让脚本在此停下。现在走 `E2_PATHOP_CHOWN`
+并直接返回成功。
+
+**这也是一个「不该报错的地方报了错」的例子**：功能上没有区别，行为上却有区别。
 

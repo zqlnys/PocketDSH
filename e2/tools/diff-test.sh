@@ -45,6 +45,7 @@ pass=0
 fail=0
 while IFS= read -r cmd; do
     [ -z "$cmd" ] && continue
+    case "$cmd" in \#*) continue ;; esac
     # The harness prints its own exit line on stdout; strip it so the comparison
     # is about the program's output alone.
     mine=$(timeout 30 "$RUNE" "$BUSYBOX" sh -c "$cmd" 2>&1 | grep -v '^\[exit ' | head -8)

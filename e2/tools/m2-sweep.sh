@@ -45,6 +45,10 @@ while IFS= read -r cmd; do
         pass=$((pass + 1))
     fi
 done <<'EOF'
+printf 'abc' > /tmp/m2c; chown 0:0 /tmp/m2c && stat -c %u /tmp/m2c
+printf 'a\n' > /tmp/m2c; chmod 640 /tmp/m2c && stat -c %a /tmp/m2c
+mkdir -p /tmp/m2c2/a/b; mv /tmp/m2c2/a /tmp/m2c3; ls /tmp/m2c3
+printf 'q\n' > /tmp/m2c4; touch -d '2020-01-01' /tmp/m2c4; date -r /tmp/m2c4 +%Y
 # truncate and ftruncate had no implementation at all, so `truncate -s` said
 # "Function not implemented".
 printf 'abc' > /tmp/m2t; truncate -s 1 /tmp/m2t; wc -c < /tmp/m2t

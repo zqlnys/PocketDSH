@@ -371,6 +371,12 @@ static int fs_pathop(void *c, int op, const char *a, const char *b, unsigned mod
     case E2_PATHOP_LINK:
         if (link(ha, hb) != 0) return -errno;
         return 0;
+    case E2_PATHOP_CHOWN:
+        // The sandbox runs everything as one user, so ownership is already what it
+        // is going to be. Report success rather than ENOSYS: scripts chown to
+        // normalise permissions and should not stop on it.
+        (void)mode;
+        return 0;
     case E2_PATHOP_CHMOD:
         if (chmod(ha, mode) != 0) return -errno;
         return 0;

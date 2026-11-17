@@ -357,6 +357,24 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             }
             E2_RETURN(files->truncate_file(env->ctx, -1, path, (long long)a1));
         }
+        case 54:      // fchownat(dirfd, path, uid, gid, flags)
+        case 55: {    // fchown(fd, uid, gid)
+            if (files == NULL || files->pathop == NULL) {
+                E2_RETURN(-E2_ENOSYS);
+            }
+            // The path form takes the path in x1; the descriptor form has no path.
+            const char *path = (number == 54) ? NULL : NULL;
+            char buf[E2_PATH_MAX];
+            if (number == 54) {
+                const int rc = read_guest_string(m, a1, buf, sizeof(buf));
+                if (rc != 0) {
+                    E2_RETURN(rc);
+                }
+                path = buf;
+            }
+            E2_RETURN(files->pathop(env->ctx, E2_PATHOP_CHOWN, path, NULL,
+                                    (unsigned)(m->cpu.x[3] & 0xFFFFFFFFu)));
+        }
         case E2_SYS_clone: {
             // The shell uses clone(SIGCHLD, 0, ...) for fork; a NULL stack means
             // "same address space, copied". A non-NULL stack is a thread, which

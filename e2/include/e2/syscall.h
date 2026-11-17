@@ -24,6 +24,9 @@
 #define E2_PATHOP_CHMOD 7
 #define E2_PATHOP_ACCESS 8
 #define E2_PATHOP_UTIME 9
+// Ownership change. Mostly a no-op inside the sandbox - everything runs as one
+// user - but scripts call it, and "Function not implemented" stops them.
+#define E2_PATHOP_CHOWN 10
 #define E2_SYS_getcwd 17
 #define E2_SYS_chdir 49
 #define E2_SYS_openat 56
