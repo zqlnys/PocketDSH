@@ -414,6 +414,39 @@ static void test_xtn_narrows_lanes(void) {
     e2_machine_destroy(&m);
 }
 
+static void test_frame_pointer_prologue(void) {
+    printf("the aarch64 frame prologue saves and restores x29 through SP\n");
+    // Every non-leaf function on aarch64 starts with
+    //     stp x29, x30, [sp, #-16]! ; mov x29, sp
+    // and ends with
+    //     ldp x29, x30, [sp], #16 ; ret
+    // CPython builds its traceback by walking the x29 chain, so if the pre-indexed
+    // store or the post-indexed load writes the wrong slot, that chain becomes a cycle
+    // and walking it never terminates. This checks the four values involved.
+    e2_machine m;
+    e2_machine_init(&m, 0, 8192);
+    m.cpu.sp = 0x7000;
+    m.cpu.x[29] = 0x1234;   // caller's frame
+    m.cpu.x[30] = 0x5678;   // return address
+    const uint32_t code[] = {
+        0xA9BF7BFDu,  // stp x29, x30, [sp, #-16]!
+        0x910003FD,  // mov x29, sp
+        0xA8C17BFDu,  // ldp x29, x30, [sp], #16
+        RET()
+    };
+    load_program(&m, code, 4);
+    // load_program sets sp; put it back to the value this test wants.
+    m.cpu.sp = 0x7000;
+    e2_run(&m, 100);
+    CHECK(m.cpu.x[29] == 0x1234, "x29 restored to 0x%llx, want 0x1234",
+          (unsigned long long)m.cpu.x[29]);
+    CHECK(m.cpu.x[30] == 0x5678, "x30 restored to 0x%llx, want 0x5678",
+          (unsigned long long)m.cpu.x[30]);
+    CHECK(m.cpu.sp == 0x7000, "sp back to 0x%llx, want 0x7000",
+          (unsigned long long)m.cpu.sp);
+    e2_machine_destroy(&m);
+}
+
 static void test_tbz_and_tbnz(void) {
     printf("TBZ branches on zero, TBNZ on one\n");
     // This is the instruction the original BRE investigation stopped at: a `tbz` whose
@@ -1266,6 +1299,7 @@ int main(void) {
     test_load_store();
     test_svc();
     test_hint_space_is_noop();
+    test_frame_pointer_prologue();
     test_tbz_and_tbnz();
     test_tbz_on_bit_31();
     test_widen_multiply();
