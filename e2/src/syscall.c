@@ -649,8 +649,37 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             E2_RETURN(0);
         case 233:  // madvise
             E2_RETURN(0);
-        case 261:  // prlimit64: report defaults, ignore new limits
+        case 261: {  // prlimit64(pid, resource, new, old)
+            // Returning 0 without touching `old` left the caller reading whatever
+            // was in its buffer - `ulimit -n` printed 0. The limits themselves are
+            // not enforced here, but they have to be reported.
+            const uint64_t resource = a1;
+            const uint64_t old_ptr = a3;
+            (void)a2;   // new limits are accepted and ignored
+            if (old_ptr != 0) {
+                uint64_t *dst = (uint64_t *)e2_memory_host_ptr(&m->mem, old_ptr, 16,
+                                                               E2_PROT_WRITE);
+                if (dst == NULL) {
+                    E2_RETURN(-E2_EFAULT);
+                }
+                uint64_t cur = 0, max = 0;
+                switch (resource) {
+                case 3:  cur = 8u * 1024u * 1024u; max = (uint64_t)-1; break;  // STACK
+                case 4:  cur = 0;  max = 0; break;                             // CORE
+                case 5:  cur = 0;  max = (uint64_t)-1; break;                  // RSS
+                // The harness descriptor table holds 64 entries, so that is the
+                // honest number. Reporting the host's 1048576 would let a caller
+                // size buffers for descriptors that cannot exist.
+                case 7:  cur = 64; max = 64; break;                           // NOFILE
+                case 6:  cur = 100; max = 100; break;                          // NPROC
+                case 12: cur = 8192; max = 8192; break;                        // NICE
+                default: cur = (uint64_t)-1; max = (uint64_t)-1; break;         // unlimited
+                }
+                dst[0] = cur;
+                dst[1] = max;
+            }
             E2_RETURN(0);
+        }
         case 278:  // getrandom: return a fixed but non-zero stream
             if (a0 != 0) {
                 uint8_t *dst = e2_memory_host_ptr(&m->mem, a0, (size_t)a1, E2_PROT_WRITE);

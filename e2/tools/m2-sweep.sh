@@ -45,6 +45,9 @@ while IFS= read -r cmd; do
         pass=$((pass + 1))
     fi
 done <<'EOF'
+ulimit -n
+ulimit -s
+ulimit -c
 printf 'abc' > /tmp/m2c; chown 0:0 /tmp/m2c && stat -c %u /tmp/m2c
 printf 'a\n' > /tmp/m2c; chmod 640 /tmp/m2c && stat -c %a /tmp/m2c
 mkdir -p /tmp/m2c2/a/b; mv /tmp/m2c2/a /tmp/m2c3; ls /tmp/m2c3
