@@ -125,8 +125,15 @@ static void refs_init(void) {
 }
 static void host_ref(int h) { if (h >= 0 && h < 1024) g_refs[h]++; }
 static void host_unref(int h) { if (h >= 0 && h < 1024 && g_refs[h] > 0) g_refs[h]--; }
+// A host descriptor closed twice is worse than one leaked: the kernel is free to hand
+// the same number to the next open or pipe, so the second close destroys somebody
+// else's descriptor. Tracked here so it is reported rather than merely happening.
+static int g_closed_once[1024];
 static void host_close_if_done(int h) {
     if (h >= 3 && h < 1024 && g_refs[h] == 0) {
+        if (g_closed_once[h] && getenv("E2_TRACE_CLOSE"))
+            fprintf(stderr, "[double-close] host=%d\n", h);
+        g_closed_once[h] = 1;
         if (getenv("E2_TRACE_CLOSE")) fprintf(stderr, "[close] host=%d\n", h);
         close(h);
     }
@@ -287,8 +294,12 @@ static int fs_open(void *c, const char *path, int fl, int m) {
     int fd = open(h, hf, 0666);
     if (fd < 0) return -errno;
     host_ref(fd);
+    if (fd >= 0 && fd < 1024) g_closed_once[fd] = 0;
     int guest = fd_alloc_tab(((const procctx *)c)->fdtab, fd);
-    if (guest < 0) { close(fd); return -24; }
+    if (guest < 0) {
+        if (getenv("E2_TRACE_CLOSE")) fprintf(stderr, "[bareclose] open-fail fd=%d\n", fd);
+        close(fd); return -24;
+    }
     return guest;
 }
 static long fs_read(void *c, int fd, void *b, size_t n, long long o) {
@@ -458,10 +469,18 @@ static int fs_pipe(void *c, int fds[2]) {
     fcntl(p[0], F_SETFL, fcntl(p[0], F_GETFL, 0) | O_NONBLOCK);
     host_ref(p[0]);
     host_ref(p[1]);
+    if (p[0] >= 0 && p[0] < 1024) g_closed_once[p[0]] = 0;
+    if (p[1] >= 0 && p[1] < 1024) g_closed_once[p[1]] = 0;
     const int a = fd_alloc_tab(tab, p[0]);
-    if (a < 0) { close(p[0]); close(p[1]); return -24; }
+    if (a < 0) {
+        if (getenv("E2_TRACE_CLOSE")) fprintf(stderr, "[bareclose] pipe-a %d %d\n", p[0], p[1]);
+        close(p[0]); close(p[1]); return -24;
+    }
     const int b = fd_alloc_tab(tab, p[1]);
-    if (b < 0) { close(p[0]); close(p[1]); g_fds[tab][a].used = 0; return -24; }
+    if (b < 0) {
+        if (getenv("E2_TRACE_CLOSE")) fprintf(stderr, "[bareclose] pipe-b %d %d\n", p[0], p[1]);
+        close(p[0]); close(p[1]); g_fds[tab][a].used = 0; return -24;
+    }
     fds[0] = a; fds[1] = b; return 0;
 }
 static int fs_dup3(void *c, int oldfd, int newfd, int flags) {
