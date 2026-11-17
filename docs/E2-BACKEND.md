@@ -5364,3 +5364,38 @@ FAIL tests/main.c:414: realtime seconds 5
 
 **202 → 206。**
 
+## 单元测试里的两套 mock
+
+一度想把 `test_file_read` 和 `test_file_open` 改成有状态的，好测文件往返，
+**结果编译失败**——`test_file_write` 早就不是存根了。
+
+### 它们各自的用途
+
+| mock | 用途 |
+| --- | --- |
+| `test_file_write` | **把程序输出捕获到 `capture` 结构**——探针测试靠它读真实 ELF 的输出 |
+| `test_file_read` | 返回 0（源码注释写明「这些测试暂不需要输入文件」）|
+| `test_file_open` | 返回 ENOENT |
+
+**这三个是给「运行真实 ELF 并检查输出」那组测试定制的**，不是为了通用文件 I/O。
+
+### 我最近加的测试都各自新增了专用 mock
+
+| 测试 | 新增的 mock |
+| --- | --- |
+| `lseek` | `test_file_seek`（跟踪位置）|
+| `chdir` | `test_opendir`（只承认 `/bin`）|
+| `AT_SYMLINK_NOFOLLOW` | `test_stat_path`（模拟悬空链接）|
+| `truncate` | `test_truncate`（记录收到的参数）|
+| `statfs` | `test_statfs`（记录 fd 与路径）|
+| `clock_gettime` | 改造 `test_clock_ns`（按时钟编号返回不同值）|
+
+**这是对的**：每套测试声明自己需要什么，而不是把一套 mock 改成万能的。
+
+### 一个差点犯的错误
+
+如果当时「改造成功」了，**探针测试捕获输出的能力就会被破坏**——
+而它们是我验证真实 ELF 行为的唯一手段。
+
+**共享的测试基础设施，改动前要先搞清楚谁在用它。**
+
