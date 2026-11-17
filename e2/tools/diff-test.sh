@@ -155,7 +155,10 @@ cat > /tmp/dtj 2>/dev/null <<'WRAP'
 sleep 0.01 & wait; echo "waited=$?"
 sleep 0.01 & p=$!; wait $p; echo "waitedpid=$?"
 ( echo bg ) & wait
-for i in 1 2 3; do ( echo "sub$i" ) & done; wait; echo all
+# Background jobs finish in whatever order the scheduler picks, so their output is
+# sorted before comparison - otherwise the case measures scheduling luck rather than
+# behaviour.
+for i in 1 2 3; do ( echo "sub$i" ) >> /tmp/dtjout & done; wait; sort /tmp/dtjout; rm -f /tmp/dtjout
 true && echo and || echo or
 ! false && echo negated
 WRAP

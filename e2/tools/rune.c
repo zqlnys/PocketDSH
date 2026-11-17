@@ -888,6 +888,12 @@ typedef struct {
     int exit_status;
     int stopped;
     int used;
+    /// Set while this process is on the run_proc call stack. pump_children_for_tab
+    /// must skip such a process: a three-stage pipeline blocks as
+    /// tail -> pump -> sort -> pump -> tail, and re-entering tail while it is
+    /// suspended inside its own read corrupts its state. `head -3` never showed the
+    /// problem because it stops reading early and so never needs the third level.
+    int running;
 } proc_t;
 static proc_t procs[16];
 static int g_next_pid = 2;
@@ -1067,6 +1073,7 @@ static int pump_children_for_tab(int tab) {
         proc_t *c = &procs[i];
         if (!c->used || !c->alive) continue;
         if (c->pc.fdtab == tab) continue;   // that is us
+        if (c->running) continue;           // already on the stack - do not re-enter
         // run_proc here is nested inside the caller's own run_proc. Saving and
         // restoring the budget keeps the outer process bounded: resetting it to
         // -1 after the inner run left the caller unbounded, and preemption then
@@ -1175,6 +1182,8 @@ static void trace_flush(void) {
 
 static int run_proc(int idx) {
     proc_t *p = &procs[idx];
+    const int was_running = p->running;
+    p->running = 1;
     // run_proc is re-entered from syscall handlers that pump other processes, so the
     // debug globals have to be saved and put back: without that the outer process
     // keeps reporting the inner one's pid and pc, and any diagnosis built on them is
@@ -2088,6 +2097,7 @@ static int run_proc(int idx) {
     // A run that faults never reaches p_exit, so a partial recording would be
     // lost exactly when it is most wanted - the trace up to the fault.
     trace_flush();
+    p->running = was_running;
     g_dbg_pid = saved_pid;
     g_proc_self_pid = saved_self_pid;
     return p->exit_status;
