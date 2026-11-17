@@ -126,7 +126,11 @@ static void refs_init(void) {
 static void host_ref(int h) { if (h >= 0 && h < 1024) g_refs[h]++; }
 static void host_unref(int h) { if (h >= 0 && h < 1024 && g_refs[h] > 0) g_refs[h]--; }
 static void host_close_if_done(int h) {
-    if (h >= 3 && h < 1024 && g_refs[h] == 0) close(h);
+    if (h >= 3 && h < 1024 && g_refs[h] == 0) {
+        if (getenv("E2_TRACE_CLOSE"))
+            fprintf(stderr, "[close] host=%d\n", h);
+        close(h);
+    }
 }
 static void fd_init(void) { fd_init_tab(0); refs_init(); }
 static int fd_alloc_tab(int tab, int host) {
@@ -314,6 +318,9 @@ static long fs_write(void *c, int fd, const void *b, size_t n, long long o) {
         fprintf(stderr, "[wr] p%d fd=%d len=%zu \"%s\"\n", g_dbg_pid, fd, n, wb);
     }
     ssize_t r = write(TAB(c)[fd].host, b, n);
+    if (getenv("E2_TRACE_WLEN"))
+        fprintf(stderr, "[wlen] tab=%d fd=%d want=%zu got=%zd\n",
+                ((const procctx *)c)->fdtab, fd, n, r);
     if (r < 0) {
         note_write_error(((const procctx *)c)->fdtab, errno);
         return -errno;
