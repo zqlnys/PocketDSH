@@ -42,6 +42,16 @@ while IFS= read -r cmd; do
         pass=$((pass + 1))
     fi
 done <<'EOF'
+# awk maths: the primitives all agree with qemu, so they pin the layer beneath pow.
+printf 'BEGIN{print log(2)}\n' > /tmp/m2a; awk -f /tmp/m2a
+printf 'BEGIN{print exp(log(2)*10)}\n' > /tmp/m2a; awk -f /tmp/m2a
+printf 'BEGIN{print sqrt(2)}\n' > /tmp/m2a; awk -f /tmp/m2a
+printf 'BEGIN{print atan2(1,1)}\n' > /tmp/m2a; awk -f /tmp/m2a
+printf 'BEGIN{printf "%.3f\\n", 1/3}\n' > /tmp/m2a; awk -f /tmp/m2a
+printf 'BEGIN{printf "%d %d\\n", 3.9, -3.9}\n' > /tmp/m2a; awk -f /tmp/m2a
+printf 'BEGIN{printf "%x %o\\n", 255, 8}\n' > /tmp/m2a; awk -f /tmp/m2a
+printf 'BEGIN{print substr("hello",2,3) index("hello","ll")}\n' > /tmp/m2a; awk -f /tmp/m2a
+printf 'BEGIN{n=split("a:b:c",arr,":"); print n}\n' > /tmp/m2a; awk -f /tmp/m2a
 expr 7 % 3
 expr length hello
 printf '%05.2f\n' 1.5
