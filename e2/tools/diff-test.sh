@@ -184,6 +184,20 @@ cd /tmp && rm -rf dtrp
 echo done
 WRAP
 cp /tmp/dtrp /tmp/alpine-root/tmp/dtrp 2>/dev/null || true
+cat > /tmp/dtar 2>/dev/null <<'WRAP'
+echo $((2147483647 + 1))
+echo $((9223372036854775807))
+echo $((-9223372036854775807 - 1))
+echo $((10 / 3)) $((10 % 3)) $((-10 / 3)) $((-10 % 3))
+echo $((2 ** 10))
+echo $((1 << 30))
+echo $((1024 >> 3))
+echo $((~0))
+echo $((5 & 3)) $((5 | 3)) $((5 ^ 3))
+echo $((1 == 1)) $((1 != 1))
+echo $((0x7fffffff + 1))
+WRAP
+cp /tmp/dtar /tmp/alpine-root/tmp/dtar 2>/dev/null || true
 pass=0
 fail=0
 while IFS= read -r cmd; do
@@ -382,6 +396,7 @@ sh /tmp/dther
 sh /tmp/dtf
 sh /tmp/dtj
 sh /tmp/dtrp
+sh /tmp/dtar
 EOF
 echo "diff test: $pass same, $fail different"
 [ "$fail" -eq 0 ]
