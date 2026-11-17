@@ -45,6 +45,10 @@ while IFS= read -r cmd; do
         pass=$((pass + 1))
     fi
 done <<'EOF'
+# /proc/self is per-process, so it cannot be a file seeded once at start-up.
+cat /proc/self/cmdline | tr -d '\0'; echo
+cat /proc/self/status | head -2 | tail -1 | cut -f1
+cat /proc/self/stat | cut -d' ' -f2
 # /dev/stdin, /dev/stdout and /dev/fd/N name descriptors, not files.
 echo abc | cat /dev/stdin
 seq 3 > /tmp/m2fd; cat /dev/fd/0 < /tmp/m2fd | wc -l

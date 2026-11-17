@@ -40,6 +40,14 @@
 static const char *ROOT = "/tmp/alpine-root";
 // One descriptor table per process: fork must copy it and exec must keep it, so
 // a single global table let a child's dup3 rewrite the parent's descriptors.
+// Per-process facts /proc/self has to report. The harness runs one guest process at a
+// time, so these track whichever is currently scheduled.
+static int g_cur_ppid;
+static char g_cur_cmdline[512];
+// Length of the NUL-separated argv image, including the trailing NUL.
+static size_t g_cur_cmdline_len;
+static int g_proc_self_pid;
+
 typedef struct {
     int fdtab;
     // The guest's working directory, as it sees it. Lives here rather than in the
@@ -184,6 +192,42 @@ static int device_fd_alias(const char *path) {
     return -1;
 }
 
+// /proc/self is per-process, so it cannot be a file seeded once at start-up. These
+// three are what programs actually read: cmdline, stat and status. A real /proc also
+// has a directory per pid; ps needs that, and it stays unsupported rather than
+// half-implemented.
+static bool proc_self_body(const char *path, char *out, size_t outlen, size_t *len_out) {
+    const char *tail = NULL;
+    if (strncmp(path, "/proc/self/", 11) == 0) tail = path + 11;
+    else if (strncmp(path, "/proc/thread-self/", 18) == 0) tail = path + 18;
+    if (tail == NULL) return false;
+    const char *name = g_cur_cmdline[0] ? g_cur_cmdline : "e2";
+    if (strcmp(tail, "cmdline") == 0) {
+        // Already NUL separated and terminated; copy the image verbatim.
+        size_t n = g_cur_cmdline_len;
+        if (n > outlen) n = outlen;
+        memcpy(out, g_cur_cmdline, n);
+        *len_out = n;
+        return true;
+    }
+    if (strcmp(tail, "stat") == 0) {
+        const int n = snprintf(out, outlen,
+                 "%d (%s) R %d 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0",
+                 g_proc_self_pid, name, g_cur_ppid);
+        *len_out = (n > 0) ? ((size_t)n < outlen ? (size_t)n : outlen) : 0;
+        return true;
+    }
+    if (strcmp(tail, "status") == 0) {
+        const int n = snprintf(out, outlen,
+                 "Name:\t%s\nPid:\t%d\nPPid:\t%d\nUid:\t0\t0\t0\t0\n"
+                 "Gid:\t0\t0\t0\t0\nThreads:\t1\n",
+                 name, g_proc_self_pid, g_cur_ppid);
+        *len_out = (n > 0) ? ((size_t)n < outlen ? (size_t)n : outlen) : 0;
+        return true;
+    }
+    return false;
+}
+
 static int fs_open(void *c, const char *path, int fl, int m) {
     (void)m;
     // An alias names a descriptor already open; duplicate it rather than looking
@@ -199,7 +243,27 @@ static int fs_open(void *c, const char *path, int fl, int m) {
             return nfd;
         }
     }
-    char h[2048]; host_path(h, sizeof(h), path);
+    // A /proc/self request is answered from the current process rather than from
+    // the guest root, where no such file could exist.
+    const char *use_path = path;
+    char self_tmp[64];
+    {
+        char body[1024];
+        size_t body_len = 0;
+        if (proc_self_body(path, body, sizeof(body), &body_len)) {
+            // One scratch file, reused: only the process being scheduled can be reading it,
+            // and a per-pid name left one file behind for every pid ever used.
+            snprintf(self_tmp, sizeof(self_tmp), "/tmp/.e2-proc-self");
+            char self_host[2096];
+            host_path(self_host, sizeof(self_host), self_tmp);
+            FILE *f = fopen(self_host, "wb");
+            if (f == NULL) return -ENOENT;
+            fwrite(body, 1, body_len, f);
+            fclose(f);
+            use_path = self_tmp;
+        }
+    }
+    char h[2048]; host_path(h, sizeof(h), use_path);
     // Translate the guest's aarch64 open flags into host ones. O_CREAT without
     // O_WRONLY/RDWR is meaningless, so only honour it when writing.
     int hf = 0;
@@ -593,6 +657,31 @@ static const char *elf_interp(const uint8_t *img, size_t n) {
 #define ARG_MAX 1024
 static int start_image(e2_machine *m, const char *path, char args[][ARG_MAX], int nargs,
                        char envs[][ARG_MAX], int nenv) {
+    // /proc/self/cmdline reports argv[0], which is the applet name for busybox and
+    // the program name otherwise.
+    // /proc/self/cmdline is the whole argv, NUL separated and NUL terminated - some
+    // tools read past the first entry, so storing only argv[0] would look plausible
+    // and be wrong.
+    {
+        size_t off = 0;
+        if (nargs > 0) {
+            for (int i = 0; i < nargs && off + 1 < sizeof(g_cur_cmdline); i++) {
+                const size_t n = strlen(args[i]);
+                if (off + n + 1 >= sizeof(g_cur_cmdline)) break;
+                memcpy(g_cur_cmdline + off, args[i], n);
+                off += n;
+                g_cur_cmdline[off++] = '\0';
+            }
+        } else {
+            const char *base = strrchr(path, '/');
+            const char *nm = base ? base + 1 : path;
+            const size_t n = strlen(nm);
+            memcpy(g_cur_cmdline, nm, n < sizeof(g_cur_cmdline) - 1 ? n : sizeof(g_cur_cmdline) - 1);
+            off = n < sizeof(g_cur_cmdline) - 1 ? n : sizeof(g_cur_cmdline) - 1;
+            g_cur_cmdline[off++] = '\0';
+        }
+        g_cur_cmdline_len = off;
+    }
     size_t size = 0;
     uint8_t *img = load_file(path, &size);
     if (img == NULL) return -2;   // ENOENT
@@ -1018,6 +1107,8 @@ static int run_proc(int idx) {
         g_dbg_pc = p->m.cpu.pc;
         g_dbg_sp = p->m.cpu.sp;
         g_dbg_pid = p->pid;
+        g_proc_self_pid = p->pid;
+        g_cur_ppid = p->ppid;
         g_dbg_pc2 = p->m.cpu.pc;
         hist[hist_at].pc = p->m.cpu.pc;
         // Read the word at pc rather than ctx.instruction: ctx carries the

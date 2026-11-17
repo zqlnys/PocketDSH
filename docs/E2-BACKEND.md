@@ -4476,7 +4476,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 | 项目 | 实测值 | 命令 |
 | --- | --- | --- |
 | 单指令测试 | **173 项，0 失败** | `make test` |
-| M2 扫描 | **159 通过，0 失败** | `tools/m2-sweep.sh` |
+| M2 扫描 | **162 通过，0 失败** | `tools/m2-sweep.sh` |
 | M3 扫描 | **95 通过，0 失败** | `tools/m3-sweep.sh` |
 | 差分对比 | **104 一致，0 不同** | `tools/diff-test.sh` |
 | 解码规则重叠 | **无** | `make overlaps` |
@@ -5209,4 +5209,41 @@ $ echo out | tee /dev/stdout | wc -l → out 1
 ```
 
 三条进了 M2，静态与动态二进制都通过。
+
+## `/proc/self` 需要按进程生成，不能靠启动时种一次
+
+修完描述符别名后继续测特殊路径，`/proc/self/*` 全部对不上：
+
+| 路径 | 之前 | qemu |
+| --- | --- | --- |
+| `/proc/self/cmdline` | 空 | `cat/proc/self/cmdline` |
+| `/proc/self/status` | 打不开 | `Name: cat` |
+| `/proc/self/stat` | 打不开 | pid 开头 |
+| `/proc/self/fd` | 空 | 列出 0/1/2 |
+
+**「self」的意思是「当前进程」，它的内容随进程变化**——启动时种一个静态文件不可能对。
+
+### 实现
+
+在 `fs_open` 里先判断 `/proc/self/<name>`，命中就从**当前进程**的信息生成内容：
+
+| 文件 | 内容 |
+| --- | --- |
+| `cmdline` | **完整 argv**，NUL 分隔、NUL 结尾 |
+| `stat` | pid、comm、ppid 等前几个字段 |
+| `status` | Name / Pid / PPid / Uid / Gid / Threads |
+
+### 两个实现细节
+
+**第一版只存了 argv[0]**，结果 `cat /proc/self/cmdline` 只显示 `cat`。
+qemu 显示的是 `cat/proc/self/cmdline`——**真实 cmdline 是完整的 argv**。
+只存第一个条目会「看起来合理但不对」，比缺字段更难发现。
+
+**第一版按 pid 命名临时文件**，跑完留下 `e2-self-1`、`e2-self-2`……**每个用过的 pid 一个文件**。
+改成固定名字复用——同一时刻只有一个进程在被调度。
+
+### 仍未提供
+
+**`/proc/<pid>/` 目录和 `/proc/self/fd` 目录列表**没有做。`ps` 依赖它们，
+与其半实现一个会给出错误答案的版本，不如明确记下不支持。
 
