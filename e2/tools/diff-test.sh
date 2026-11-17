@@ -151,6 +151,15 @@ x=5; [ $x -gt 3 ] && [ $x -lt 10 ] && echo range
 echo $((0x10 + 010))
 WRAP
 cp /tmp/dtf /tmp/alpine-root/tmp/dtf 2>/dev/null || true
+cat > /tmp/dtj 2>/dev/null <<'WRAP'
+sleep 0.01 & wait; echo "waited=$?"
+sleep 0.01 & p=$!; wait $p; echo "waitedpid=$?"
+( echo bg ) & wait
+for i in 1 2 3; do ( echo "sub$i" ) & done; wait; echo all
+true && echo and || echo or
+! false && echo negated
+WRAP
+cp /tmp/dtj /tmp/alpine-root/tmp/dtj 2>/dev/null || true
 pass=0
 fail=0
 while IFS= read -r cmd; do
@@ -347,6 +356,7 @@ sh /tmp/dtbig
 sh /tmp/dts
 sh /tmp/dther
 sh /tmp/dtf
+sh /tmp/dtj
 EOF
 echo "diff test: $pass same, $fail different"
 [ "$fail" -eq 0 ]
