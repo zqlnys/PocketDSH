@@ -4478,7 +4478,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 | 单指令测试 | **172 项，0 失败** | `make test` |
 | M2 扫描 | **152 通过，0 失败** | `tools/m2-sweep.sh` |
 | M3 扫描 | **95 通过，0 失败** | `tools/m3-sweep.sh` |
-| 差分对比 | **67 一致，0 不同** | `tools/diff-test.sh` |
+| 差分对比 | **68 一致，0 不同** | `tools/diff-test.sh` |
 | 解码规则重叠 | **无** | `make overlaps` |
 | 规则越界 | **0 条** | `tools/check-rule-mnemonics.py` |
 | iOS 测试 | **24 项** | `PocketDSHTests.swift` |
@@ -4880,4 +4880,27 @@ snprintf(g_cur_cwd, sizeof(g_cur_cwd), "%s", p->pc.cwd);
 
 **它只会在「有子进程退出」之后出现**——单进程测试永远发现不了。
 `cd` 之后直接操作文件是对的，`cd` 之后跑一个子 shell 再操作文件就错。
+
+### 第二个综合脚本进了差分测试
+
+在 `lseek`、`cd`、cwd 三处修复之后，加了一个更像真实任务的脚本：
+
+```sh
+set -e
+mkdir -p /tmp/dtwork && cd /tmp/dtwork
+printf 'name,score\nalice,90\nbob,75\ncarol,88\n' > s.csv
+tail -n +2 s.csv | sort -t, -k2 -n -r > sorted.txt
+echo "top: $(head -1 sorted.txt | cut -d, -f1)"
+total=$(tail -n +2 s.csv | cut -d, -f2 | awk '{s+=$1} END{print s}')
+count=$(tail -n +2 s.csv | wc -l)
+echo "avg: $((total / count))"
+for n in $(tail -n +2 s.csv | cut -d, -f1); do echo "hi $n"; done
+```
+
+**输出与 qemu 逐行一致。**
+
+它同时考验了：`set -e`、`mkdir -p`、`cd`、`printf` 生成 CSV、`sort` 的 `-t`/`-k`/`-n`/`-r`
+组合、`tail -n +2`、`awk` 聚合、算术展开 `$(( ))`、`grep -c`、`for` 遍历命令替换。
+
+**这几项里 `cd` 和 `tail -n +2`（需要 seek）今天才修好。**
 

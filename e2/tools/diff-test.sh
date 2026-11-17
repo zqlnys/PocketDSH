@@ -41,6 +41,21 @@ case x in x) echo matched;; esac
 while [ "$#" -gt 0 ]; do echo "arg=$1"; shift; done
 SCRIPT
 cp /tmp/dtsh /tmp/alpine-root/tmp/dtsh 2>/dev/null || true
+cat > /tmp/dtbig 2>/dev/null <<'BIGSCRIPT'
+set -e
+mkdir -p /tmp/dtwork && cd /tmp/dtwork
+printf 'name,score\nalice,90\nbob,75\ncarol,88\n' > s.csv
+tail -n +2 s.csv | sort -t, -k2 -n -r > sorted.txt
+echo "top: $(head -1 sorted.txt | cut -d, -f1)"
+total=$(tail -n +2 s.csv | cut -d, -f2 | awk '{s+=$1} END{print s}')
+count=$(tail -n +2 s.csv | wc -l)
+echo "avg: $((total / count))"
+grep -c 'a' s.csv
+for n in $(tail -n +2 s.csv | cut -d, -f1); do echo "hi $n"; done
+cd /tmp && rm -rf dtwork
+echo done
+BIGSCRIPT
+cp /tmp/dtbig /tmp/alpine-root/tmp/dtbig 2>/dev/null || true
 pass=0
 fail=0
 while IFS= read -r cmd; do
@@ -125,6 +140,7 @@ awk 'NR==2 {print $0}' /tmp/dta
 awk '{print NR": "$0}' /tmp/dta
 awk 'END{print NR, NF}' /tmp/dta
 sh /tmp/dtsh alpha beta
+sh /tmp/dtbig
 EOF
 echo "diff test: $pass same, $fail different"
 [ "$fail" -eq 0 ]
