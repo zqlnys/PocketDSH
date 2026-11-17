@@ -414,6 +414,38 @@ static void test_xtn_narrows_lanes(void) {
     e2_machine_destroy(&m);
 }
 
+static void test_ldrsb_backward_scan(void) {
+    printf("ldrsb sign-extends, which is what stops a backward UTF-8 scan\n");
+    // 0x38DFF0C1 is `ldrsb w1, [x6, #-1]` - unscaled, no writeback, as CPython's scan
+    // uses it. A byte of 0xFF must arrive as -1 so that testing bit 31 says "stop". If
+    // it arrives as 255 the bit is clear and the loop never ends, which is exactly the
+    // shape of the hang being investigated.
+    struct { uint8_t byte; int64_t expect; } cases[] = {
+        {0xFF, -1},
+        {0x80, -128},
+        {0x7F, 127},
+        {0xC3, -61},
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        e2_machine m;
+        e2_machine_init(&m, 0, 8192);
+        const uint64_t data = 0x30000000ULL;
+        e2_memory_map_at(&m.mem, data, 0x1000, E2_PROT_READ | E2_PROT_WRITE);
+        e2_memory_write(&m.mem, data, &cases[i].byte, 1);
+        const uint32_t code[] = {0x38DFF0C1u, RET()};
+        load_program(&m, code, 2);
+        m.cpu.x[6] = data + 1;   // one past the byte
+        e2_run(&m, 100);
+        // A 32-bit destination: the value is sign-extended to 32 bits, so 0xFF
+        // arrives as 0xFFFFFFFF with bit 31 set - not as 0xFFFF_FFFFFFFF. The bit is
+        // what the scan tests, so that representation is the correct one.
+        CHECK((int32_t)m.cpu.x[1] == (int32_t)cases[i].expect,
+              "byte 0x%02x gave %d, want %d", cases[i].byte,
+              (int)(int32_t)m.cpu.x[1], (int)(int32_t)cases[i].expect);
+        e2_machine_destroy(&m);
+    }
+}
+
 static void test_frame_pointer_prologue(void) {
     printf("the aarch64 frame prologue saves and restores x29 through SP\n");
     // Every non-leaf function on aarch64 starts with
@@ -1299,6 +1331,7 @@ int main(void) {
     test_load_store();
     test_svc();
     test_hint_space_is_noop();
+    test_ldrsb_backward_scan();
     test_frame_pointer_prologue();
     test_tbz_and_tbnz();
     test_tbz_on_bit_31();
