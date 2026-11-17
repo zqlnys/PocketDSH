@@ -411,6 +411,9 @@ static int fs_opendir(void *c, const char *path) {
     // stderr, and the last write failed with EBADF.
     const int fd = fd_alloc_tab(((const procctx *)c)->fdtab, -1);
     if (fd < 0) { closedir(d); return -24; }
+    if (getenv("E2_TRACE_DIROPEN"))
+        fprintf(stderr, "[diropen] pid=%d tab=%d fd=%d path=%s\n",
+                g_dbg_pid, ((const procctx *)c)->fdtab, fd, path);
     DIRTAB(c)[fd] = d;
     return fd;
 }
@@ -938,6 +941,9 @@ static long p_fork(void *ctx, const e2_machine *parent) {
     proc_t *c = &procs[slot];
     if (e2_machine_clone(parent, &c->m) != 0) return -12;
     c->pc.fdtab = slot;
+    if (getenv("E2_TRACE_FDTAB"))
+        fprintf(stderr, "[forktab] child=%d slot=%d parent=%d parenttab=%d\n",
+                c->pid, slot, self->pid, self->pc.fdtab);
     fd_table_copy(slot, self->pc.fdtab);
     c->pid = g_next_pid++;
     c->ppid = self->pid;
