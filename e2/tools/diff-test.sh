@@ -133,6 +133,24 @@ q
 EOF
 OUTER
 cp /tmp/dther /tmp/alpine-root/tmp/dther 2>/dev/null || true
+cat > /tmp/dtf 2>/dev/null <<'WRAP'
+f() { return 7; }; f; echo "ret=$?"
+g() { local v=inner; echo "$v"; }; g
+case abc in
+  a*) echo "prefix" ;;
+  *) echo "other" ;;
+esac
+case x in
+  [0-9]) echo digit ;;
+  [a-z]) echo letter ;;
+esac
+i=0; until [ $i -ge 3 ]; do i=$((i+1)); done; echo "until=$i"
+for w in "a b" c; do echo "w=$w"; done
+printf '%s\n' one two three | while read -r l; do echo "<$l>"; done
+x=5; [ $x -gt 3 ] && [ $x -lt 10 ] && echo range
+echo $((0x10 + 010))
+WRAP
+cp /tmp/dtf /tmp/alpine-root/tmp/dtf 2>/dev/null || true
 pass=0
 fail=0
 while IFS= read -r cmd; do
@@ -328,6 +346,7 @@ echo start; ( exit 1 ) || echo failed
 sh /tmp/dtbig
 sh /tmp/dts
 sh /tmp/dther
+sh /tmp/dtf
 EOF
 echo "diff test: $pass same, $fail different"
 [ "$fail" -eq 0 ]
