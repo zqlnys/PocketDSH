@@ -4478,7 +4478,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 | 单指令测试 | **173 项，0 失败** | `make test` |
 | M2 扫描 | **164 通过，0 失败** | `tools/m2-sweep.sh` |
 | M3 扫描 | **95 通过，0 失败** | `tools/m3-sweep.sh` |
-| 差分对比 | **130 一致，0 不同** | `tools/diff-test.sh` |
+| 差分对比 | **137 一致，0 不同** | `tools/diff-test.sh` |
 | 解码规则重叠 | **无** | `make overlaps` |
 | 规则越界 | **0 条** | `tools/check-rule-mnemonics.py` |
 | iOS 测试 | **24 项** | `PocketDSHTests.swift` |
@@ -5981,4 +5981,23 @@ echo "len: ${#upper}"
 所有用户可见的功能——两个二进制、562 项验证——都是正确的。
 
 **继续投入的产出已经确定低于其他方向。**
+
+### 差分用例扩到 137：`find` 与 `grep` 的文件遍历
+
+新增 7 条，覆盖 `find -name`、`-type d`、`-type f`、`-maxdepth`、`grep -v`、
+`grep -l` 多文件。
+
+**130 → 137。**
+
+### 一个反复出现的测试陷阱
+
+这批用例第一次测时**6 条报差异**，全部是 `find: /tmp/ft2: No such file or directory`。
+
+**原因还是 qemu 不 chroot**——它看不到 guest 根下的 `/tmp/ft2`。
+
+修法是把 fixture **在两个根里都建一份**。这个模式已经用过多次，
+但每次新写用例时仍容易忘。
+
+**凡是涉及文件系统的差分用例，fixture 必须两边都有**——否则测的是「qemu 找不到文件」，
+不是「行为是否一致」。
 

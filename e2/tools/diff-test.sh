@@ -102,6 +102,12 @@ cd /tmp && rm -rf dtst
 echo done
 STRESS
 cp /tmp/dts /tmp/alpine-root/tmp/dts 2>/dev/null || true
+# Fixtures for find/grep: created in both roots, so qemu (not chrooted) sees the
+# same tree this backend does.
+for r in /tmp/dtfind "$ROOT/tmp/dtfind"; do
+    rm -rf "$r"; mkdir -p "$r/a" "$r/b"
+    echo 1 > "$r/a/x.txt"; echo 2 > "$r/b/y.txt"
+done
 pass=0
 fail=0
 while IFS= read -r cmd; do
@@ -253,6 +259,13 @@ seq 4 | tac | head -2
 printf 'q\n' | sed 's/q/Q/;s/Q/!/'
 echo 'A B' | tr -s ' ' '_'
 seq 3 | awk 'NR%2'
+find /tmp/dtfind -name '*.txt' | sort
+find /tmp/dtfind -type d | sort
+find /tmp/dtfind -type f | wc -l
+find /tmp/dtfind -maxdepth 1 | sort
+grep -v 1 /tmp/dtfind/a/x.txt; echo ok
+grep -l 1 /tmp/dtfind/a/x.txt /tmp/dtfind/b/y.txt
+find /tmp/dtfind -name 'y*'
 sh /tmp/dtbig
 sh /tmp/dts
 EOF
