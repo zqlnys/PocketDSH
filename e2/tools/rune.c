@@ -1477,13 +1477,25 @@ static int run_proc(int idx) {
             }
             if (ng < 8) ng++;
         }
-        if (getenv("E2_TRACE_CALLER") && p->m.cpu.pc == 0x101a61ac) {
-            static int nc = 0;
-            if (++nc < 12)
-                fprintf(stderr, "[caller] struct=0x%llx field+8=0x%llx x0=0x%llx\n",
-                        (unsigned long long)p->m.cpu.x[19],
-                        (unsigned long long)p->m.cpu.x[0],
-                        (unsigned long long)p->m.cpu.x[0]);
+        // Counted rather than printed: printing every entry changes the timing enough
+        // to hide what is being looked for. This says how often the block is reached
+        // and with what return address, which is what the M4 investigation needs.
+        if (getenv("E2_TRACE_CALLER")) {
+            const uint64_t at = strtoull(getenv("E2_TRACE_CALLER"), NULL, 0);
+            if (p->m.cpu.pc == at) {
+                static unsigned long nc;
+                static uint64_t last_lr;
+                last_lr = p->m.cpu.x[30];
+                nc++;
+                const long mark = getenv("E2_TRACE_CALLER_AT")
+                                      ? atol(getenv("E2_TRACE_CALLER_AT")) : -1;
+                if (mark > 0 && nc == (unsigned long)mark)
+                    fprintf(stderr, "[caller] hit %lu lr=0x%llx\n",
+                            nc, (unsigned long long)last_lr);
+                if (nc == 1 || nc == 100 || nc == 100000)
+                    fprintf(stderr, "[caller] hit %lu lr=0x%llx\n",
+                            nc, (unsigned long long)last_lr);
+            }
         }
         if (getenv("E2_TRACE_ENTRY") && p->m.cpu.pc == 0x101669a4) {
             static int ne = 0;
