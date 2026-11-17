@@ -414,6 +414,65 @@ static void test_xtn_narrows_lanes(void) {
     e2_machine_destroy(&m);
 }
 
+static void test_tbz_and_tbnz(void) {
+    printf("TBZ branches on zero, TBNZ on one\n");
+    // This is the instruction the original BRE investigation stopped at: a `tbz` whose
+    // condition differed, with bit 31 of the tested word at stake. Three things are
+    // easy to get wrong - which bit is tested, whether the branch is taken on a set or
+    // a clear bit, and whether the value is read as 32 or 64 bits.
+    struct { uint64_t value; uint32_t tbz; uint32_t tbnz; const char *label; } cases[] = {
+        {0,   1, 2, "bit clear"},
+        {1,   2, 1, "bit set"},
+        {0x80000000ULL, 1, 2, "bit 31 set, bit 0 clear"},
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        for (int mode = 0; mode < 2; mode++) {
+            e2_machine m;
+            e2_machine_init(&m, 0, 8192);
+            m.cpu.x[0] = cases[i].value;
+            // movz x1,#1 ; TBZ/TBNZ x0,#0,+8 ; movz x1,#2 ; ret
+            // 0x36000040 is TBZ x0,#0,+8 and 0x37000040 is TBNZ; only bit 24 differs.
+            const uint32_t code[] = {0xD2800021u,
+                                     mode == 0 ? 0x36000040u : 0x37000040u,
+                                     0xD2800041u, RET()};
+            load_program(&m, code, 4);
+            e2_run(&m, 100);
+            const uint64_t want = (mode == 0) ? cases[i].tbz : cases[i].tbnz;
+            (void)0;
+            CHECK(m.cpu.x[1] == want, "%s %s: x1=%llu want %llu", cases[i].label,
+                  mode == 0 ? "TBZ" : "TBNZ", (unsigned long long)m.cpu.x[1],
+                  (unsigned long long)want);
+            e2_machine_destroy(&m);
+        }
+    }
+}
+
+static void test_tbz_on_bit_31(void) {
+    printf("TBZ can test bit 31, which lives in the instruction's own bit 31\n");
+    // The tested bit number is split across two fields: bit 5 of the number comes from
+    // bit 31 of the instruction, bits 4:0 from bits 23:19. Reading only the low field
+    // makes every test_high_bit look like a test of a low bit - which is the shape of
+    // the disagreement the BRE investigation originally hit.
+    struct { uint64_t value; uint64_t want; } cases[] = {
+        {0x80000000ULL, 2},   // bit 31 set: TBZ tests zero, so it does not branch
+        {0x7FFFFFFFULL, 1},   // bit 31 clear: TBZ branches
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        e2_machine m;
+        e2_machine_init(&m, 0, 8192);
+        m.cpu.x[0] = cases[i].value;
+        // TBZ x0, #31, +8 -> 0x36F80040: the bit number 31 is b5=0 plus b40=31, not
+        // bit 31 of the instruction - setting that bit would ask for bit 63.
+        const uint32_t code[] = {0xD2800021u, 0x36F80040u, 0xD2800041u, RET()};
+        load_program(&m, code, 4);
+        e2_run(&m, 100);
+        CHECK(m.cpu.x[1] == cases[i].want, "value 0x%llx gave x1=%llu want %llu",
+              (unsigned long long)cases[i].value, (unsigned long long)m.cpu.x[1],
+              (unsigned long long)cases[i].want);
+        e2_machine_destroy(&m);
+    }
+}
+
 static void test_widen_multiply(void) {
     printf("SMADDL and UMADDL treat the same operands differently\n");
     // W1 = 0xFFFFFFFF, W2 = 2, X3 = 0. Signed that is -1 * 2 = -2; unsigned it is
@@ -1207,6 +1266,8 @@ int main(void) {
     test_load_store();
     test_svc();
     test_hint_space_is_noop();
+    test_tbz_and_tbnz();
+    test_tbz_on_bit_31();
     test_widen_multiply();
     test_saturating_narrow();
     test_simd_permute();
