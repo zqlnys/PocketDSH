@@ -4478,7 +4478,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 | 单指令测试 | **173 项，0 失败** | `make test` |
 | M2 扫描 | **164 通过，0 失败** | `tools/m2-sweep.sh` |
 | M3 扫描 | **95 通过，0 失败** | `tools/m3-sweep.sh` |
-| 差分对比 | **137 一致，0 不同** | `tools/diff-test.sh` |
+| 差分对比 | **147 一致，0 不同** | `tools/diff-test.sh` |
 | 解码规则重叠 | **无** | `make overlaps` |
 | 规则越界 | **0 条**（100883 个唯一指令字） | `tools/check-rule-mnemonics.py` |
 | iOS 测试 | **26 项** | `PocketDSHTests.swift` |
@@ -4504,4 +4504,18 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 | 命令替换在管道里丢失输出 | 测试工具层的描述符生命周期问题，不影响解释器正确性 |
 | `wait4` 只等一个作业成员 | 已用量子 2000000 规避，缺陷仍在 |
 
+### 差分用例扩到 147：sed 与 awk 的进阶特性
+
+| 类型 | 用例 |
+| --- | --- |
+| sed 全局替换 | `s/a/b/g` |
+| sed 行范围 | `1d`、`$d` |
+| sed 多组反向引用 | `s/\([a-z]*\) \([a-z]*\)/\2 \1/` |
+| sed 分支 | `s/x/y/;t;s/$/!/` |
+| awk 数组逆序 | `a[NR]=$1` 配合逆序输出 |
+| awk 空 FS | `BEGIN{FS=""}` 逐字符 |
+| awk gsub | `gsub(/e/,"E")` |
+| awk 范围模式 | `NR==2,NR==3` |
+
+**137 → 147，全部一致。**
 

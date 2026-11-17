@@ -266,6 +266,16 @@ find /tmp/dtfind -maxdepth 1 | sort
 grep -v 1 /tmp/dtfind/a/x.txt; echo ok
 grep -l 1 /tmp/dtfind/a/x.txt /tmp/dtfind/b/y.txt
 find /tmp/dtfind -name 'y*'
+printf 'aaa\n' | sed 's/a/b/g'
+printf 'ab\ncd\n' | sed '1d'
+printf 'ab\ncd\n' | sed '$d'
+printf 'one two\n' | sed 's/\([a-z]*\) \([a-z]*\)/\2 \1/'
+seq 5 | awk '{a[NR]=$1} END{for(i=NR;i>0;i--) printf "%s ", a[i]; print ""}'
+printf 'x\n' | sed 's/x/y/;t;s/$/!/'
+seq 3 | awk 'BEGIN{FS=""}{print NF}'
+printf 'a.b.c\n' | sed 's/\./:/g'
+echo 'test' | awk '{gsub(/e/,"E"); print}'
+seq 4 | awk 'NR==2,NR==3'
 sh /tmp/dtbig
 sh /tmp/dts
 EOF
