@@ -4475,7 +4475,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 
 | 项目 | 实测值 | 命令 |
 | --- | --- | --- |
-| 单指令测试 | **177 项，0 失败** | `make test` |
+| 单指令测试 | **183 项，0 失败** | `make test` |
 | M2 扫描 | **163 通过，0 失败** | `tools/m2-sweep.sh` |
 | M3 扫描 | **93 通过，0 失败** | `tools/m3-sweep.sh` |
 | 差分对比 | **182 一致，0 不同** | `tools/diff-test.sh` |
@@ -5209,4 +5209,43 @@ FAIL tests/main.c:353: x0 = 0x19, want 0x7d
 `0x19` 是 25，`0x7d` 是 125——**正是这条测试要抓的错误**。恢复后 177 项全绿。
 
 **173 → 177。**
+
+### 补上 `chdir` 的单元测试
+
+`chdir` 的行为里有一个容易漏掉的点：**目录不存在时必须失败**。
+如果宿主对任何路径都答「好」，`cd` 就会对一个不存在的目录报告成功。
+
+测试用 mock 只承认 `/bin` 和 `/`，然后断言：
+
+| 调用 | 期望 |
+| --- | --- |
+| `chdir("/bin")` | 成功，`env.cwd` 变成 `/bin` |
+| `chdir("/nope")` | **返回 `-ENOENT`，且 `env.cwd` 不变** |
+
+**第二条是关键**：失败的 `chdir` 不能改变工作目录。
+
+### 两次尝试才写对
+
+第一次测试报 `EFAULT`——**因为把路径字符串写到了未映射的地址 `0x1000`**。
+系统调用通过页表读它，拿到的就是 EFAULT。
+
+参照现有的 `path_syscall_checks`，改成先 `e2_memory_map_at` 再写：
+
+```c
+const uint64_t path_addr = 0x30000000ULL;
+e2_memory_map_at(&m.mem, path_addr, 0x1000, E2_PROT_READ | E2_PROT_WRITE);
+```
+
+### 验证测试真的能抓到回归
+
+把 `chdir` 里的存在性检查删掉：
+
+```
+FAIL tests/main.c:364: chdir to a missing directory must fail, got 0
+FAIL tests/main.c:366: a failed chdir must not move cwd
+```
+
+**两条断言同时失败**——正是这段检查要防的两个后果。恢复后 183 项全绿。
+
+**177 → 183。**
 

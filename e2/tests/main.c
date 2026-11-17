@@ -86,6 +86,14 @@ static int test_file_open(void *ctx, const char *path, int flags, int mode) {
     return -2;  // ENOENT
 }
 static int test_file_close(void *ctx, int fd) { (void)ctx; (void)fd; return 0; }
+// Only /bin exists in this mock. chdir asks before accepting a path, so a host that
+// answers "yes" to everything makes `cd` report success for directories that are not
+// there - which is the thing worth testing.
+static int test_opendir(void *ctx, const char *path) {
+    (void)ctx;
+    if (strcmp(path, "/bin") == 0 || strcmp(path, "/") == 0) return 3;
+    return -2;  // ENOENT
+}
 // A seek that keeps a position, so lseek can be exercised. Without it every lseek
 // returned ENOSYS here and the syscall was tested only by the differential suite.
 static long long g_test_pos;
@@ -115,6 +123,7 @@ static const e2_file_ops test_files = {
     .stat = test_file_stat,
     .clock_ns = test_clock_ns,
     .seek = test_file_seek,
+    .opendir = test_opendir,
 };
 
 
@@ -324,6 +333,38 @@ static void test_hint_space_is_noop(void) {
     load_program(&m, code, sizeof(code) / sizeof(code[0]));
     e2_run(&m, 100);
     CHECK_REG(m, 7, 33);
+    e2_machine_destroy(&m);
+}
+
+static void test_chdir_checks_the_directory_exists(void) {
+    printf("chdir refuses a path that is not a directory\n");
+    e2_machine m;
+    e2_machine_init(&m, 0, 1 << 20);
+    // The path has to live in guest memory, and it has to be mapped: the syscall reads
+    // it through the page tables, so an unmapped address answers EFAULT.
+    const uint64_t path_addr = 0x30000000ULL;
+    e2_memory_map_at(&m.mem, path_addr, 0x1000, E2_PROT_READ | E2_PROT_WRITE);
+    e2_syscall_env env = {0};
+    env.files = &test_files;
+    snprintf(env.cwd, sizeof(env.cwd), "/");
+    const char ok_path[] = "/bin";
+    e2_memory_write(&m.mem, path_addr, ok_path, sizeof(ok_path));
+
+    m.cpu.x[8] = E2_SYS_chdir;
+    m.cpu.x[0] = path_addr;
+    CHECK(e2_service_syscall(&m, &env) == E2_OK, "chdir /bin should succeed");
+    CHECK_REG(m, 0, 0);
+    CHECK(strcmp(env.cwd, "/bin") == 0, "cwd should be /bin, got %s", env.cwd);
+
+    const char bad_path[] = "/nope";
+    e2_memory_write(&m.mem, path_addr, bad_path, sizeof(bad_path));
+    m.cpu.x[8] = E2_SYS_chdir;
+    m.cpu.x[0] = path_addr;
+    CHECK(e2_service_syscall(&m, &env) == E2_OK, "chdir should complete");
+    CHECK((int64_t)m.cpu.x[0] == -2, "chdir to a missing directory must fail, got %lld",
+          (long long)(int64_t)m.cpu.x[0]);
+    CHECK(strcmp(env.cwd, "/bin") == 0, "a failed chdir must not move cwd");
+
     e2_machine_destroy(&m);
 }
 
@@ -861,6 +902,7 @@ int main(void) {
     test_load_store();
     test_svc();
     test_hint_space_is_noop();
+    test_chdir_checks_the_directory_exists();
     test_lseek_reports_the_new_position();
     test_nop();
     test_unimplemented();
