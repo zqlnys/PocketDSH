@@ -680,6 +680,7 @@ uint64_t g_dbg_sp;
 // scheduling questions need.
 unsigned long long g_global_step;
 int g_dbg_pid;
+extern unsigned long long g_dbg_last_syscall;
 uint64_t g_dbg_pc2;
 static const char *g_self_path = NULL;
 

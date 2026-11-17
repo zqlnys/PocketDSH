@@ -210,6 +210,7 @@ static long sys_pathop(e2_machine *m, e2_syscall_env *env, int op,
 
 extern unsigned long long g_global_step;
 extern int g_dbg_pid;
+unsigned long long g_dbg_last_syscall;
 
 // Guest paths. 512 was enough for every case tested and would still silently
 // truncate a longer one into a different path, which is the same failure the
@@ -242,7 +243,15 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
     const e2_file_ops *files = env->files;
 
     // Result goes to X0 for every path; the helper keeps the returns uniform.
-    #define E2_RETURN(value) do { m->cpu.x[0] = (uint64_t)(int64_t)(value); return E2_OK; } while (0)
+    // Report a failing syscall at the point the result is produced. Probing x0 after
+    // every step instead reported AT_FDCWD (-100) as a failed return, because a
+    // negative register value is also a legitimate argument.
+    #define E2_RETURN(value) do {                                                 \
+        const int64_t e2_rv = (int64_t)(value);                                   \
+        if (e2_rv < 0 && getenv("E2_TRACE_EFAIL") != NULL)                        \
+            fprintf(stderr, "[efail] sys=%llu ret=%lld\n",                        \
+                    (unsigned long long)number, (long long)e2_rv);                \
+        m->cpu.x[0] = (uint64_t)e2_rv; return E2_OK; } while (0)
 
     switch (number) {
         case E2_SYS_write: {

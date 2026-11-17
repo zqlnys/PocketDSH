@@ -5026,3 +5026,45 @@ if ((insn & 0xFFFFF01Fu) == 0xD503201Fu) { ... }
 新增单指令测试，把 `BTI c`、`PACIASP`、`AUTIASP`、`NOP` 连在一起执行，
 断言后续指令正常。M2 增加一条 `apk --version`。
 
+### Python 的进展：没有系统调用失败，问题在计算层
+
+修完 `BTI` 之后 Python 能启动得更远。用新加的 `E2_TRACE_EFAIL` 探针查启动阶段的失败调用：
+
+```
+[efail] sys=56 ret=-2      ×3   （openat 的 ENOENT，正常的路径搜索）
+```
+
+**只有三次预期内的「文件不存在」，没有任何其他系统调用失败。**
+
+但 getpath 仍然抛出 `Exception ignored error evaluating path`。**所以不是系统调用的问题**——
+和 `pow` 属于同一类：**计算层面的细微错误**。
+
+### 一个有价值的发现
+
+加 `PYTHONHOME=/usr` 之后，**那个异常完全消失了**：
+
+```
+$ PYTHONHOME=/usr python3 -c "print(1)"
+              ← 没有 "Exception ignored error evaluating path"
+```
+
+说明 getpath 的**前缀推导**失败，而显式指定之后就绕过了。**这给下一步指明了方向**：
+读 getpath 的前缀搜索逻辑，看它依赖哪个计算。
+
+### 工具：`E2_TRACE_EFAIL`
+
+第一版探针在每一步之后检查 x0 是否为负——**误报了**，因为 `AT_FDCWD` 就是 `-100`，
+负数是**合法的参数值**，不是失败的返回值。
+
+改在 `E2_RETURN` 宏里记录，也就是**返回值真正产生的地方**：
+
+```c
+#define E2_RETURN(value) do {
+    const int64_t e2_rv = (int64_t)(value);
+    if (e2_rv < 0 && getenv("E2_TRACE_EFAIL")) fprintf(...);
+    ...
+} while (0)
+```
+
+**「在哪观察」又一次比「观察什么」更重要。**
+
