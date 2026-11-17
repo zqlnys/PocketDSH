@@ -160,7 +160,16 @@ static int test_file_stat(void *ctx, int fd, void *buf, size_t buflen) {
 }
 unsigned long long g_global_step;
 int g_dbg_pid;
-static long long test_clock_ns(void *ctx, int clock_id) { (void)ctx; (void)clock_id; return 0; }
+// Different answers per clock id, so a syscall that ignores the argument and serves one
+// clock for everything - which put `date` at 1970 - is visible rather than plausible.
+static long long test_clock_ns(void *ctx, int clock_id) {
+    (void)ctx;
+    switch (clock_id) {
+        case 0: return 1700000000123456789LL;  // CLOCK_REALTIME
+        case 1: return 5000000000LL;           // CLOCK_MONOTONIC
+        default: return 0;
+    }
+}
 
 static const e2_file_ops test_files = {
     .open = test_file_open,
@@ -383,6 +392,36 @@ static void test_hint_space_is_noop(void) {
     load_program(&m, code, sizeof(code) / sizeof(code[0]));
     e2_run(&m, 100);
     CHECK_REG(m, 7, 33);
+    e2_machine_destroy(&m);
+}
+
+static void test_clock_gettime_honours_the_id(void) {
+    printf("clock_gettime serves the clock that was asked for\n");
+    e2_machine m;
+    e2_machine_init(&m, 0, 1 << 20);
+    const uint64_t ts = 0x30000000ULL;
+    e2_memory_map_at(&m.mem, ts, 0x1000, E2_PROT_READ | E2_PROT_WRITE);
+    e2_syscall_env env = {0};
+    env.files = &test_files;
+
+    // CLOCK_REALTIME (0): seconds must reflect the realtime value, not the monotonic one.
+    m.cpu.x[8] = E2_SYS_clock_gettime;
+    m.cpu.x[0] = 0;
+    m.cpu.x[1] = ts;
+    CHECK(e2_service_syscall(&m, &env) == E2_OK, "clock_gettime should complete");
+    int64_t got[2] = {0, 0};
+    e2_memory_read(&m.mem, ts, got, sizeof(got));
+    CHECK(got[0] == 1700000000LL, "realtime seconds %lld", (long long)got[0]);
+
+    // CLOCK_MONOTONIC (1): a different clock means different seconds. Serving one clock
+    // for every id is exactly the bug that made date print 1970.
+    m.cpu.x[8] = E2_SYS_clock_gettime;
+    m.cpu.x[0] = 1;
+    m.cpu.x[1] = ts;
+    CHECK(e2_service_syscall(&m, &env) == E2_OK, "clock_gettime should complete");
+    e2_memory_read(&m.mem, ts, got, sizeof(got));
+    CHECK(got[0] == 5, "monotonic seconds %lld", (long long)got[0]);
+
     e2_machine_destroy(&m);
 }
 
@@ -1056,6 +1095,7 @@ int main(void) {
     test_load_store();
     test_svc();
     test_hint_space_is_noop();
+    test_clock_gettime_honours_the_id();
     test_statfs_layout();
     test_truncate_forms();
     test_newfstatat_honours_no_follow();
