@@ -532,6 +532,19 @@ printf 'b\na\nc\n' | sort | head -2
 seq 3 | while read n; do echo "n=$n"; done
 echo '  trim  ' | sed 's/^ *//;s/ *$//'
 printf 'x\ty\n' | cut -f2
+printf 'abc' | od -An -tx1
+echo 'test' | md5sum
+seq 4 | xargs -n2 echo
+echo '1.5 2.5' | awk '{printf "%.1f\n", $1+$2}'
+expr 17 % 5
+echo 'a b c' | cut -d' ' -f2-3
+printf 'x\n' | sed 'p'
+echo 'aXbXc' | tr 'X' '\n'
+echo 'aaa' | awk '{gsub(/a/,"b"); print}'
+printf '1\n10\n2\n' | sort -n
+printf '1\n10\n2\n' | sort
+seq 4 | tac
+echo 'xy' | sed 's/x//'
 sh /tmp/dtar
 sh /tmp/dtu
 sh /tmp/dtfs.sh
