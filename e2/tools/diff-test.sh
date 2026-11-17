@@ -228,6 +228,21 @@ wc -c < "$name.txt"
 cd /tmp && rm -rf dtfs
 WRAP
 cp /tmp/dtfs.sh /tmp/alpine-root/tmp/dtfs.sh 2>/dev/null || true
+cat > /tmp/dtpf 2>/dev/null <<'WRAP'
+printf '%d|%5d|%-5d|%05d\n' 42 42 42 42
+printf '%s|%5s|%-5s\n' ab ab ab
+printf '%x|%X|%o\n' 255 255 8
+printf '%c\n' A
+printf '%c%c\n' ABC DEF
+printf '%e|%E\n' 1234.5 1234.5
+printf '%f|%.2f|%8.3f\n' 3.14159 3.14159 3.14159
+printf '%g|%G\n' 0.0001 1000000
+printf '%%\n'
+printf '%5.2s|\n' abcdef
+printf '%+d|% d\n' 5 5
+printf '%i\n' 42
+WRAP
+cp /tmp/dtpf /tmp/alpine-root/tmp/dtpf 2>/dev/null || true
 pass=0
 fail=0
 while IFS= read -r cmd; do
@@ -429,6 +444,7 @@ sh /tmp/dtrp
 sh /tmp/dtar
 sh /tmp/dtu
 sh /tmp/dtfs.sh
+sh /tmp/dtpf
 EOF
 echo "diff test: $pass same, $fail different"
 [ "$fail" -eq 0 ]
