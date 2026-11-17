@@ -4475,7 +4475,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 
 | 项目 | 实测值 | 命令 |
 | --- | --- | --- |
-| 单指令测试 | **173 项，0 失败** | `make test` |
+| 单指令测试 | **177 项，0 失败** | `make test` |
 | M2 扫描 | **163 通过，0 失败** | `tools/m2-sweep.sh` |
 | M3 扫描 | **93 通过，0 失败** | `tools/m3-sweep.sh` |
 | 差分对比 | **182 一致，0 不同** | `tools/diff-test.sh` |
@@ -5169,4 +5169,44 @@ ERR[can't open]: sh /tmp/dtrp
 
 `sh /tmp/dtlnk.sh` 输出 `No such file`——**那正是用例在验证「目录已被删除」**。
 这类「有意为之的错误输出」正是扫描结果需要人工判断的原因。
+
+### 补上 `lseek` 的单元测试（此前只有差分覆盖）
+
+检查测试覆盖面时发现：**`lseek` 和 `chdir` 这两个我修过的缺陷，单元测试里一条都没有。**
+
+测试用的 mock `e2_file_ops` 只提供了 `open`/`read`/`write`/`close`/`stat`/`clock_ns`
+六个操作，**所以 `lseek` 在单元测试里永远走 `ENOSYS` 分支**——等于没测。
+
+### 加了一个会跟踪位置的 seek
+
+```c
+static long test_file_seek(void *ctx, int fd, long long offset, int whence) {
+    switch (whence) {
+        case 0: g_test_pos = offset; break;          // SEEK_SET
+        case 1: g_test_pos += offset; break;         // SEEK_CUR
+        case 2: g_test_pos = 1000 + offset; break;   // SEEK_END
+        default: return -22;
+    }
+    return (long)g_test_pos;
+}
+```
+
+测试断言 **`SEEK_CUR` 返回的是「新位置」而不是「传入的偏移」**：
+
+```
+lseek(3, 100, SEEK_SET) -> 100
+lseek(3,  25, SEEK_CUR) -> 125     ← 关键：不是 25
+```
+
+### 验证测试真的能抓到回归
+
+把 `lseek` 改回「直接返回 offset」的退化实现：
+
+```
+FAIL tests/main.c:353: x0 = 0x19, want 0x7d
+```
+
+`0x19` 是 25，`0x7d` 是 125——**正是这条测试要抓的错误**。恢复后 177 项全绿。
+
+**173 → 177。**
 

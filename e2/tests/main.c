@@ -86,6 +86,19 @@ static int test_file_open(void *ctx, const char *path, int flags, int mode) {
     return -2;  // ENOENT
 }
 static int test_file_close(void *ctx, int fd) { (void)ctx; (void)fd; return 0; }
+// A seek that keeps a position, so lseek can be exercised. Without it every lseek
+// returned ENOSYS here and the syscall was tested only by the differential suite.
+static long long g_test_pos;
+static long test_file_seek(void *ctx, int fd, long long offset, int whence) {
+    (void)ctx; (void)fd;
+    switch (whence) {
+        case 0: g_test_pos = offset; break;          // SEEK_SET
+        case 1: g_test_pos += offset; break;         // SEEK_CUR
+        case 2: g_test_pos = 1000 + offset; break;   // SEEK_END against a fixed size
+        default: return -22;                         // EINVAL
+    }
+    return (long)g_test_pos;
+}
 static int test_file_stat(void *ctx, int fd, void *buf, size_t buflen) {
     (void)ctx; (void)fd; (void)buf; (void)buflen;
     return -9;  // EBADF
@@ -101,6 +114,7 @@ static const e2_file_ops test_files = {
     .close = test_file_close,
     .stat = test_file_stat,
     .clock_ns = test_clock_ns,
+    .seek = test_file_seek,
 };
 
 
@@ -310,6 +324,34 @@ static void test_hint_space_is_noop(void) {
     load_program(&m, code, sizeof(code) / sizeof(code[0]));
     e2_run(&m, 100);
     CHECK_REG(m, 7, 33);
+    e2_machine_destroy(&m);
+}
+
+static void test_lseek_reports_the_new_position(void) {
+    printf("lseek moves the cursor and returns where it landed\n");
+    e2_machine m;
+    e2_machine_init(&m, 0, 8192);
+    e2_syscall_env env = {0};
+    env.files = &test_files;
+
+    g_test_pos = 0;
+    // lseek(3, 100, SEEK_SET) -> 100
+    m.cpu.x[8] = E2_SYS_lseek;
+    m.cpu.x[0] = 3;
+    m.cpu.x[1] = 100;
+    m.cpu.x[2] = 0;
+    CHECK(e2_service_syscall(&m, &env) == E2_OK, "lseek should succeed");
+    CHECK_REG(m, 0, 100);
+
+    // lseek(3, 25, SEEK_CUR) -> 125; a syscall that returned `offset` instead of the
+    // resulting position would answer 25 here.
+    m.cpu.x[8] = E2_SYS_lseek;
+    m.cpu.x[0] = 3;
+    m.cpu.x[1] = 25;
+    m.cpu.x[2] = 1;
+    CHECK(e2_service_syscall(&m, &env) == E2_OK, "lseek SEEK_CUR should succeed");
+    CHECK_REG(m, 0, 125);
+
     e2_machine_destroy(&m);
 }
 
@@ -819,6 +861,7 @@ int main(void) {
     test_load_store();
     test_svc();
     test_hint_space_is_noop();
+    test_lseek_reports_the_new_position();
     test_nop();
     test_unimplemented();
     test_hello_world();
