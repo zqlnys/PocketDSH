@@ -4475,7 +4475,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 
 | 项目 | 实测值 | 命令 |
 | --- | --- | --- |
-| 单指令测试 | **187 项，0 失败** | `make test` |
+| 单指令测试 | **197 项，0 失败** | `make test` |
 | M2 扫描 | **163 通过，0 失败** | `tools/m2-sweep.sh` |
 | M3 扫描 | **93 通过，0 失败** | `tools/m3-sweep.sh` |
 | 差分对比 | **182 一致，0 不同** | `tools/diff-test.sh` |
@@ -5273,4 +5273,36 @@ FAIL tests/main.c:372: x0 = 0xfffffffffffffffe, want 0x0
 `-2` 就是 `ENOENT`——**正是那个让 `rm -rf` 失败的错误返回值**。恢复后 187 项全绿。
 
 **183 → 187。**
+
+### `truncate` 与 `ftruncate` 的两种形式
+
+这两个系统调用**共用同一段代码**，靠参数区分：
+
+```c
+if (number == 46) {
+    E2_RETURN(files->truncate_file(env->ctx, (int)a0, NULL, (long long)a1));
+}
+// 45：读路径，传 fd = -1
+E2_RETURN(files->truncate_file(env->ctx, -1, path, (long long)a1));
+```
+
+**把两者搞混不会崩溃**——宿主会照做，只是做在错的东西上。
+所以测试要让 mock 记录**实际收到的参数**：
+
+| 调用 | mock 应看到 |
+| --- | --- |
+| `ftruncate(3, 1024)` | `fd=3, path=NULL, len=1024` |
+| `truncate("/bin", 7)` | `fd=-1, path="/bin", len=7` |
+
+### 验证测试真的能抓到回归
+
+把 `ftruncate` 的分支改成传 `-1`：
+
+```
+FAIL tests/main.c:382: ftruncate should pass fd 3, got -1
+```
+
+**正是那条断言要抓的错误。** 恢复后 197 项全绿。
+
+**187 → 197。**
 
