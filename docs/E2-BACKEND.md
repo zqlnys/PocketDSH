@@ -5777,3 +5777,50 @@ g_proc_self_pid = saved_self_pid;
 `grep -c x file file` 两边不同——**但那是 qemu 不在 chroot 里，找不到文件**，
 不是行为差异。这类需要文件系统状态一致的用例不适合进差分对比。
 
+## 重要发现：差分测试对比的其实不是同一个程序
+
+查 `sum` 输出差异时发现的：
+
+```
+mine:  BusyBox v1.36.1 ... multi-call binary.
+qemu:  Usage: sum [OPTION]... / Print or check BSD (16-bit) checksums.
+```
+
+**qemu 下跑的是宿主机的 GNU coreutils，不是 guest 里的 busybox applet。**
+
+原因：**qemu 用的 `-L` 只指定 loader 路径，不是 chroot**。
+guest 的 shell 做 PATH 查找时，命中的是**宿主的** `/bin/sed`、`/usr/bin/sum`。
+
+### 这意味着什么
+
+| 项 | 实际对比的是 |
+| --- | --- |
+| `mine` | guest 的 busybox applet |
+| `qemu` | **宿主的 GNU 工具** |
+
+**所以 113 条差分用例证明的是「busybox 的行为与 GNU 一致」，
+而不是「同一个二进制在两个模拟器下行为一致」。**
+
+### 这个结论是更强还是更弱
+
+**两者都有。**
+
+- **更弱**：不是同一个程序，所以不能证明「解释器忠实地执行了这段代码」
+- **更强**：两个**独立实现**给出相同输出，说明对行为的理解是对的
+
+**它证明了正确性，但没有证明保真度。**
+
+### 试过修，但引入了新问题
+
+思路是建一个只含 busybox 链接的 PATH，两边都优先找它。尝试失败：
+
+1. `busybox --list` 在宿主上跑不了（aarch64 二进制），拿不到 applet 列表
+2. 改用模拟器拿列表后，qemu 执行 `/tmp/dt-applets/sh` 时找不到 guest 的 `ld-musl`
+
+**已回退到原样。**这个限制被如实记录下来，而不是留一个半工作的修正。
+
+### 真正的修法
+
+需要一个能 chroot 的参考实现，或者一个把 guest 路径重写进 qemu 的包装层。
+**在当前环境里做不到，所以记录特征而不是假装解决。**
+
