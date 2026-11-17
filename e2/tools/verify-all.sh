@@ -9,9 +9,9 @@ DYNAMIC=${3:-/tmp/alpine-root/bin/busybox}
 fail=0
 
 echo "== unit tests =="
-make test 2>&1 | tail -1 || { echo "  FAIL: $?"; fail=1; }
+make test 2>&1 | tail -1 || fail=1
 echo "== overlaps =="
-make overlaps 2>&1 | tail -1 || { echo "  FAIL: $?"; fail=1; }
+make overlaps 2>&1 | tail -1 || fail=1
 
 for bb in "$STATIC" "$DYNAMIC"; do
     [ -x "$bb" ] || { echo "$bb: missing, skipped"; continue; }
@@ -22,13 +22,13 @@ for bb in "$STATIC" "$DYNAMIC"; do
     echo "== $label: $bb =="
     out=$(./tools/m2-sweep.sh "$bb" "$RUNE" 40 2>&1 | tail -1)
     echo "  $out"
-    case "$out" in *" 0 failed"*) ;; *) echo "  FAIL on: $out"; fail=1 ;; esac
+    case "$out" in *" 0 failed"*) ;; *) fail=1 ;; esac
     out=$(./tools/m3-sweep.sh "$bb" "$RUNE" 40 2>&1 | tail -1)
     echo "  $out"
-    case "$out" in *" 0 failed"*) ;; *) echo "  FAIL on: $out"; fail=1 ;; esac
+    case "$out" in *" 0 failed"*) ;; *) fail=1 ;; esac
     out=$(./tools/diff-test.sh "$bb" "$RUNE" "$STATIC" 2>&1 | tail -1)
     echo "  $out"
-    case "$out" in *" 0 different"*) ;; *) echo "  FAIL on: $out"; fail=1 ;; esac
+    case "$out" in *" 0 different"*) ;; *) fail=1 ;; esac
 done
 
 echo
