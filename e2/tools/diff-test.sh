@@ -56,6 +56,24 @@ cd /tmp && rm -rf dtwork
 echo done
 BIGSCRIPT
 cp /tmp/dtbig /tmp/alpine-root/tmp/dtbig 2>/dev/null || true
+# qemu's -L names a loader; it is not a chroot. A PATH lookup inside the guest
+# therefore resolves to the HOST's binaries, so `sh -c "sed"` ran GNU sed on one side
+# and busybox on the other - two different programs. Both sides are now pointed at a
+# directory of links to one static busybox, which the host can execute directly (no
+# loader needed) and which this backend resolves under the guest root.
+DT_STATIC="${3:-/tmp/bbs/bin/busybox.static}"
+if [ -x "$DT_STATIC" ]; then
+    rm -rf /tmp/dt-applets "$ROOT/tmp/dt-applets"
+    mkdir -p /tmp/dt-applets "$ROOT/tmp/dt-applets"
+    "$RUNE" "$DT_STATIC" busybox --list 2>/dev/null | while read -r app; do
+        [ -z "$app" ] && continue
+        ln -sf "$DT_STATIC" "/tmp/dt-applets/$app" 2>/dev/null
+        ln -sf "$DT_STATIC" "$ROOT/tmp/dt-applets/$app" 2>/dev/null
+    done
+    DT_PATH="/tmp/dt-applets:/bin:/usr/bin"
+else
+    DT_PATH="/bin:/usr/bin:/sbin:/usr/sbin"
+fi
 pass=0
 fail=0
 while IFS= read -r cmd; do
@@ -67,9 +85,9 @@ while IFS= read -r cmd; do
     # difference past the eighth line - a test that cannot see past a point is worse
     # than a shorter one that can. The harness's own exit line and the blank line
     # before it are stripped; nothing else is.
-    mine=$(timeout 60 "$RUNE" "$BUSYBOX" sh -c "$cmd" 2>&1 \
+    mine=$(timeout 60 env PATH="$DT_PATH" "$RUNE" "$DT_STATIC" sh -c "$cmd" 2>&1 \
            | grep -v '^\[exit ' | sed -e :a -e '/^$/{$d;N;ba' -e '}')
-    theirs=$(env -i timeout 60 qemu-aarch64-static -L "$ROOT" "$BUSYBOX" sh -c "$cmd" 2>&1 \
+    theirs=$(env -i PATH="$DT_PATH" timeout 60 qemu-aarch64-static -L "$ROOT" "$DT_STATIC" sh -c "$cmd" 2>&1 \
            | sed -e :a -e '/^$/{$d;N;ba' -e '}')
     if [ "$mine" = "$theirs" ]; then
         pass=$((pass + 1))

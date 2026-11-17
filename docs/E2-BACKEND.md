@@ -5810,17 +5810,29 @@ guest 的 shell 做 PATH 查找时，命中的是**宿主的** `/bin/sed`、`/us
 
 **它证明了正确性，但没有证明保真度。**
 
-### 试过修，但引入了新问题
+### 修法：两边都通过同一个**静态** busybox 运行 applet
 
-思路是建一个只含 busybox 链接的 PATH，两边都优先找它。尝试失败：
+两次失败之后找到了可行方案：
 
-1. `busybox --list` 在宿主上跑不了（aarch64 二进制），拿不到 applet 列表
-2. 改用模拟器拿列表后，qemu 执行 `/tmp/dt-applets/sh` 时找不到 guest 的 `ld-musl`
+1. `busybox --list` 在宿主上跑不了 → **改用 `./tools/rune` 去问**
+2. qemu 执行动态链接的链接时找不到 `ld-musl` → **改用静态 busybox**
 
-**已回退到原样。**这个限制被如实记录下来，而不是留一个半工作的修正。
+于是在 `/tmp/dt-applets`（宿主）和 `<ROOT>/tmp/dt-applets`（guest 根）各建一套
+指向**同一个静态 busybox** 的符号链接，把该目录放在两边 PATH 的最前面。
 
-### 真正的修法
+**宿主能直接执行静态二进制**（不需要 loader），guest 侧经 `host_path` 解析到同一个文件。
 
-需要一个能 chroot 的参考实现，或者一个把 guest 路径重写进 qemu 的包装层。
-**在当前环境里做不到，所以记录特征而不是假装解决。**
+### 验证：现在确实是同一个程序
+
+```
+$ sed --help | head -1
+mine:  BusyBox v1.36.1 (2025-11-23 14:32:18 UTC) multi-call binary.
+qemu:  BusyBox v1.36.1 (2025-11-23 14:32:18 UTC) multi-call binary.
+```
+
+**而 `sum - < file` 的差异也消失了**——它本来就不是解释器的问题，
+是 GNU 与 busybox 的输出格式不同。
+
+**现在 113 条差分用例是真正的保真度测试：同一个二进制，两个模拟器，输出必须一致。**
+
 

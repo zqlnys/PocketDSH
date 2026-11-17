@@ -26,7 +26,7 @@ for bb in "$STATIC" "$DYNAMIC"; do
     out=$(./tools/m3-sweep.sh "$bb" "$RUNE" 40 2>&1 | tail -1)
     echo "  $out"
     case "$out" in *" 0 failed"*) ;; *) fail=1 ;; esac
-    out=$(./tools/diff-test.sh "$bb" "$RUNE" 2>&1 | tail -1)
+    out=$(./tools/diff-test.sh "$bb" "$RUNE" "$STATIC" 2>&1 | tail -1)
     echo "  $out"
     case "$out" in *" 0 different"*) ;; *) fail=1 ;; esac
 done
