@@ -6131,3 +6131,41 @@ verify: FAILURES above         ← 聚合器如实报告
 
 **这条链是完整的：单项检查 → 聚合器 → 退出码。**
 
+## `mutation-check` 的第三次误判，以及一个补丁
+
+这个工具已经三次给出误导性结果，原因各不相同：
+
+| 次 | 原因 | 表现 | 现在如何处理 |
+| --- | --- | --- | --- |
+| 1 | 变异导致编译失败 | 看起来像「测试太弱」| `INVALID` |
+| 2 | 替换串没匹配上 | 看起来像「测试太弱」| `INVALID` |
+| 3 | 变异是 `if (0) { }`——**没禁用任何东西** | `NOT CAUGHT` | **仍报 `NOT CAUGHT`** |
+
+**第四次换了个性质**：我拿来验证的基线本身是坏的。
+
+### 加的前置检查
+
+**在动手改变异之前，先跑一次未改动的测试**：
+
+```sh
+baseline=$(eval "$test_cmd" 2>&1)
+if ... ', [1-9][0-9]* failure' ...; then
+    echo "INVALID  (the suite already fails before the mutation - fix that first)"
+    exit 1
+fi
+```
+
+**如果基线本来就是红的，之后无论报 `CAUGHT` 还是 `NOT CAUGHT` 都毫无意义**
+——那是在描述一个先于变异就存在的失败。
+
+### 三种判定都验证过
+
+```
+基线已坏        -> INVALID   240 checks, 1 failure(s)
+有效变异        -> CAUGHT    240 checks, 2 failure(s)
+无害变异        -> NOT CAUGHT
+```
+
+**第三种（无害变异）仍然是 `NOT CAUGHT`——这一条检测不出来，因为「无害」和「测试太弱」
+在输出上完全一样。** 这只能靠人来判断：**先问「我这个变异真的改变了行为吗」。**
+

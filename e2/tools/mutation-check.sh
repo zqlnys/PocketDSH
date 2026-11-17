@@ -25,6 +25,17 @@ backup=$(mktemp) || exit 2
 cp "$file" "$backup" || exit 2
 trap 'cp "$backup" "$file"; rm -f "$backup"' EXIT INT TERM
 
+# Baseline first. If the suite is already failing before any mutation, whatever it says
+# afterwards means nothing - a NOT CAUGHT would be reporting damage that predates the
+# edit. This is the third time a mutation-check result has been misleading, and both
+# earlier causes had the same symptom.
+baseline=$(eval "$test_cmd" 2>&1)
+if printf '%s' "$baseline" | grep -qE '^FAIL |, [1-9][0-9]* failure|[1-9][0-9]* different$'; then
+    echo "INVALID  (the suite already fails before the mutation - fix that first)"
+    printf '%s\n' "$baseline" | grep -E '^FAIL |, [1-9][0-9]* failure' | head -3
+    exit 1
+fi
+
 python3 - "$file" "$find_text" "$replace_text" <<'PY' || exit 2
 import sys
 path, find_text, replace_text = sys.argv[1], sys.argv[2], sys.argv[3]
