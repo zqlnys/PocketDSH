@@ -28,6 +28,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#include <ctype.h>
 #include <dirent.h>
 #include <elf.h>
 #include <time.h>
@@ -168,8 +169,36 @@ static void host_path(char *out, size_t n, const char *p) {
         snprintf(out, n, "%s%s/%s", ROOT, g_cur_cwd, p);
     }
 }
+// /dev/stdin, /dev/stdout, /dev/stderr and /dev/fd/N are descriptor aliases, not
+// files. Under the guest root they resolve to nothing, so `cat /dev/stdin` failed.
+// Returns the guest fd they name, or -1.
+static int device_fd_alias(const char *path) {
+    if (strcmp(path, "/dev/stdin") == 0) return 0;
+    if (strcmp(path, "/dev/stdout") == 0) return 1;
+    if (strcmp(path, "/dev/stderr") == 0) return 2;
+    if (strncmp(path, "/dev/fd/", 8) == 0) {
+        const char *num = path + 8;
+        if (!isdigit((unsigned char)num[0])) return -1;
+        return atoi(num);
+    }
+    return -1;
+}
+
 static int fs_open(void *c, const char *path, int fl, int m) {
     (void)m;
+    // An alias names a descriptor already open; duplicate it rather than looking
+    // for a file.
+    {
+        const int alias = device_fd_alias(path);
+        if (alias >= 0) {
+            if (alias >= 64 || !TAB(c)[alias].used) return -EBADF;
+            const int nfd = fd_alloc_tab(((procctx *)c)->fdtab, TAB(c)[alias].host);
+            if (nfd < 0) return -EMFILE;
+            if (DIRTAB(c)[nfd] != NULL) { closedir((DIR *)DIRTAB(c)[nfd]);
+                                         DIRTAB(c)[nfd] = NULL; }
+            return nfd;
+        }
+    }
     char h[2048]; host_path(h, sizeof(h), path);
     // Translate the guest's aarch64 open flags into host ones. O_CREAT without
     // O_WRONLY/RDWR is meaningless, so only honour it when writing.

@@ -45,6 +45,10 @@ while IFS= read -r cmd; do
         pass=$((pass + 1))
     fi
 done <<'EOF'
+# /dev/stdin, /dev/stdout and /dev/fd/N name descriptors, not files.
+echo abc | cat /dev/stdin
+seq 3 > /tmp/m2fd; cat /dev/fd/0 < /tmp/m2fd | wc -l
+echo out | tee /dev/stdout | wc -l
 # /dev/null was a regular file under the guest root, so writes accumulated and reads
 # returned whatever had been written there.
 echo x > /dev/null; wc -c < /dev/null

@@ -4476,7 +4476,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 | 项目 | 实测值 | 命令 |
 | --- | --- | --- |
 | 单指令测试 | **173 项，0 失败** | `make test` |
-| M2 扫描 | **156 通过，0 失败** | `tools/m2-sweep.sh` |
+| M2 扫描 | **159 通过，0 失败** | `tools/m2-sweep.sh` |
 | M3 扫描 | **95 通过，0 失败** | `tools/m3-sweep.sh` |
 | 差分对比 | **104 一致，0 不同** | `tools/diff-test.sh` |
 | 解码规则重叠 | **无** | `make overlaps` |
@@ -5173,4 +5173,40 @@ $ echo test | cmp - /dev/null               → EOF on /dev/null
 
 **它是累积性的**：第一次写 /dev/null 没事，第二次读就出问题。
 而且只有「先写后读」才会暴露——单独测任何一个方向都发现不了。
+
+## `/dev/stdin` 与 `/dev/fd/N` 是描述符别名，不是文件
+
+修好 `/dev/null` 之后继续测设备相关的东西，又发现两条对不上：
+
+| 命令 | 之前 | qemu |
+| --- | --- | --- |
+| `echo abc \| cat /dev/stdin` | `cat: can't open` | `abc` |
+| `cat /dev/fd/0 < file` | `0` 行 | `3` 行 |
+
+**这些名字指向的是已经打开的描述符**，不是路径。在 guest 根目录下按文件去找，
+自然找不到。
+
+### 修法
+
+在打开路径里先判断别名，命中就**复制那个描述符**而不是去找文件：
+
+```c
+static int device_fd_alias(const char *path) {
+    if (strcmp(path, "/dev/stdin") == 0) return 0;
+    if (strcmp(path, "/dev/stdout") == 0) return 1;
+    if (strcmp(path, "/dev/stderr") == 0) return 2;
+    if (strncmp(path, "/dev/fd/", 8) == 0) return atoi(path + 8);
+    return -1;
+}
+```
+
+### 验证
+
+```
+$ echo abc | cat /dev/stdin          → abc
+$ cat /dev/fd/0 < file | wc -l       → 3
+$ echo out | tee /dev/stdout | wc -l → out 1
+```
+
+三条进了 M2，静态与动态二进制都通过。
 
