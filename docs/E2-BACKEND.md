@@ -6072,3 +6072,26 @@ Exception ignored error evaluating path:
 
 **如果它在 CPython 里也没有出处，那就是某个 `memset` 的长度或源值算错了。**
 
+## 构建依赖：`make test` 需要 clang 与 lld
+
+六个测试用的 guest ELF（`fib.elf`、`memset.elf`、`cprog.elf`、`calls.elf`、`mul.elf`、`shll.elf`）
+**不在版本库里**，由 `make` 现场用交叉工具链生成：
+
+```
+clang --target=aarch64-linux-gnu -c ... ; ld.lld -static -o ...
+```
+
+只有 `hello.elf` 是提交的。
+
+### 这意味着什么
+
+**没有 `clang` 和 `ld.lld` 的机器上，`make test` 会失败**——而这一点之前
+**没有任何文档写过**（`BUILD.md` 和 `README.md` 都没提）。
+
+从一个只读 README 的人的视角：`cd e2 && make` 报错，**不知道该装什么**。
+
+### 顺带清理
+
+`e2/tests/guest/hello.o` 之前被提交进了版本库——**那是构建产物**，和其他六个 `.o`
+一样应该被忽略。已移出并加进 `.gitignore`。
+

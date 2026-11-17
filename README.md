@@ -91,6 +91,9 @@ make check
 
 **这里的每个数字都来自命令输出，没有豁免、没有 `|| true`、没有「已知失败」抵扣。**
 
+E2 后端另需两个工具：`clang` 与 `ld.lld`（交叉编译测试用的 aarch64 guest 程序），
+以及静态 busybox 与 Alpine 根文件系统（放在 `/tmp/alpine-root`）供扫描与差分测试使用。
+
 ## 目录
 
 ```text

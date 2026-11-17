@@ -41,3 +41,5 @@ TestResults.xcresult
 .venv/
 __pycache__/
 *.pyc
+# Build artifacts from the guest fixtures
+*.o
