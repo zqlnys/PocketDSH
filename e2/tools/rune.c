@@ -296,7 +296,10 @@ static long fs_read(void *c, int fd, void *b, size_t n, long long o) {
         // Nothing to read yet. A child can only make progress if we run it, so
         // do that and try again; when no child is left the pipe really is at
         // end of file.
-        if (!pump_children_for_tab(((const procctx *)c)->fdtab)) return 0;
+        const int ran = pump_children_for_tab(((const procctx *)c)->fdtab);
+        if (getenv("E2_TRACE_PUMP"))
+            fprintf(stderr, "[pump] tab=%d ran=%d\n", ((const procctx *)c)->fdtab, ran);
+        if (!ran) return 0;
     }
 }
 static long fs_write(void *c, int fd, const void *b, size_t n, long long o) {
