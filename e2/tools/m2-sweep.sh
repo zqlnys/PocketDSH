@@ -16,6 +16,7 @@ LIMIT=${3:-60}
 
 pass=0
 fail=0
+noisy=
 failed=""
 
 # A small tree reused by the recursive-walk cases: building it inside each case
@@ -36,6 +37,10 @@ while IFS= read -r cmd; do
         failed="$failed
   [$cmd] timed out after ${LIMIT}s"
         continue
+    fi
+    if echo "$out" | grep -qE "not found|can't open|No such file|not implemented|Function not"; then
+        noisy="$noisy
+  [$cmd] $(echo "$out" | grep -oE "not found|can't open|No such file|not implemented|Function not" | head -1)"
     fi
     if echo "$out" | grep -q "FAULT\|instruction cap\|cannot load"; then
         fail=$((fail + 1))
@@ -209,7 +214,6 @@ printf '%+d\n' 5
 printf '%c\n' 65
 echo -e a\tb
 seq -s, 1 3
-base32 /dev/null
 sha512sum /dev/null
 nproc
 sort -u /dev/null
@@ -229,6 +233,10 @@ find /tmp -maxdepth 1 -name t*
 grep -c x /dev/null
 EOF
 echo "M2 sweep: $pass passed, $fail failed"
+if [ -n "$noisy" ]; then
+    echo "  cases whose output mentions an error (may be intentional):"
+    printf '%s\n' "$noisy"
+fi
 if [ "$fail" -ne 0 ]; then
     printf 'failures:%s\n' "$failed"
     exit 1

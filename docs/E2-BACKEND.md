@@ -4476,7 +4476,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 | 项目 | 实测值 | 命令 |
 | --- | --- | --- |
 | 单指令测试 | **173 项，0 失败** | `make test` |
-| M2 扫描 | **164 通过，0 失败** | `tools/m2-sweep.sh` |
+| M2 扫描 | **163 通过，0 失败** | `tools/m2-sweep.sh` |
 | M3 扫描 | **95 通过，0 失败** | `tools/m3-sweep.sh` |
 | 差分对比 | **182 一致，0 不同** | `tools/diff-test.sh` |
 | 解码规则重叠 | **无** | `make overlaps` |
@@ -5091,4 +5091,21 @@ int (*stat_path)(void *ctx, const char *path, void *st, size_t stlen, int follow
 这类残留很常见（比如指向已删除目标的链接）。
 
 三条用例进了差分测试。
+
+### M2 扫描的两处改进
+
+**1. 删掉一条空操作用例**
+
+`base32 /dev/null` ——**这个 busybox 构建里没有 `base32`**，所以这条用例测的是
+「命令找不到」，不是任何行为。已删除，164 → 163。
+
+**2. 报出「输出里带错误信息」的用例**
+
+M2 原本只把 `FAULT`、`instruction cap`、`cannot load` 当作失败。
+**「not found」「can't open」「Function not implemented」全都算通过**——
+一条什么都没做成的用例，就这样混在绿色里。
+
+现在会单独列出这类用例供人判断（有些确实是有意测试失败路径）。
+
+**修完悬空链接那个缺陷之后，这个列表是空的**——那些 `rm -rf` 的报错都消失了。
 
