@@ -414,6 +414,33 @@ static void test_xtn_narrows_lanes(void) {
     e2_machine_destroy(&m);
 }
 
+static void test_widen_multiply(void) {
+    printf("SMADDL and UMADDL treat the same operands differently\n");
+    // W1 = 0xFFFFFFFF, W2 = 2, X3 = 0. Signed that is -1 * 2 = -2; unsigned it is
+    // 4294967295 * 2 = 8589934590. The decoder selects signedness with bit 23 and
+    // takes Ra from bits 14:10 (bit 15 is the subtract flag), so writing the encoding
+    // from the wrong field positions produces a subtract against a nonsense register
+    // and a number that looks like an ordinary add.
+    struct { uint32_t insn; const char *name; uint64_t expect; } cases[] = {
+        {0x9B220C20u, "SMADDL", (uint64_t)(int64_t)-2},   // bits 23-21 = 001
+        {0x9BA20C20u, "UMADDL", 8589934590ULL},           // bits 23-21 = 101
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        e2_machine m;
+        e2_machine_init(&m, 0, 8192);
+        m.cpu.x[1] = 0xFFFFFFFFULL;
+        m.cpu.x[2] = 2;
+        m.cpu.x[3] = 0;
+        const uint32_t code[] = {cases[i].insn, RET()};
+        load_program(&m, code, 2);
+        e2_run(&m, 100);
+        CHECK(m.cpu.x[0] == cases[i].expect, "%s gave 0x%llx, want 0x%llx",
+              cases[i].name, (unsigned long long)m.cpu.x[0],
+              (unsigned long long)cases[i].expect);
+        e2_machine_destroy(&m);
+    }
+}
+
 static void test_saturating_narrow(void) {
     printf("SQXTN and UQXTN clamp instead of truncating\n");
     // The clamping is the whole point of these two: XTN above truncates, these clamp.
@@ -1180,6 +1207,7 @@ int main(void) {
     test_load_store();
     test_svc();
     test_hint_space_is_noop();
+    test_widen_multiply();
     test_saturating_narrow();
     test_simd_permute();
     test_xtn_narrows_lanes();
