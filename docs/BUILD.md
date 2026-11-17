@@ -71,7 +71,9 @@ iSH 的无 JIT Linux 路径已做两项验证：
 - `JITCapability` 在真机上用 mmap 探测可执行内存映射，不执行任何动态代码；
 - 模拟器直接报告无 JIT，避免把 Runner 能力误报成设备能力；
 - 没有 JIT 时自动使用 Tier A；
-- 运行时偏好可选 Automatic / Tier A / Tier C；选择 Tier C 会显示受限提示，但 **Tier C 后端尚未集成**，仍回退 Tier A；
+- 运行时偏好可选 Automatic / Tier A / Tier C；**发布版（`PocketDSH`）不含 Tier C**——
+  `TIER_C_AVAILABLE` 只在 `PocketDSH-Lab` 里定义（`project.yml`），所以发布版选择 Tier C
+  会显示受限提示并回退 Tier A；Lab 版才有真实的 iSH 后端，但 **Lab 版链接 GPLv3 代码，永不分发**；
 - 开关只保存偏好，不能授予 JIT entitlement。
 
 ### 插件验证

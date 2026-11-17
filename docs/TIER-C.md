@@ -117,14 +117,17 @@ do_mount(&realfs, host_workspace_path, "/workspace", "", 0);
 
 证据：[tierc/workspace-mounted.txt](tierc/workspace-mounted.txt)
 
-## 尚未完成
+## 完成情况
 
 - ~~把 iSH 静态库链接进 PocketDSH App~~ 已完成（Build 32 起，主 App 内 Tier C smoke 通过）；
 - ~~打包 Alpine fakefs rootfs~~ 已完成；
 - ~~写 C/Swift 桥接，调用 `xX_main_Xx` + `task_run_current`~~ 已完成；
 - ~~`/workspace` 挂载的模拟器实测~~ 已完成（run 43793080884）；
-- 捕获 stdout/stderr、超时、停止、后台限制（现为固定 5 秒观察窗口）；
-- 与 Agent 工具循环的持久对接（现为单命令）；
+- ~~捕获 stdout/stderr、超时、停止~~ 已完成：`PersistentShellSession.run` 接受超时
+  （默认 20 秒，上限 120 秒），超时返回 `<shell timeout>`，`stop()` 可中断；
+  仍有**后台进程限制**一项未做（长时间运行的命令靠超时截断，不是靠资源配额）；
+- ~~与 Agent 工具循环的持久对接~~ 已完成：`LinuxRuntime` 持有会话并在
+  `ensureSession` 中复用它，不再每条命令重新起进程；
 - 真机验证。
 
 ## 集成方案
