@@ -45,6 +45,11 @@ while IFS= read -r cmd; do
         pass=$((pass + 1))
     fi
 done <<'EOF'
+# A subshell exiting used to clear the parent's working directory, because the
+# current-cwd variable aliased the process slot rather than holding a copy.
+mkdir -p /tmp/m2sub && cd /tmp/m2sub && echo y > b && ( echo w ) && cat b
+mkdir -p /tmp/m2sub2 && cd /tmp/m2sub2 && ( echo y > b ) && cat b
+mkdir -p /tmp/m2sub3 && cd /tmp/m2sub3 && echo 1 > c && ( ls ) > /dev/null && cat c
 # chdir updated a string nothing read, and forked children started at /. Both
 # showed up as `cd` appearing to work while relative paths resolved to /.
 printf 'z\n' > /tmp/m2d1; cd /tmp && cat m2d1

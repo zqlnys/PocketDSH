@@ -4476,7 +4476,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 | 项目 | 实测值 | 命令 |
 | --- | --- | --- |
 | 单指令测试 | **172 项，0 失败** | `make test` |
-| M2 扫描 | **149 通过，0 失败** | `tools/m2-sweep.sh` |
+| M2 扫描 | **152 通过，0 失败** | `tools/m2-sweep.sh` |
 | M3 扫描 | **95 通过，0 失败** | `tools/m3-sweep.sh` |
 | 差分对比 | **67 一致，0 不同** | `tools/diff-test.sh` |
 | 解码规则重叠 | **无** | `make overlaps` |
@@ -4845,4 +4845,39 @@ $ tar cf t.tar -C /tmp/ar/d . && tar tf t.tar
 
 `cd` 之所以看起来正常，是因为 shell 自己维护 `$PWD` 字符串，而 `pwd` 读的就是那个字符串。
 **只有真正去访问文件时，才会发现脚下是空的。**
+
+### 子 shell 退出会清空父进程的工作目录
+
+上一节修好 cwd 之后，测到一个残留问题：
+
+```sh
+$ cd /tmp/clean && echo y > b && ( echo w ) && cat b
+w
+cat: can't open 'b': No such file or directory
+```
+
+**子 shell 一退出，父进程的相对路径就解析不了了。**
+
+### 根因
+
+```c
+static const char *g_cur_cwd = "/";
+...
+g_cur_cwd = p->pc.cwd;      // 指向进程结构内部
+```
+
+**这是一个指针，指向「最近运行的那个进程」的字段。**
+子 shell 退出时 `wait4` 会 `memset` 掉它的槽位——**`g_cur_cwd` 于是指向一片零**。
+
+改成**存副本**之后就正常了：
+
+```c
+static char g_cur_cwd[1024] = "/";
+snprintf(g_cur_cwd, sizeof(g_cur_cwd), "%s", p->pc.cwd);
+```
+
+### 这个缺陷的性质
+
+**它只会在「有子进程退出」之后出现**——单进程测试永远发现不了。
+`cd` 之后直接操作文件是对的，`cd` 之后跑一个子 shell 再操作文件就错。
 

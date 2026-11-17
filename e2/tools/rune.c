@@ -139,7 +139,10 @@ static uint8_t *load_file(const char *p, size_t *n) {
 // The cwd of whichever process is running. host_path is reached from the file-op
 // callbacks, which receive a procctx; setting this once per turn keeps relative
 // paths resolving where the guest thinks they are.
-static const char *g_cur_cwd = "/";
+// A copy, not a pointer: this used to alias whichever process ran last, so when a
+// subshell exited and its slot was cleared, the parent's working directory became a
+// buffer of zeros and every relative path stopped resolving.
+static char g_cur_cwd[1024] = "/";
 static void host_path(char *out, size_t n, const char *p) {
     if (p[0] == '/') {
         snprintf(out, n, "%s%s", ROOT, p);
@@ -951,7 +954,7 @@ static int run_proc(int idx) {
                  getenv("E2_CWD") ? getenv("E2_CWD") : "/");
     }
     snprintf(env.cwd, sizeof(env.cwd), "%s", p->pc.cwd);
-    g_cur_cwd = p->pc.cwd;
+    snprintf(g_cur_cwd, sizeof(g_cur_cwd), "%s", p->pc.cwd);
     env.pid = p->pid;
     env.ppid = p->ppid;
     if (getenv("E2_TRACE_WAIT"))
@@ -1641,7 +1644,9 @@ static int run_proc(int idx) {
         // the change survives to the next scheduling turn.
         if (strcmp(p->pc.cwd, env.cwd) != 0) {
             snprintf(p->pc.cwd, sizeof(p->pc.cwd), "%s", env.cwd);
-            g_cur_cwd = p->pc.cwd;
+        }
+        if (strcmp(g_cur_cwd, p->pc.cwd) != 0) {
+            snprintf(g_cur_cwd, sizeof(g_cur_cwd), "%s", p->pc.cwd);
         }
         if (g_shadow_on) {
             const uint32_t w = pre_insn;
