@@ -5739,3 +5739,47 @@ TBZ  x0,#31 值 0x7FFFFFFF -> 跳转（bit31 为 0）
 **这和第 226 轮写 `mutation-check` 是同一个道理**：
 「测试通过」只有在我们确认「测试会失败」之后才有价值。
 
+## M4 状态的修正：不是崩溃，是走不完
+
+之前记的是「在 `insn=0x39c00024` 处 fault」。**这次量了一下，结论不同**：
+
+```
+$ E2_MIN_ENV=1 E2_ARGV0=/usr/bin/python3.12 ./tools/rune \
+    /tmp/alpine-root/usr/bin/python3.12 -c "print(1)"
+Exception ignored error evaluating path:
+Traceback (most recent call last):
+[exit 0] instructions=60000000 FAULT reason=instruction cap
+```
+
+**6000 万条指令之后撞上的是指令上限，不是非法指令。**
+
+### 与参考实现的对照
+
+```
+$ qemu-aarch64-static -L /tmp/alpine-root /tmp/alpine-root/usr/bin/python3.12 -c "print(1)"
+1
+```
+
+**qemu 几秒内输出 `1`。本实现跑 6000 万条指令还没结束。**
+
+### 进度曲线
+
+```
+[progress]  5000000 instr pc=0x5006a0c8 syscalls_so_far=15
+[progress] 10000000 instr pc=0x1015cd54 syscalls_so_far=63
+```
+
+**3000 万到 6000 万条之间没有新的系统调用**（63 之后不再增长），
+而 PC 在变——**说明它在用户态里打转，不是在等 I/O。**
+
+### 这改变了排查方向
+
+| 旧假设 | 新证据 |
+| --- | --- |
+| 某条指令没实现，撞上就停 | 没有非法指令，是指令上限 |
+| 需要补指令 | 需要找**为什么同一个循环跑不完** |
+
+**下一步不是加指令，是找出那段反复执行的代码。**
+`Traceback (most recent call last):` 之后是空的——**说明它挂在打印 traceback 的过程里**，
+而那段代码会遍历帧链。**帧链如果成环，遍历就永不结束。**
+
