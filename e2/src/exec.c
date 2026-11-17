@@ -677,11 +677,26 @@ e2_status e2_step(e2_machine *machine) {
             } else {
                 // Saturate into the destination range: signed clamps to
                 // [-2^(n-1), 2^(n-1)-1], unsigned to [0, 2^n-1].
-                const int64_t svalue = (int64_t)raw;
-                const int64_t lo = unsigned_result ? 0 : -(int64_t)(1ULL << (dst_esize - 1));
-                const int64_t hi = unsigned_result ? (int64_t)(dst_mask)
-                                                   : (int64_t)(dst_mask >> 1);
-                int64_t clamped = svalue < lo ? lo : (svalue > hi ? hi : svalue);
+                //
+                // The value has to be interpreted at the SOURCE width first. Taking the
+                // zero-extended lane and clamping it as signed turned every negative
+                // input into a large positive one, so SQXTN answered 32767 where
+                // -32768 was correct. Sign extension is the difference between the two.
+                const int64_t lo_uns = 0;
+                const int64_t hi_uns = (int64_t)dst_mask;
+                const int64_t lo_sgn = -(int64_t)(1ULL << (dst_esize - 1));
+                const int64_t hi_sgn = (int64_t)(dst_mask >> 1);
+                int64_t value;
+                if (unsigned_result) {
+                    value = (int64_t)raw;   // already zero-extended at the source width
+                } else {
+                    // Sign-extend from src_esize.
+                    const unsigned shift = 64u - src_esize;
+                    value = (int64_t)(raw << shift) >> shift;
+                }
+                const int64_t lo = unsigned_result ? lo_uns : lo_sgn;
+                const int64_t hi = unsigned_result ? hi_uns : hi_sgn;
+                const int64_t clamped = value < lo ? lo : (value > hi ? hi : value);
                 out = (uint64_t)clamped & dst_mask;
             }
             const unsigned index = (q ? lanes : 0u) + l;

@@ -414,6 +414,37 @@ static void test_xtn_narrows_lanes(void) {
     e2_machine_destroy(&m);
 }
 
+static void test_saturating_narrow(void) {
+    printf("SQXTN and UQXTN clamp instead of truncating\n");
+    // The clamping is the whole point of these two: XTN above truncates, these clamp.
+    // Values either side of both boundaries, so a range check that is one off - or
+    // that uses the wrong signedness - lands on a different lane.
+    struct { uint32_t insn; const char *name; uint16_t expect[4]; } cases[] = {
+        // V1.4S = {1, 40000, -40000, 70000} -> signed 16-bit
+        {0x0E614820u, "SQXTN", {1, 32767, (uint16_t)-32768, 32767}},
+        // Same input, unsigned 16-bit. 40000 is already in range so it survives;
+        // the negative lane reads as a huge unsigned number and clamps to 65535,
+        // as does 70000.
+        {0x2E614820u, "UQXTN", {1, 40000, 65535, 65535}},
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        e2_machine m;
+        e2_machine_init(&m, 0, 8192);
+        m.cpu.v[1][0] = (uint32_t)1 | ((uint64_t)(uint32_t)40000 << 32);
+        m.cpu.v[1][1] = (uint32_t)(-40000) | ((uint64_t)(uint32_t)70000 << 32);
+        const uint32_t code[] = {cases[i].insn, RET()};
+        load_program(&m, code, 2);
+        e2_run(&m, 100);
+        // Read as unsigned: a signed read would turn a correct 40000 into -25536
+        // and make a passing result look like a failure.
+        const uint16_t *h = (const uint16_t *)&m.cpu.v[0][0];
+        CHECK(h[0] == cases[i].expect[0] && h[1] == cases[i].expect[1] &&
+              h[2] == cases[i].expect[2] && h[3] == cases[i].expect[3],
+              "%s gave {%u,%u,%u,%u}", cases[i].name, h[0], h[1], h[2], h[3]);
+        e2_machine_destroy(&m);
+    }
+}
+
 static void test_simd_permute(void) {
     printf("UZP1, TRN1 and ZIP1 place lanes where the encoding says\n");
     // V1.4S = {1,2,3,4}, V2.4S = {5,6,7,8}. The opcode sits in bits 15:12 (1 UZP1,
@@ -1149,6 +1180,7 @@ int main(void) {
     test_load_store();
     test_svc();
     test_hint_space_is_noop();
+    test_saturating_narrow();
     test_simd_permute();
     test_xtn_narrows_lanes();
     test_clock_gettime_honours_the_id();
