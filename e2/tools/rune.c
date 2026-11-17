@@ -161,7 +161,9 @@ static long fs_read(void *c, int fd, void *b, size_t n, long long o) {
     if (fd < 0 || fd >= 64 || !TAB(c)[fd].used) return -EBADF;
     for (;;) {
         ssize_t r = o < 0 ? read(TAB(c)[fd].host, b, n) : pread(TAB(c)[fd].host, b, n, o);
-        if (r >= 0) return (long)r;
+        if (r >= 0) {
+            return (long)r;
+        }
         if (errno != EAGAIN && errno != EWOULDBLOCK) return -errno;
         // Nothing to read yet. A child can only make progress if we run it, so
         // do that and try again; when no child is left the pipe really is at
@@ -444,10 +446,19 @@ static int fs_statfs(void *c, int fd, const char *path, void *out, size_t outlen
     return 0;
 }
 
+// Repositions a descriptor. Returns the resulting offset so the guest can tell
+// where it landed.
+static long fs_seek(void *c, int fd, long long offset, int whence) {
+    if (fd < 0 || fd >= 64 || !TAB(c)[fd].used) return -EBADF;
+    off_t r = lseek(TAB(c)[fd].host, (off_t)offset, whence);
+    if (r < 0) return -errno;
+    return (long)r;
+}
+
 static const e2_file_ops FS = {fs_open, fs_read, fs_write, fs_close, fs_stat,
                                fs_opendir, fs_readdir, fs_clock, fs_pipe, fs_dup3,
                                fs_fcntl, fs_readlink, fs_pollable, fs_pathop, fs_truncate,
-                               fs_statfs};
+                               fs_statfs, fs_seek};
 
 
 

@@ -45,6 +45,11 @@ while IFS= read -r cmd; do
         pass=$((pass + 1))
     fi
 done <<'EOF'
+# lseek never moved the cursor, so any second read of the same descriptor saw EOF.
+printf 'a\nb\n' > /tmp/m2l1; printf 'a\nc\n' > /tmp/m2l2; diff /tmp/m2l1 /tmp/m2l2 | wc -l
+printf 'a\nb\n' > /tmp/m2l1; printf 'a\nb\n' > /tmp/m2l3; diff /tmp/m2l1 /tmp/m2l3; echo same
+printf 'abcdef' > /tmp/m2l4; dd if=/tmp/m2l4 bs=1 skip=3 2>/dev/null
+printf 'abcdef' > /tmp/m2l5; head -c2 /tmp/m2l5; tail -c2 /tmp/m2l5
 # /proc and statfs: free, uptime and df all failed on a missing file or a missing
 # syscall rather than on anything the interpreter got wrong.
 free | head -1

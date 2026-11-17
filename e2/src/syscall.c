@@ -595,27 +595,13 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             E2_RETURN(0);
         }
         case E2_SYS_lseek: {
-            // Only SEEK_SET/SEEK_CUR/SEEK_END with a 64-bit offset.
-            if (files == NULL) {
+            if (files == NULL || files->seek == NULL) {
                 E2_RETURN(-E2_ENOSYS);
             }
-            const int whence = (int)a2;
-            const long long offset = (long long)a1;
-            long long target = offset;
-            if (whence == 1) {
-                // Current position is only meaningful if the host tracks it; the
-                // host read/write take -1 for "cursor", so this is a no-op seek.
-                E2_RETURN(offset);
-            }
-            if (whence == 2) {
-                e2_guest_stat st2;
-                memset(&st2, 0, sizeof(st2));
-                if (files->stat(env->ctx, (int)a0, &st2, sizeof(st2)) < 0) {
-                    E2_RETURN(-E2_EBADF);
-                }
-                target = st2.st_size + offset;
-            }
-            E2_RETURN(target);
+            // The host owns the file position, so the seek has to reach it. This
+            // used to compute the new offset and return it without moving anything,
+            // which made every re-read see EOF.
+            E2_RETURN(files->seek(env->ctx, (int)a0, (long long)a1, (int)a2));
         }
         case E2_SYS_clock_gettime: {
             // guest passes a struct timespec.
