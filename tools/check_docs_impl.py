@@ -76,6 +76,29 @@ def check_tool_coverage() -> int:
     return 0
 
 
+def check_no_duplicate_headings() -> int:
+    """A repeated heading means two sections claiming the same role.
+
+    The status section was once duplicated, so a reader scrolling to it landed on a
+    pointer to the real one rather than the table itself.
+    """
+    doc = ROOT / "docs/E2-BACKEND.md"
+    if not doc.exists():
+        return 0
+    seen: dict[str, int] = {}
+    dupes = []
+    for line in doc.read_text(errors="replace").split("\n"):
+        if line.startswith("## "):
+            seen[line] = seen.get(line, 0) + 1
+            if seen[line] == 2:
+                dupes.append(line[3:])
+    if dupes:
+        print("  repeated headings in E2-BACKEND.md: " + ", ".join(dupes))
+        return 1
+    print(f"  {len(seen)} headings, none repeated")
+    return 0
+
+
 def main() -> int:
     cache: dict[str, int | None] = {}
     problems = []
@@ -103,11 +126,12 @@ def main() -> int:
             problems.append(label)
         else:
             print(f"  {document}: {label} {claimed} matches")
+    headings = check_no_duplicate_headings()
     covered = check_tool_coverage()
     if problems:
         print(f"  ^ {len(problems)} of {checked} claims are out of date")
         return 1
-    if covered != 0:
+    if covered != 0 or headings != 0:
         return 1
     print(f"  {checked} claim(s) match the suites")
     return 0
