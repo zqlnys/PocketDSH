@@ -18,9 +18,13 @@ GUEST_ELF := tests/guest/hello.elf tests/guest/fib.elf tests/guest/memset.elf te
 CLANG ?= clang
 LLD ?= ld.lld
 
-.PHONY: all test clean
+.PHONY: all test clean harness
 
-all: test
+# `all` builds the harness too. Building it needs nothing beyond a C compiler - only
+# running it needs a root filesystem - so a fresh checkout that runs `make` gets
+# everything the sweep and diff scripts require. Leaving it out meant ./tools/verify.sh
+# stopped at "e2/tools/rune missing" with no hint that a separate make target existed.
+all: test harness
 
 $(BUILD):
 	@mkdir -p $(BUILD)
@@ -76,7 +80,9 @@ tests/guest/shll.elf: tests/guest/shll.c | $(BUILD)
 	$(CLANG) --target=aarch64-linux-gnu -O2 -ffreestanding -nostdlib -static -c $< -o $(BUILD)/shll-guest.o
 	$(LLD) -static -o $@ $(BUILD)/shll-guest.o
 
-# Host harness, built on demand. It needs a root filesystem to point at, which
-# is why it is not part of `make test`.
+# Host harness. Running it needs a root filesystem to point at, so it is not part of
+# `make test` - but building it does not, so `all` includes it.
+harness: tools/rune
+
 tools/rune: tools/rune.c $(SRC)
 	$(CC) $(CFLAGS) $(SRC) tools/rune.c -o $@ $(LDLIBS)
