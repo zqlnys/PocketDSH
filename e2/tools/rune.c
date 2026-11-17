@@ -141,8 +141,6 @@ static int fd_alloc_tab(int tab, int host) {
     for (int i = 0; i < 64; i++)
         if (!g_fds[tab][i].used) {
             g_fds[tab][i].used = 1; g_fds[tab][i].host = host;
-            if (getenv("E2_TRACE_FDTAB"))
-                fprintf(stderr, "[fdalloc] tab=%d fd=%d host=%d\n", tab, i, host);
             return i;
         }
     return -1;
@@ -306,8 +304,8 @@ static long fs_read(void *c, int fd, void *b, size_t n, long long o) {
         }
         if (errno != EAGAIN && errno != EWOULDBLOCK) {
             if (getenv("E2_TRACE_RZERO"))
-                fprintf(stderr, "[rerr] tab=%d fd=%d host=%d errno=%d\n",
-                        ((const procctx *)c)->fdtab, fd, TAB(c)[fd].host, errno);
+                fprintf(stderr, "[rerr] pid=%d tab=%d fd=%d host=%d errno=%d\n",
+                        g_dbg_pid, ((const procctx *)c)->fdtab, fd, TAB(c)[fd].host, errno);
             return -errno;
         }
         // Nothing to read yet. A child can only make progress if we run it, so
@@ -341,9 +339,6 @@ static long fs_write(void *c, int fd, const void *b, size_t n, long long o) {
     return (long)r;
 }
 static int fs_close(void *c, int fd) {
-    if (getenv("E2_TRACE_FDTAB"))
-        fprintf(stderr, "[fdclose] tab=%d fd=%d host=%d\n",
-                ((const procctx *)c)->fdtab, fd, (fd >= 0 && fd < 64) ? TAB(c)[fd].host : -999);
     if (fd < 0 || fd >= 64 || !TAB(c)[fd].used) return -EBADF;
     // A directory descriptor has no host fd of its own; it owns a DIR stream.
     if (DIRTAB(c)[fd] != NULL) {
@@ -904,9 +899,6 @@ static void fd_table_copy(int dst, int src) {
         if (g_fds[src][i].used) {
             g_fds[dst][i].used = 1;
             g_fds[dst][i].host = g_fds[src][i].host;
-            if (getenv("E2_TRACE_FDTAB") && g_fds[src][i].host < 0)
-                fprintf(stderr, "[fdcopy] dst=%d src=%d fd=%d host=%d  <-- invalid\n",
-                        dst, src, i, g_fds[src][i].host);
             host_ref(g_fds[dst][i].host);
         } else {
             g_fds[dst][i].used = 0;
@@ -920,9 +912,6 @@ static int run_proc(int idx);
 // A process's descriptors are released when it exits; without this the write
 // end of a pipe stays referenced forever and its reader never sees EOF.
 static void fd_table_release(int tab) {
-    if (getenv("E2_TRACE_FDTAB"))
-        fprintf(stderr, "[fdrelease] tab=%d fd0used=%d fd0host=%d\n",
-                tab, g_fds[tab][0].used, g_fds[tab][0].host);
     for (int i = 0; i < 64; i++) {
         if (!g_fds[tab][i].used) continue;
         host_unref(g_fds[tab][i].host);
