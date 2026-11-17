@@ -1071,14 +1071,12 @@ static long p_wait4(void *ctx, int pid, uint64_t status_ptr, int options) {
             fprintf(stderr, "[wait] child=%d status=%d instr=%ld\n", c->pid, c->exit_status,
                     (long)c->m.instructions);
         g_wait_ok++;
-        g_wait_ok++;
         const int reaped = c->pid;
         fd_table_release(c->pc.fdtab);
         e2_memory_destroy(&c->m.mem);
         memset(c, 0, sizeof(*c));
         return reaped;
     }
-    g_wait_echild++;
     g_wait_echild++;
     return -10;   // ECHILD
 }
