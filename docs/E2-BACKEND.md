@@ -4478,7 +4478,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 | 单指令测试 | **173 项，0 失败** | `make test` |
 | M2 扫描 | **164 通过，0 失败** | `tools/m2-sweep.sh` |
 | M3 扫描 | **95 通过，0 失败** | `tools/m3-sweep.sh` |
-| 差分对比 | **104 一致，0 不同** | `tools/diff-test.sh` |
+| 差分对比 | **113 一致，0 不同** | `tools/diff-test.sh` |
 | 解码规则重叠 | **无** | `make overlaps` |
 | 规则越界 | **0 条** | `tools/check-rule-mnemonics.py` |
 | iOS 测试 | **24 项** | `PocketDSHTests.swift` |
@@ -5763,4 +5763,17 @@ g_proc_self_pid = saved_self_pid;
 
 **这个缺陷本身不影响 guest 程序的行为**——它只污染诊断。
 但**它污染的是「用来判断问题在哪」的那部分数据**，代价比一个普通缺陷更高。
+
+### 差分对比扩到 113
+
+再补 9 条，覆盖 `sed` 的 `&` 反向引用、`sed -n '1p;3p'` 多地址、
+`awk -F=` 与字段运算、`uniq -c \| tr -s`、`tr` 分隔符替换、`cut -c` 区间、
+`sort \| head` 组合。
+
+**104 → 113，静态与动态二进制都一致。**
+
+### 一条被排除的用例
+
+`grep -c x file file` 两边不同——**但那是 qemu 不在 chroot 里，找不到文件**，
+不是行为差异。这类需要文件系统状态一致的用例不适合进差分对比。
 

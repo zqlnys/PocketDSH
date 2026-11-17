@@ -182,6 +182,15 @@ printf '%s\n' one two | tac
 echo 'A,B' | cut -d, -f2
 printf 'q\nq\nq\n' | sort -u | wc -l
 echo abc | sed 's/b//'
+printf 'b\na\nc\n' | sort | head -2
+echo 'x' | sed 's/x/[&]/'
+printf '1 2 3\n' | awk '{print $1+$3}'
+seq 3 | sed -n '1p;3p'
+echo 'a-b-c' | tr '-' '\n' | tail -1
+printf 'aa\nbb\n' | uniq -c | tr -s ' '
+echo 'Hello' | cut -c2-3
+printf 'z\n' | wc -c
+echo 'k=v' | awk -F= '{print $2}'
 sh /tmp/dtbig
 EOF
 echo "diff test: $pass same, $fail different"
