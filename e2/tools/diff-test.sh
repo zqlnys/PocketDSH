@@ -198,6 +198,17 @@ echo $((1 == 1)) $((1 != 1))
 echo $((0x7fffffff + 1))
 WRAP
 cp /tmp/dtar /tmp/alpine-root/tmp/dtar 2>/dev/null || true
+cat > /tmp/dtu 2>/dev/null <<'WRAP'
+printf 'héllo\n' | wc -c
+printf 'héllo\n' | wc -l
+printf '世界\n' | wc -c
+printf '世界\n' | cut -c1-3 | od -An -c
+printf 'a\tb\n' | expand | od -An -c
+printf 'ＡＢ\n' | od -An -tx1
+echo 'ñ' | tr 'ñ' 'n' | od -An -c
+printf '%s\n' '①' '②' | wc -l
+WRAP
+cp /tmp/dtu /tmp/alpine-root/tmp/dtu 2>/dev/null || true
 pass=0
 fail=0
 while IFS= read -r cmd; do
@@ -397,6 +408,7 @@ sh /tmp/dtf
 sh /tmp/dtj
 sh /tmp/dtrp
 sh /tmp/dtar
+sh /tmp/dtu
 EOF
 echo "diff test: $pass same, $fail different"
 [ "$fail" -eq 0 ]
