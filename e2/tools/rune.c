@@ -294,6 +294,9 @@ static long fs_read(void *c, int fd, void *b, size_t n, long long o) {
     for (;;) {
         ssize_t r = o < 0 ? read(TAB(c)[fd].host, b, n) : pread(TAB(c)[fd].host, b, n, o);
         if (r >= 0) {
+            if (getenv("E2_TRACE_RZERO") && r == 0)
+                fprintf(stderr, "[rzero] tab=%d fd=%d host=%d want=%zu\n",
+                        ((const procctx *)c)->fdtab, fd, TAB(c)[fd].host, n);
             return (long)r;
         }
         if (errno != EAGAIN && errno != EWOULDBLOCK) return -errno;
