@@ -47,6 +47,7 @@ static char g_cur_cmdline[512];
 // Length of the NUL-separated argv image, including the trailing NUL.
 static size_t g_cur_cmdline_len;
 static int g_proc_self_pid;
+extern int g_dbg_pid;
 
 typedef struct {
     int fdtab;
@@ -301,6 +302,14 @@ static long fs_read(void *c, int fd, void *b, size_t n, long long o) {
 static long fs_write(void *c, int fd, const void *b, size_t n, long long o) {
     (void)o;
     if (fd < 0 || fd >= 64 || !TAB(c)[fd].used) return -EBADF;
+    if (getenv("E2_TRACE_WDATA")) {
+        char wb[80];
+        size_t wn = n < 60 ? n : 60;
+        for (size_t z = 0; z < wn; z++)
+            wb[z] = (((const char *)b)[z] == 0x0a) ? '|' : ((const char *)b)[z];
+        wb[wn] = 0;
+        fprintf(stderr, "[wr] p%d fd=%d len=%zu \"%s\"\n", g_dbg_pid, fd, n, wb);
+    }
     ssize_t r = write(TAB(c)[fd].host, b, n);
     if (r < 0) {
         note_write_error(((const procctx *)c)->fdtab, errno);
@@ -1028,7 +1037,6 @@ static int pump_children_for_tab(int tab) {
 
 static long p_wait4(void *ctx, int pid, uint64_t status_ptr, int options) {
     (void)options;
-    g_wait_calls++;
     g_wait_calls++;
     proc_t *self = ctx;
     for (int i = 1; i < 16; i++) {

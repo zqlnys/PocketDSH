@@ -452,6 +452,8 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
                 E2_RETURN(-E2_EFAULT);
             }
             memcpy(dst, fds, 8);
+            if (getenv("E2_TRACE_PIPE"))
+                fprintf(stderr, "[pipe] p%d r=%d w=%d\n", g_dbg_pid, fds[0], fds[1]);
             E2_RETURN(0);
         }
         case E2_SYS_fcntl: {
