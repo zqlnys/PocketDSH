@@ -127,6 +127,13 @@ typedef struct {
     /// os.getcwd(), and returning ENOSYS makes that fail before any file is
     /// opened, which shows up much later as an unrelated crash.
     char cwd[512];
+    /// This process's pid, as getpid must report it. Kept here because returning a
+    /// constant is not an option: 0 means "the child, in a fork", so a guest that
+    /// asks for its own pid and gets 0 takes the wrong branch, and `$$` in a shell
+    /// becomes an unusable name for temporary files.
+    int pid;
+    /// The parent's pid, for getppid. 0 for the first process.
+    int ppid;
 } e2_syscall_env;
 
 /// Services the syscall the machine stopped on.

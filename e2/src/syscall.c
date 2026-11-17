@@ -614,7 +614,9 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
         case 96:  // set_tid_address
             E2_RETURN(1);
         case 172:  // getpid
+            E2_RETURN(env->pid);
         case 173:  // getppid
+            E2_RETURN(env->ppid);
         case 174:  // getuid
         case 175:  // geteuid
         case 176:  // getgid

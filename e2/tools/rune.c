@@ -843,6 +843,8 @@ static int run_proc(int idx) {
                           .fork = p_fork, .execve = p_execve, .wait4 = p_wait4};
     snprintf(env.cwd, sizeof(env.cwd), "%s",
              getenv("E2_CWD") ? getenv("E2_CWD") : "/");
+    env.pid = p->pid;
+    env.ppid = p->ppid;
     if (getenv("E2_TRACE_WAIT"))
         fprintf(stderr, "[run] pid=%d pc=0x%llx alive=%d\n", p->pid,
                 (unsigned long long)p->m.cpu.pc, p->alive);

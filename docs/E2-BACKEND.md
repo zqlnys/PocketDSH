@@ -4476,7 +4476,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 | 项目 | 实测值 | 命令 |
 | --- | --- | --- |
 | 单指令测试 | **172 项，0 失败** | `make test` |
-| M2 扫描 | **135 通过，0 失败** | `tools/m2-sweep.sh` |
+| M2 扫描 | **137 通过，0 失败** | `tools/m2-sweep.sh` |
 | M3 扫描 | **95 通过，0 失败** | `tools/m3-sweep.sh` |
 | 差分对比 | **67 一致，0 不同** | `tools/diff-test.sh` |
 | 解码规则重叠 | **无** | `make overlaps` |
@@ -4642,4 +4642,25 @@ case 261:  // prlimit64: report defaults, ignore new limits
 **那是一个能被依赖的谎言**。
 
 `-s`（8 MB）和 `-c`（0）两者一致。
+
+### `getpid` 返回常量 0
+
+```sh
+$ echo $$
+0
+```
+
+qemu 上是真实的 PID。**0 不是一个无害的占位值**——在 fork 的约定里，0 表示「我是子进程」。
+任何 `if (getpid() == 0)` 的代码都会走错分支。
+
+shell 里 `$$` 是生成临时文件名、锁文件的常用手段，返回 0 会让多个实例撞在一起。
+
+修法是给 `e2_syscall_env` 加上 `pid` 和 `ppid` 字段，由宿主填入真实值：
+
+```sh
+$ echo $$; echo $$ | cat      → 1, 1        （父子一致）
+$ echo $$; sleep 0.01 & echo $!  → 1, 2      （子进程有自己的 pid）
+```
+
+**这个缺陷也是「接口有返回，实现给常量」的一类**，和 `prlimit64`、`clock_gettime` 同源。
 

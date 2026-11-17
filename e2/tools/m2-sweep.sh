@@ -45,6 +45,9 @@ while IFS= read -r cmd; do
         pass=$((pass + 1))
     fi
 done <<'EOF'
+# getpid returned a constant 0, which is the value that means "child, in a fork".
+sh -c 'test "$$" -gt 0 && echo haspid'
+sh -c 'echo $$ | cat' > /dev/null && echo pidstable
 ulimit -n
 ulimit -s
 ulimit -c
