@@ -1072,6 +1072,8 @@ static long p_wait4(void *ctx, int pid, uint64_t status_ptr, int options) {
                     (long)c->m.instructions);
         g_wait_ok++;
         const int reaped = c->pid;
+        if (getenv("E2_TRACE_WAITSUM"))
+            fprintf(stderr, "[waitsum] reaped=%d requested=%d status=%d\n", reaped, pid, (int)status);
         fd_table_release(c->pc.fdtab);
         e2_memory_destroy(&c->m.mem);
         memset(c, 0, sizeof(*c));
