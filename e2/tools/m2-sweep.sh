@@ -42,6 +42,14 @@ while IFS= read -r cmd; do
         pass=$((pass + 1))
     fi
 done <<'EOF'
+printf 'a\n' | xargs -I{} echo got{}
+echo a | sed 'y/a/b/'
+echo abc | cut -b2
+printf '1\n2\n3\n' > /tmp/m2s; seq 5 > /tmp/m2s; tac /tmp/m2s
+echo abc | grep -o b
+printf 'a\nb\n' > /tmp/m2s; nl -w2 -s: /tmp/m2s
+seq 3 | paste -d, - - -
+printf '1\n2\n' > /tmp/m2s; split -l1 /tmp/m2s /tmp/m2sp; ls /tmp/m2sp* | wc -l
 date +%Y
 date -u +%H
 find /tmp/m2tree -name f1
