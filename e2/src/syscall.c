@@ -341,6 +341,22 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             }
             E2_RETURN(files->read(env->ctx, (int)a0, dst, (size_t)a2, (long long)m->cpu.x[3]));
         }
+        case 45:      // truncate(path, length). No descriptor is involved, so the
+                      // host resolves the path itself.
+        case 46: {    // ftruncate(fd, length)
+            if (files == NULL || files->truncate_file == NULL) {
+                E2_RETURN(-E2_ENOSYS);
+            }
+            if (number == 46) {
+                E2_RETURN(files->truncate_file(env->ctx, (int)a0, NULL, (long long)a1));
+            }
+            char path[E2_PATH_MAX];
+            const int rc = read_guest_string(m, a0, path, sizeof(path));
+            if (rc != 0) {
+                E2_RETURN(rc);
+            }
+            E2_RETURN(files->truncate_file(env->ctx, -1, path, (long long)a1));
+        }
         case E2_SYS_clone: {
             // The shell uses clone(SIGCHLD, 0, ...) for fork; a NULL stack means
             // "same address space, copied". A non-NULL stack is a thread, which

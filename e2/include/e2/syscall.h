@@ -91,6 +91,10 @@ typedef struct {
     /// without it every mutating call reports ENOSYS, which is why mkdir, rm,
     /// ln, chmod and touch all failed at once.
     int (*pathop)(void *ctx, int op, const char *a, const char *b, unsigned mode);
+    /// Sets a file's length. `fd` >= 0 truncates that descriptor, otherwise the
+    /// path is used. Returns 0 or a negative errno. Optional: without it
+    /// truncate and ftruncate report ENOSYS, which is what `truncate -s` hit.
+    int (*truncate_file)(void *ctx, int fd, const char *path, long long length);
 } e2_file_ops;
 
 /// Everything the syscall layer needs from its host. The iOS layer will provide

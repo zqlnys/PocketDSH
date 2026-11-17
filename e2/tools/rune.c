@@ -393,9 +393,21 @@ static int fs_pathop(void *c, int op, const char *a, const char *b, unsigned mod
     }
 }
 
+// truncate/ftruncate. Both arrive here; a negative fd means the path form.
+static int fs_truncate(void *c, int fd, const char *path, long long length) {
+    if (fd >= 0) {
+        if (fd >= 64 || !TAB(c)[fd].used) return -EBADF;
+        return ftruncate(TAB(c)[fd].host, (off_t)length) == 0 ? 0 : -errno;
+    }
+    char h[2048];
+    host_path(h, sizeof(h), path);
+    return truncate(h, (off_t)length) == 0 ? 0 : -errno;
+}
+
+
 static const e2_file_ops FS = {fs_open, fs_read, fs_write, fs_close, fs_stat,
                                fs_opendir, fs_readdir, fs_clock, fs_pipe, fs_dup3,
-                               fs_fcntl, fs_readlink, fs_pollable, fs_pathop};
+                               fs_fcntl, fs_readlink, fs_pollable, fs_pathop, fs_truncate};
 
 
 

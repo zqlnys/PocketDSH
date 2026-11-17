@@ -42,6 +42,11 @@ while IFS= read -r cmd; do
         pass=$((pass + 1))
     fi
 done <<'EOF'
+# truncate and ftruncate had no implementation at all, so `truncate -s` said
+# "Function not implemented".
+printf 'abc' > /tmp/m2t; truncate -s 1 /tmp/m2t; wc -c < /tmp/m2t
+printf 'abcdef' > /tmp/m2t; truncate -s 0 /tmp/m2t; wc -c < /tmp/m2t
+printf 'abc' > /tmp/m2t; truncate -s 10 /tmp/m2t; wc -c < /tmp/m2t
 # awk maths: the primitives all agree with qemu, so they pin the layer beneath pow.
 printf 'BEGIN{print log(2)}\n' > /tmp/m2a; awk -f /tmp/m2a
 printf 'BEGIN{print exp(log(2)*10)}\n' > /tmp/m2a; awk -f /tmp/m2a

@@ -4476,7 +4476,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 | 项目 | 实测值 | 命令 |
 | --- | --- | --- |
 | 单指令测试 | **172 项，0 失败** | `make test` |
-| M2 扫描 | **126 通过，0 失败** | `tools/m2-sweep.sh` |
+| M2 扫描 | **129 通过，0 失败** | `tools/m2-sweep.sh` |
 | M3 扫描 | **100 通过，0 失败** | `tools/m3-sweep.sh` |
 | 差分对比 | **67 一致，0 不同** | `tools/diff-test.sh` |
 | 解码规则重叠 | **无** | `make overlaps` |
@@ -4547,4 +4547,26 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 
 把上面 10 条正确的用例固化了进去（含浮点格式化、字符串函数、`split`），
 这样 `pow` 修好时不会悄悄弄坏这些邻居。
+
+### `truncate` / `ftruncate` 完全没有实现
+
+测文件操作时发现：
+
+```
+$ truncate -s 1 /tmp/ft/g
+truncate: /tmp/ft/g: truncate: Function not implemented
+```
+
+系统调用 **45（truncate）和 46（ftruncate）根本没有对应分支**。这和之前
+`mkdir`/`ln`/`chmod` 那一批属于同一个模式——**一整类操作被漏掉**。
+
+补上之后：
+
+| 命令 | 结果 |
+| --- | --- |
+| `printf 'abc' > f; truncate -s 1 f` | 1 字节 ✓ |
+| `printf 'abcdef' > f; truncate -s 0 f` | 0 字节 ✓ |
+| `printf 'abc' > f; truncate -s 10 f` | 10 字节（补零）✓ |
+
+三条都进了 M2。
 
