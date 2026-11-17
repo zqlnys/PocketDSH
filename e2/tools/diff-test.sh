@@ -291,6 +291,15 @@ IFS=:; x=a:b; for i in $x; do echo $i; done
 name=world; echo "hello $name"
 echo "${undefined:-default}"
 x=; echo "${x:-empty}"
+( exit 3 ); echo $?
+( echo sub ); echo main
+{ echo a; echo b; } | wc -l
+trap 'echo caught' EXIT; echo body
+trap '' INT; echo ignored
+x=$(exit 4); echo $?
+false | true; echo $?
+true | false; echo $?
+echo start; ( exit 1 ) || echo failed
 sh /tmp/dtbig
 sh /tmp/dts
 EOF

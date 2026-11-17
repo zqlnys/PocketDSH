@@ -4478,7 +4478,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 | 单指令测试 | **173 项，0 失败** | `make test` |
 | M2 扫描 | **164 通过，0 失败** | `tools/m2-sweep.sh` |
 | M3 扫描 | **95 通过，0 失败** | `tools/m3-sweep.sh` |
-| 差分对比 | **162 一致，0 不同** | `tools/diff-test.sh` |
+| 差分对比 | **171 一致，0 不同** | `tools/diff-test.sh` |
 | 解码规则重叠 | **无** | `make overlaps` |
 | 规则越界 | **0 条**（100883 个唯一指令字） | `tools/check-rule-mnemonics.py` |
 | iOS 测试 | **26 项** | `PocketDSHTests.swift` |
@@ -4547,4 +4547,24 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 
 `set -- "a b" c` 那一条特别有价值：**它验证带空格的参数没有被错误分词**——
 如果 `"$@"` 的实现不对，`$#` 会变成 3 而不是 2。
+
+### 差分用例扩到 171：子 shell、trap 与管道退出码
+
+| 类型 | 用例 |
+| --- | --- |
+| 子 shell 退出码 | `( exit 3 ); echo $?` |
+| 命令组 | `{ echo a; echo b; } \| wc -l` |
+| `trap` | `EXIT` 与忽略 `INT` 两种 |
+| 命令替换退出码 | `x=$(exit 4); echo $?` |
+| 管道退出码 | `false \| true` 与 `true \| false` 的 `$?` |
+| 子 shell 失败传播 | `( exit 1 ) \|\| echo failed` |
+
+**162 → 171，全部一致。**
+
+### 一条被排除的用例
+
+`( cd /tmp && pwd ); pwd` 两边不同——**qemu 未 chroot，第二次 `pwd` 返回的是宿主的
+工作目录，不是 guest 的 `/`**。
+
+**依赖初始工作目录的用例不适合进差分对比**，因为两边的「起点」本来就不同。
 
