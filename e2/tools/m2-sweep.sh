@@ -45,6 +45,9 @@ while IFS= read -r cmd; do
         pass=$((pass + 1))
     fi
 done <<'EOF'
+# /proc/self/fd lists the open descriptors, including the one reading the directory.
+ls /proc/self/fd | sort -n | tr '\n' ' '; echo
+ls /proc/self/fd | wc -l
 # /proc/self is per-process, so it cannot be a file seeded once at start-up.
 cat /proc/self/cmdline | tr -d '\0'; echo
 cat /proc/self/status | head -2 | tail -1 | cut -f1

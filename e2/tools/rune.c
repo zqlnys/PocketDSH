@@ -343,7 +343,36 @@ static int fs_stat(void *c, int fd, void *buf, size_t n) {
     *(int64_t*)(p + 104) = (int64_t)st.st_ctime;
     return 0;
 }
+// /proc/self/fd is a directory of symlinks named after the open descriptors. There
+// is no such directory under the guest root, so build one on demand and open that.
+static void build_proc_self_fd(void *c, const char *dir_host) {
+    mkdir(dir_host, 0755);
+    for (int fd = 0; fd < 64; fd++) {
+        if (!TAB(c)[fd].used) continue;
+        char name[2200];
+        snprintf(name, sizeof(name), "%s/%d", dir_host, fd);
+        unlink(name);
+        // The target is only ever read as text by tools like ls -l; the real
+        // /proc/self/fd entries point at the open file, which this does not model.
+        if (symlink("/dev/null", name) != 0) { /* best effort */ }
+    }
+}
+
 static int fs_opendir(void *c, const char *path) {
+    if (strcmp(path, "/proc/self/fd") == 0 || strcmp(path, "/dev/fd") == 0) {
+            char dir_host[2048];
+        snprintf(dir_host, sizeof(dir_host), "%s/proc/self/fd", ROOT);
+        // Take the descriptor for the directory first: a real /proc/self/fd lists
+        // the descriptor that is reading it, so the count would be one short
+        // otherwise.
+        const int pfd = fd_alloc_tab(((procctx *)c)->fdtab, -1);
+        if (pfd < 0) return -EMFILE;
+        build_proc_self_fd(c, dir_host);
+        DIR *pd = opendir(dir_host);
+        if (!pd) return -errno;
+        DIRTAB(c)[pfd] = pd;
+        return pfd;
+    }
     char h[2048]; host_path(h, sizeof(h), path);
     DIR *d = opendir(h); if (!d) return -errno;
     // A directory is a descriptor like any other and must come from the same
@@ -618,6 +647,15 @@ static void seed_proc(const char *root) {
     snprintf(dir, sizeof(dir), "%s/proc", root);
     struct stat st;
     if (stat(dir, &st) != 0 || !S_ISDIR(st.st_mode)) return;
+    // /proc/self/fd must exist as a directory: ls stats the path before listing it,
+    // and a directory that only materialises inside opendir is invisible to that.
+    {
+        char p1[2048], p2[2048];
+        snprintf(p1, sizeof(p1), "%s/proc/self", root);
+        snprintf(p2, sizeof(p2), "%s/proc/self/fd", root);
+        mkdir(p1, 0555);
+        mkdir(p2, 0555);
+    }
     for (size_t i = 0; i < sizeof(files) / sizeof(files[0]); i++) {
         char full[2048];
         snprintf(full, sizeof(full), "%s%s", root, files[i].path);
