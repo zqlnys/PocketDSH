@@ -108,6 +108,31 @@ for r in /tmp/dtfind "$ROOT/tmp/dtfind"; do
     rm -rf "$r"; mkdir -p "$r/a" "$r/b"
     echo 1 > "$r/a/x.txt"; echo 2 > "$r/b/y.txt"
 done
+cat > /tmp/dther 2>/dev/null <<'OUTER'
+cat <<EOF
+hello
+world
+EOF
+cat <<'EOF'
+raw $HOME text
+EOF
+cat <<-EOF
+	indented
+	EOF
+wc -l <<EOF
+a
+b
+EOF
+while read -r l; do echo "[$l]"; done <<EOF
+x
+y
+EOF
+cat <<EOF | wc -l
+p
+q
+EOF
+OUTER
+cp /tmp/dther /tmp/alpine-root/tmp/dther 2>/dev/null || true
 pass=0
 fail=0
 while IFS= read -r cmd; do
@@ -302,6 +327,7 @@ true | false; echo $?
 echo start; ( exit 1 ) || echo failed
 sh /tmp/dtbig
 sh /tmp/dts
+sh /tmp/dther
 EOF
 echo "diff test: $pass same, $fail different"
 [ "$fail" -eq 0 ]
