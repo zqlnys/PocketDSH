@@ -4952,3 +4952,36 @@ theirs=$(... | head -8)
 `echo $$ | wc -c` 两边不同（2 vs 7）——**这是 PID 位数不同，不是缺陷**。
 我的 pid 是 1，qemu 的是 6 位数。这类依赖运行时标识的用例不适合进差分测试。
 
+## 动态链接版本也全部通过
+
+之前所有测试都跑在静态 busybox 上。改用 guest 里那份**动态链接**的 `/bin/busybox`
+（919 KB，依赖 musl 的 `ld-musl-aarch64.so.1`）重跑：
+
+| 套件 | 静态 | 动态 |
+| --- | --- | --- |
+| M2 扫描 | 152 | **152** |
+| M3 扫描 | 95 | **95** |
+| 差分对比 | 104 | **104** |
+
+**这条路径完全不同**：动态版本要经过 ELF 解释器、`PT_INTERP`、共享库加载、
+重定位、`.bss` 覆盖——静态版本一次都不会碰这些。
+
+### 新增 `tools/verify-all.sh`
+
+一条命令跑完两套二进制 × 三个套件：
+
+```sh
+$ ./tools/verify-all.sh
+== static: /tmp/bbs/bin/busybox.static ==
+  M2 sweep: 152 passed, 0 failed
+  M3 sweep: 95 passed, 0 failed
+  diff test: 104 same, 0 different
+== dynamic: /tmp/alpine-root/bin/busybox ==
+  M2 sweep: 152 passed, 0 failed
+  M3 sweep: 95 passed, 0 failed
+  diff test: 104 same, 0 different
+verify-all: everything passed
+```
+
+**在两份上都绿，比在任一份上绿说明得多。**
+
