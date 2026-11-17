@@ -14,6 +14,17 @@ BUSYBOX=${1:?usage: m2-sweep.sh BUSYBOX [RUNE]}
 RUNE=${2:-./tools/rune}
 LIMIT=${3:-60}
 
+# Say what is missing once, rather than reporting every case as "cannot load". The run
+# would still fail, but a hundred identical messages bury the one fact that matters.
+if [ ! -x "$BUSYBOX" ]; then
+    echo "$(basename "$0"): $BUSYBOX not found - the static busybox is required" >&2
+    exit 2
+fi
+if [ ! -x "$RUNE" ]; then
+    echo "$(basename "$0"): $RUNE not found - run 'make' in e2/ first" >&2
+    exit 2
+fi
+
 pass=0
 fail=0
 noisy=
