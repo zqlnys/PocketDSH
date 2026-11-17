@@ -4568,3 +4568,31 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 
 **依赖初始工作目录的用例不适合进差分对比**，因为两边的「起点」本来就不同。
 
+## 统一的验证入口
+
+```sh
+$ ./tools/verify.sh
+=== E2 backend ===
+  M2 sweep: 164 passed, 0 failed
+  M3 sweep: 95 passed, 0 failed
+  diff test: 171 same, 0 different
+verify-all: everything passed
+
+=== iOS static checks ===
+  17 used, all declared of 17
+  3 labels checked against their own initialisers
+  no file changed its balance
+check-swift: clean
+
+verify: everything passed
+```
+
+一条命令跑完**两个技术栈**：
+
+| 部分 | 内容 |
+| --- | --- |
+| `e2/` | 单指令测试、三套扫描、两套二进制 |
+| `swift` | 静态检查（无编译器） |
+
+**任一部分不干净就返回非零。**
+
