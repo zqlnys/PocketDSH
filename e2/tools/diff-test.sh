@@ -282,6 +282,15 @@ for i in 1 2 3; do for j in a b; do echo $i$j; done; done
 i=0; while [ $i -lt 3 ]; do i=$((i+1)); done; echo $i
 echo $(( (2 + 3) * 4 ))
 x=abc; echo ${x}def ${x%c} ${x#a}
+set -- a b c; echo $# $1 $3
+set -- a b; echo "$@"
+set -- "a b" c; echo $#
+false; echo $?
+true; echo $?
+IFS=:; x=a:b; for i in $x; do echo $i; done
+name=world; echo "hello $name"
+echo "${undefined:-default}"
+x=; echo "${x:-empty}"
 sh /tmp/dtbig
 sh /tmp/dts
 EOF
