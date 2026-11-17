@@ -268,6 +268,29 @@ test -e /etc && echo exists
 test ! -e /nonexistent && echo missing
 WRAP
 cp /tmp/dtex /tmp/alpine-root/tmp/dtex 2>/dev/null || true
+cat > /tmp/dtre 2>/dev/null <<'WRAP'
+echo abc | grep '^a'
+echo abc | grep 'c$'
+echo abc | grep '^abc$'
+echo aaa | grep 'a\{3\}'
+echo abc | grep '[abc]\{2\}'
+echo 'a1b2' | grep '[0-9]'
+echo 'a1b2' | grep '[^0-9]'
+echo 'foo' | grep -E 'f(o)+'
+echo 'foo' | grep -E 'f(o|0)+'
+echo 'a.c' | grep '\.'
+echo 'axc' | grep 'a.c'
+echo 'AbC' | grep -i 'abc'
+echo 'a b' | grep '[[:space:]]'
+echo 'a1' | grep '[[:digit:]]'
+echo 'ab' | grep 'a*b'
+echo 'b' | grep 'a*b'
+echo 'x' | sed 's/x\|y/Z/'
+echo 'aab' | sed 's/a*/X/'
+echo 'abc' | sed -E 's/(a)(b)/\2\1/'
+echo 'aaa' | grep -c 'a'
+WRAP
+cp /tmp/dtre /tmp/alpine-root/tmp/dtre 2>/dev/null || true
 pass=0
 fail=0
 while IFS= read -r cmd; do
@@ -464,6 +487,7 @@ sh /tmp/dtbig
 sh /tmp/dts
 sh /tmp/dther
 sh /tmp/dtf
+sh /tmp/dtre
 sh /tmp/dtj
 sh /tmp/dtrp
 sh /tmp/dtar
