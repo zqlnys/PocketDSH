@@ -5732,3 +5732,35 @@ if (fd < 0 || fd >= 64 || !TAB(c)[fd].used) return -EBADF;
 
 继续留在这里的边际产出已经很低。转向其他方向。
 
+### 修复：`g_dbg_pid` 在嵌套调用后没有恢复
+
+上一轮发现追踪里的 pid 和 tab 对不上，根因是**调试用的全局变量跨嵌套调用泄漏**：
+
+```c
+static int run_proc(int idx) {
+    proc_t *p = &procs[idx];
+    // ...
+    g_dbg_pid = p->pid;      // 只设置，不恢复
+```
+
+`run_proc` 会被**重入**——读管道阻塞时 `pump_children_for_tab` 会运行别的进程。
+内层返回后，外层继续执行，但 `g_dbg_pid` 仍然是**内层进程**的 pid。
+
+**后果**：所有带 pid 的追踪输出，在外层进程被重入过之后都是错的。
+这解释了 `[forktab] child=0`、`[rerr] pid=4 tab=3`（pid 与 tab 不匹配）这些矛盾数字。
+
+**修法是保存/恢复**，和之前 `g_proc_budget` 的修法同一形状：
+
+```c
+const int saved_pid = g_dbg_pid;
+const int saved_self_pid = g_proc_self_pid;
+// ... 函数体 ...
+g_dbg_pid = saved_pid;
+g_proc_self_pid = saved_self_pid;
+```
+
+恢复放在**唯一的出口**，正常返回和故障返回都会经过。
+
+**这个缺陷本身不影响 guest 程序的行为**——它只污染诊断。
+但**它污染的是「用来判断问题在哪」的那部分数据**，代价比一个普通缺陷更高。
+

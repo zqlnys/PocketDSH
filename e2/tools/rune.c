@@ -1157,6 +1157,12 @@ static void trace_flush(void) {
 
 static int run_proc(int idx) {
     proc_t *p = &procs[idx];
+    // run_proc is re-entered from syscall handlers that pump other processes, so the
+    // debug globals have to be saved and put back: without that the outer process
+    // keeps reporting the inner one's pid and pc, and any diagnosis built on them is
+    // describing the wrong process.
+    const int saved_pid = g_dbg_pid;
+    const int saved_self_pid = g_proc_self_pid;
     long spent = 0;
     e2_syscall_env env = {.exit = p_exit, .files = &FS, .ctx = p,
                           .fork = p_fork, .execve = p_execve, .wait4 = p_wait4};
@@ -2064,6 +2070,8 @@ static int run_proc(int idx) {
     // A run that faults never reaches p_exit, so a partial recording would be
     // lost exactly when it is most wanted - the trace up to the fault.
     trace_flush();
+    g_dbg_pid = saved_pid;
+    g_proc_self_pid = saved_self_pid;
     return p->exit_status;
 }
 
