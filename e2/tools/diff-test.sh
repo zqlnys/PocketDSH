@@ -63,8 +63,14 @@ while IFS= read -r cmd; do
     case "$cmd" in \#*) continue ;; esac
     # The harness prints its own exit line on stdout; strip it so the comparison
     # is about the program's output alone.
-    mine=$(timeout 30 "$RUNE" "$BUSYBOX" sh -c "$cmd" 2>&1 | grep -v '^\[exit ' | head -8)
-    theirs=$(env -i timeout 30 qemu-aarch64-static -L "$ROOT" "$BUSYBOX" sh -c "$cmd" 2>&1 | head -8)
+    # Compare the whole output. `head -8` used to truncate both sides, which hid any
+    # difference past the eighth line - a test that cannot see past a point is worse
+    # than a shorter one that can. The harness's own exit line and the blank line
+    # before it are stripped; nothing else is.
+    mine=$(timeout 60 "$RUNE" "$BUSYBOX" sh -c "$cmd" 2>&1 \
+           | grep -v '^\[exit ' | sed -e :a -e '/^$/{$d;N;ba' -e '}')
+    theirs=$(env -i timeout 60 qemu-aarch64-static -L "$ROOT" "$BUSYBOX" sh -c "$cmd" 2>&1 \
+           | sed -e :a -e '/^$/{$d;N;ba' -e '}')
     if [ "$mine" = "$theirs" ]; then
         pass=$((pass + 1))
     else
@@ -140,6 +146,18 @@ awk 'NR==2 {print $0}' /tmp/dta
 awk '{print NR": "$0}' /tmp/dta
 awk 'END{print NR, NF}' /tmp/dta
 sh /tmp/dtsh alpha beta
+printf '%s\n' a b c | sed -n '$p'
+echo 'a b' | awk '{print NF}'
+printf 'x\ny\n' | sed 's/^/>/'
+echo abc | sed 's/\(a\)\(b\)/\2\1/'
+printf '1\n2\n3\n' | awk 'NR==2{print}'
+echo 'a:b:c' | cut -d: -f2-
+printf 'abc' | od -An -c
+echo test | tr 'a-z' 'A-Z'
+printf 'z\nb\na\n' | sort | tr '\n' ' '
+echo 5 | awk '{printf "%03d\n", $1}'
+printf 'a b\n' | awk '{print $NF}'
+echo abcdef | sed 's/./X/g'
 sh /tmp/dtbig
 EOF
 echo "diff test: $pass same, $fail different"
