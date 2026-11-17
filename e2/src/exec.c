@@ -712,9 +712,14 @@ e2_status e2_step(e2_machine *machine) {
             b[l] = e2_v_get(cpu, rm_v, esize, l);
         }
         switch (opcode) {
-        case 1:  // UZP1
-            for (unsigned l = 0; l < lanes; l++)
-                out[l] = (l & 1u) ? b[l / 2] : a[l / 2];
+        case 1:  // UZP1: the even-numbered elements of each source, interleaved.
+            // Stepping by 2 matters. Writing (l&1) ? b[l/2] : a[l/2] instead produces
+            // a0 b0 a1 b1, which is neither this instruction nor ZIP1 - it only agreed
+            // with the reference often enough that grep and sed still worked.
+            for (unsigned i = 0; i < half; i++) {
+                out[2 * i] = a[2 * i];
+                out[2 * i + 1] = b[2 * i];
+            }
             break;
         case 5:  // UZP2
             for (unsigned l = 0; l < lanes; l++)
@@ -726,11 +731,11 @@ e2_status e2_step(e2_machine *machine) {
         case 6:  // TRN2
             for (unsigned i = 0; i < half; i++) { out[2 * i] = a[2 * i + 1]; out[2 * i + 1] = b[2 * i + 1]; }
             break;
-        case 3:  // ZIP1
-            for (unsigned i = 0; i < half; i++) { out[2 * i] = a[i]; out[2 * i + 1] = b[i]; }
+        case 3:  // ZIP1: the low half of each source, concatenated - not interleaved.
+            for (unsigned i = 0; i < half; i++) { out[i] = a[i]; out[i + half] = b[i]; }
             break;
-        case 7:  // ZIP2
-            for (unsigned i = 0; i < half; i++) { out[2 * i] = a[i + half]; out[2 * i + 1] = b[i + half]; }
+        case 7:  // ZIP2: the high half of each source, concatenated.
+            for (unsigned i = 0; i < half; i++) { out[i] = a[i + half]; out[i + half] = b[i + half]; }
             break;
         default:
             machine->ctx.reason = "invalid permute opcode";

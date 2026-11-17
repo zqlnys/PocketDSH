@@ -395,6 +395,38 @@ static void test_hint_space_is_noop(void) {
     e2_machine_destroy(&m);
 }
 
+static void test_simd_permute(void) {
+    printf("UZP1, TRN1 and ZIP1 place lanes where the encoding says\n");
+    // V1.4S = {1,2,3,4}, V2.4S = {5,6,7,8}. The opcode sits in bits 15:12 (1 UZP1,
+    // 2 TRN1, 3 ZIP1), rm in 20:16, rn in 9:5, rd in 4:0, size in 23:22, Q in bit 30.
+    // All three are decoded by the same rule, so checking each against its own result
+    // is what shows the opcode is actually consulted.
+    struct { uint32_t insn; unsigned l0, l1, l2, l3; const char *name; } cases[] = {
+        {0x4E821820u, 1, 5, 3, 7, "UZP1"},   // a0 b0 a2 b2 - stride 2
+        {0x4E822820u, 1, 5, 3, 7, "TRN1"},   // a0 b0 a2 b2 for 4S
+        {0x4E823820u, 1, 2, 5, 6, "ZIP1"},   // a0 a1 b0 b1 - the low halves concatenated
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        e2_machine m;
+        e2_machine_init(&m, 0, 8192);
+        m.cpu.v[1][0] = 1 | (2ULL << 32);
+        m.cpu.v[1][1] = 3 | (4ULL << 32);
+        m.cpu.v[2][0] = 5 | (6ULL << 32);
+        m.cpu.v[2][1] = 7 | (8ULL << 32);
+        const uint32_t code[] = {cases[i].insn, RET()};
+        load_program(&m, code, 2);
+        e2_run(&m, 100);
+        const uint32_t a = (uint32_t)m.cpu.v[0][0];
+        const uint32_t b = (uint32_t)(m.cpu.v[0][0] >> 32);
+        const uint32_t c = (uint32_t)m.cpu.v[0][1];
+        const uint32_t d = (uint32_t)(m.cpu.v[0][1] >> 32);
+        CHECK(a == cases[i].l0 && b == cases[i].l1 && c == cases[i].l2 && d == cases[i].l3,
+              "%s gave {%u,%u,%u,%u}, want {%u,%u,%u,%u}", cases[i].name, a, b, c, d,
+              cases[i].l0, cases[i].l1, cases[i].l2, cases[i].l3);
+        e2_machine_destroy(&m);
+    }
+}
+
 static void test_clock_gettime_honours_the_id(void) {
     printf("clock_gettime serves the clock that was asked for\n");
     e2_machine m;
@@ -1095,6 +1127,7 @@ int main(void) {
     test_load_store();
     test_svc();
     test_hint_space_is_noop();
+    test_simd_permute();
     test_clock_gettime_honours_the_id();
     test_statfs_layout();
     test_truncate_forms();
