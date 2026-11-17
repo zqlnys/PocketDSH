@@ -829,6 +829,11 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
                     }
                 }
             }
+            if (getenv("E2_TRACE_MMAPRET") != NULL) {
+                fprintf(stderr, "[mmapret] len=0x%llx flags=0x%x fd=%d off=0x%llx -> 0x%llx\n",
+                        (unsigned long long)length, mmap_flags, map_fd,
+                        (unsigned long long)map_off, (unsigned long long)base);
+            }
             E2_RETURN(base);
         }
         case E2_SYS_mprotect: {
