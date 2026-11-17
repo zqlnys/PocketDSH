@@ -293,6 +293,26 @@ static void test_svc(void) {
     e2_machine_destroy(&m);
 }
 
+static void test_hint_space_is_noop(void) {
+    printf("hint space: BTI, PACIASP and friends are no-ops\n");
+    e2_machine m;
+    e2_machine_init(&m, 0, 8192);
+    // BTI was the one that mattered: a binary built with -mbranch-protection starts
+    // every function with it, so an unimplemented BTI faults on entry - apk did.
+    const uint32_t code[] = {
+        0xD503245Fu,  // BTI c
+        0xD503233Fu,  // PACIASP
+        0xD50323BFu,  // AUTIASP
+        0xD503201Fu,  // NOP
+        MOVZ_X(7, 33),
+        RET()
+    };
+    load_program(&m, code, sizeof(code) / sizeof(code[0]));
+    e2_run(&m, 100);
+    CHECK_REG(m, 7, 33);
+    e2_machine_destroy(&m);
+}
+
 static void test_nop(void) {
     printf("nop\n");
     e2_machine m;
@@ -798,6 +818,7 @@ int main(void) {
     test_flags_and_condition();
     test_load_store();
     test_svc();
+    test_hint_space_is_noop();
     test_nop();
     test_unimplemented();
     test_hello_world();

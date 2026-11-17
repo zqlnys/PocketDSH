@@ -45,6 +45,9 @@ while IFS= read -r cmd; do
         pass=$((pass + 1))
     fi
 done <<'EOF'
+# Any binary built with -mbranch-protection begins each function with a BTI hint,
+# so an unimplemented BTI faults before the program does anything.
+/tmp/alpine-root/sbin/apk --version 2>/dev/null | head -1
 # A subshell exiting used to clear the parent's working directory, because the
 # current-cwd variable aliased the process slot rather than holding a copy.
 mkdir -p /tmp/m2sub && cd /tmp/m2sub && echo y > b && ( echo w ) && cat b

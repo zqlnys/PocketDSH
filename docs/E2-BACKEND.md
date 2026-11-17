@@ -4475,8 +4475,8 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 
 | 项目 | 实测值 | 命令 |
 | --- | --- | --- |
-| 单指令测试 | **172 项，0 失败** | `make test` |
-| M2 扫描 | **152 通过，0 失败** | `tools/m2-sweep.sh` |
+| 单指令测试 | **173 项，0 失败** | `make test` |
+| M2 扫描 | **153 通过，0 失败** | `tools/m2-sweep.sh` |
 | M3 扫描 | **95 通过，0 失败** | `tools/m3-sweep.sh` |
 | 差分对比 | **104 一致，0 不同** | `tools/diff-test.sh` |
 | 解码规则重叠 | **无** | `make overlaps` |
@@ -4984,4 +4984,45 @@ verify-all: everything passed
 ```
 
 **在两份上都绿，比在任一份上绿说明得多。**
+
+## 找到了：`BTI` 未实现，任何启用分支保护的二进制都会崩
+
+用 guest 里的 `apk`（真实的包管理器，动态链接，体积大）做测试时：
+
+```
+[exit 0] FAULT reason=unimplemented instruction pc=0x102b0700 insn=0xd503245f
+```
+
+**`0xD503245F` 是 `BTI c`** ——ARMv8.5 的分支目标识别指令。
+用 `-mbranch-protection` 编译的程序**每个函数开头都有一条**，所以 `apk` 一进去就崩。
+
+### 根因
+
+解释器只认识 `NOP` 这一条精确编码：
+
+```c
+if (insn == 0xD503201Fu) { ... }    // 只匹配 NOP
+```
+
+而整个 hint 空间是 `1101 0101 0000 0011 0010 CRm(4) op2(3) 11111`，
+`CRm` 和 `op2` 是可变字段。改成掩码匹配：
+
+```c
+if ((insn & 0xFFFFF01Fu) == 0xD503201Fu) { ... }
+```
+
+**这个空间里每一条在架构上都允许当作空操作**——`BTI` 只是标记合法的跳转目标，
+而这里根本不检查跳转目标。
+
+### 影响
+
+| 程序 | 之前 | 现在 |
+| --- | --- | --- |
+| `apk --version` | FAULT | **`apk-tools 2.14.4, compiled for aarch64.`** |
+| 任何 `-mbranch-protection` 编译的程序 | FAULT | ✅ |
+
+### 验证
+
+新增单指令测试，把 `BTI c`、`PACIASP`、`AUTIASP`、`NOP` 连在一起执行，
+断言后续指令正常。M2 增加一条 `apk --version`。
 

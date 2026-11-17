@@ -2705,8 +2705,13 @@ not_a_shift:;
         return E2_SYSCALL;
     }
 
-    // --- NOP ---
-    if (insn == 0xD503201Fu) {
+    // --- Hints: NOP, BTI, PAC/AUT and the rest of the space ---
+    // `1101 0101 0000 0011 0010 CRm(4) op2(3) 11111`. Only NOP was recognised, so a
+    // binary built with -mbranch-protection faulted on its first BTI (0xD503245F) -
+    // apk did exactly that. Every member of this space is architecturally a hint and
+    // may be treated as a no-op; BTI in particular only marks a valid jump target,
+    // and nothing here enforces branch targets.
+    if ((insn & 0xFFFFF01Fu) == 0xD503201Fu) {
         cpu->pc = next_pc;
         machine->instructions++;
         return E2_OK;
