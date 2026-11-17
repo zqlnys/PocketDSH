@@ -276,6 +276,12 @@ seq 3 | awk 'BEGIN{FS=""}{print NF}'
 printf 'a.b.c\n' | sed 's/\./:/g'
 echo 'test' | awk '{gsub(/e/,"E"); print}'
 seq 4 | awk 'NR==2,NR==3'
+f() { [ $1 -le 0 ] && echo done || { echo $1; f $(($1 - 1)); }; }; f 5
+f() { echo "x$1"; [ $1 -lt 3 ] && f $(($1 + 1)); }; f 1
+for i in 1 2 3; do for j in a b; do echo $i$j; done; done
+i=0; while [ $i -lt 3 ]; do i=$((i+1)); done; echo $i
+echo $(( (2 + 3) * 4 ))
+x=abc; echo ${x}def ${x%c} ${x#a}
 sh /tmp/dtbig
 sh /tmp/dts
 EOF
