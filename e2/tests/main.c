@@ -414,6 +414,35 @@ static void test_xtn_narrows_lanes(void) {
     e2_machine_destroy(&m);
 }
 
+static void test_barriers_retire(void) {
+    printf("DSB, DMB and ISB are accepted and change nothing\n");
+    // Execution here is strictly sequential and the host provides the ordering, so these
+    // retire without effect. They still have to be recognised: an atomic sequence that
+    // hits an unimplemented barrier stops there, and the symptom looks like a hang in
+    // whatever was being locked rather than a missing instruction.
+    const uint32_t barriers[] = {
+        0xD5033F9Fu,  // DSB SY
+        0xD5033FBFu,  // DMB SY
+        0xD5033FDFu,  // ISB
+        0xD503349Fu,  // DSB ISH
+    };
+    for (size_t i = 0; i < sizeof(barriers) / sizeof(barriers[0]); i++) {
+        e2_machine m;
+        e2_machine_init(&m, 0, 8192);
+        m.cpu.x[0] = 0x1234;
+        const uint32_t code[] = {barriers[i], 0xD2800021u /* movz x1,#1 */, RET()};
+        load_program(&m, code, 3);
+        // The RET at the end jumps to lr, which is 0 here, so the run ends in a fault.
+        // What matters is that execution reached past the barrier at all.
+        e2_run(&m, 100);
+        // The instruction after the barrier must have run.
+        CHECK(m.cpu.x[1] == 1, "barrier 0x%08x: x1 = 0x%llx, want 1", barriers[i],
+              (unsigned long long)m.cpu.x[1]);
+        CHECK(m.cpu.x[0] == 0x1234, "barrier 0x%08x disturbed x0", barriers[i]);
+        e2_machine_destroy(&m);
+    }
+}
+
 static void test_ldrsb_backward_scan(void) {
     printf("ldrsb sign-extends, which is what stops a backward UTF-8 scan\n");
     // 0x38DFF0C1 is `ldrsb w1, [x6, #-1]` - unscaled, no writeback, as CPython's scan
@@ -1331,6 +1360,7 @@ int main(void) {
     test_load_store();
     test_svc();
     test_hint_space_is_noop();
+    test_barriers_retire();
     test_ldrsb_backward_scan();
     test_frame_pointer_prologue();
     test_tbz_and_tbnz();

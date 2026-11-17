@@ -4481,7 +4481,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 
 | 项目 | 实测值 | 命令 |
 | --- | --- | --- |
-| 单指令测试 | **232 项，0 失败** | `make test` |
+| 单指令测试 | **240 项，0 失败** | `make test` |
 | M2 扫描 | **163 通过，0 失败** | `tools/m2-sweep.sh` |
 | M3 扫描 | **93 通过，0 失败** | `tools/m3-sweep.sh` |
 | 差分对比 | **182 一致，0 不同** | `tools/diff-test.sh` |
