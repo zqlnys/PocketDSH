@@ -293,6 +293,7 @@ WRAP
 cp /tmp/dtre /tmp/alpine-root/tmp/dtre 2>/dev/null || true
 pass=0
 fail=0
+empty=
 while IFS= read -r cmd; do
     [ -z "$cmd" ] && continue
     case "$cmd" in \#*) continue ;; esac
@@ -308,6 +309,13 @@ while IFS= read -r cmd; do
            | sed -e :a -e '/^$/{$d;N;ba' -e '}')
     if [ "$mine" = "$theirs" ]; then
         pass=$((pass + 1))
+        # Both sides empty is a pass that proves very little: a case whose command was
+        # mangled into doing nothing also produces nothing on both sides. Collected and
+        # reported so each one can be judged rather than trusted.
+        if [ -z "$mine" ]; then
+            empty="$empty
+  [$cmd]"
+        fi
     else
         fail=$((fail + 1))
         printf 'DIFF [%s]\n  mine: %s\n  qemu: %s\n' \
@@ -497,4 +505,8 @@ sh /tmp/dtpf
 sh /tmp/dtex
 EOF
 echo "diff test: $pass same, $fail different"
+if [ -n "$empty" ]; then
+    echo "  $(( $(printf '%s' "$empty" | grep -c '^  \[') )) case(s) produced no output on either side:"
+    printf '%s\n' "$empty"
+fi
 [ "$fail" -eq 0 ]
