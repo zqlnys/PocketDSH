@@ -522,6 +522,16 @@ sh /tmp/dtf
 sh /tmp/dtre
 sh /tmp/dtj
 sh /tmp/dt-rp.sh
+printf 'a\nb\n' | sort -r
+seq 6 | sed -n '2,4p'
+echo 'x:y:z' | cut -d: -f2
+printf '1\n2\n2\n3\n' | uniq -c
+seq 5 | paste -sd,
+echo 'Hello' | tr 'A-Z' 'a-z'
+printf 'b\na\nc\n' | sort | head -2
+seq 3 | while read n; do echo "n=$n"; done
+echo '  trim  ' | sed 's/^ *//;s/ *$//'
+printf 'x\ty\n' | cut -f2
 sh /tmp/dtar
 sh /tmp/dtu
 sh /tmp/dtfs.sh
