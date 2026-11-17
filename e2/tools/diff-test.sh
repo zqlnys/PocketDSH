@@ -16,6 +16,24 @@ BUSYBOX=${1:-/tmp/bbs/bin/busybox.static}
 RUNE=${2:-./tools/rune}
 ROOT=/tmp/alpine-root
 
+# Refuse to run without the pieces, rather than comparing a subset and reporting a
+# smaller number. Without this, a missing root filesystem produced "25 same" instead of
+# 182 - and the documentation check then reported the docs as out of date, pointing at
+# the wrong thing entirely.
+if [ ! -d "$ROOT" ]; then
+    echo "diff test: $ROOT not found - the guest root filesystem is required" >&2
+    echo "           (see docs/E2-BACKEND.md for how it is set up)" >&2
+    exit 2
+fi
+if [ ! -x "$BUSYBOX" ]; then
+    echo "diff test: $BUSYBOX not found - the static busybox is required" >&2
+    exit 2
+fi
+if [ ! -x "$RUNE" ]; then
+    echo "diff test: $RUNE not found - run 'make' in e2/ first" >&2
+    exit 2
+fi
+
 # The fixture lives in both places: the guest root for this implementation, and
 # the host root for qemu, which only remaps the loader path.
 for f in /tmp/alpine-root/tmp /tmp; do
