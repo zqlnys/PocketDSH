@@ -22,6 +22,10 @@ echo "=== iOS static checks ==="
 sh "$here/tools/check-swift.sh" "$here" || fail=1
 
 echo
+echo "=== documentation claims ==="
+sh "$here/tools/check-docs.sh" || fail=1
+
+echo
 if [ "$fail" -eq 0 ]; then
     echo "verify: everything passed"
 else
