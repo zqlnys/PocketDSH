@@ -127,8 +127,7 @@ static void host_ref(int h) { if (h >= 0 && h < 1024) g_refs[h]++; }
 static void host_unref(int h) { if (h >= 0 && h < 1024 && g_refs[h] > 0) g_refs[h]--; }
 static void host_close_if_done(int h) {
     if (h >= 3 && h < 1024 && g_refs[h] == 0) {
-        if (getenv("E2_TRACE_CLOSE"))
-            fprintf(stderr, "[close] host=%d\n", h);
+        if (getenv("E2_TRACE_CLOSE")) fprintf(stderr, "[close] host=%d\n", h);
         close(h);
     }
 }
@@ -330,8 +329,8 @@ static long fs_write(void *c, int fd, const void *b, size_t n, long long o) {
     }
     ssize_t r = write(TAB(c)[fd].host, b, n);
     if (getenv("E2_TRACE_WLEN"))
-        fprintf(stderr, "[wlen] tab=%d fd=%d want=%zu got=%zd\n",
-                ((const procctx *)c)->fdtab, fd, n, r);
+        fprintf(stderr, "[wlen] tab=%d fd=%d host=%d want=%zu got=%zd\n",
+                ((const procctx *)c)->fdtab, fd, TAB(c)[fd >= 0 && fd < 64 ? fd : 0].host, n, r);
     if (r < 0) {
         note_write_error(((const procctx *)c)->fdtab, errno);
         return -errno;

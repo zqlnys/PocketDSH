@@ -5899,3 +5899,49 @@ echo "len: ${#upper}"
 
 **129 → 130。**
 
+## 命令替换缺陷：定位到引用计数之外的 `close`
+
+用 `[wlen]` 打印写入目标的 host fd：
+
+```
+[pipe] p1 r=3 w=4                      shell 建管道，得到 host 3、4
+[pipe] p2 r=3 w=4                      p2 为命令替换建管道，也用 3、4
+[wlen] tab=4 fd=1 host=6 want=1 got=1  替换子进程正常写
+[wlen] tab=2 fd=1 host=4 want=9 got=-1 ← echo 写 host 4 失败
+```
+
+**`echo` 的 fd 1 指向 host 4，写入返回 EBADF。**
+
+### 引用计数说它没被关
+
+追踪 `host_unref` 和 `host_close_if_done`：
+
+```
+[unref] host=4 -> 1
+[unref] host=4 -> 1
+[unref] host=4 -> 1
+```
+
+**计数从未归零，也**没有任何 `[close] host=4`**。**
+
+**所以 host 4 是被「引用计数系统之外」的代码关掉的。**
+
+### 找到了三处裸 `close`
+
+| 位置 | 问题 |
+| --- | --- |
+| `fs_open` 的 `fd_alloc_tab` 失败路径 | `close(fd)` **没有 `host_unref`** |
+| `fs_pipe` 的两条失败路径 | `close(p[0]); close(p[1])` 无 `unref` |
+| `fs_pipe` 的 `b < 0` 路径 | 只清了 `g_fds[tab][a].used`，没清 `host` |
+
+**这些路径把 host fd 关掉，却不调整计数——于是别的槽位仍然指向一个已关闭的描述符。**
+
+### 这与「`used=1` 且 `host=-1` 不可能」的结论是一致的
+
+之前我证明过：**没有任何合法路径能产生 `used=1` 且 `host=-1`**。
+
+现在答案清楚了：**不是 `host` 被改成 -1，而是 `host` 指向的那个宿主描述符被关掉了。**
+槽位本身完全合法，是它指向的东西消失了。
+
+**「无效描述符」和「指向已关闭描述符」是两种不同的失效，我此前混淆了。**
+
