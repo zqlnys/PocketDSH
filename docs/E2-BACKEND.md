@@ -4476,7 +4476,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 | 项目 | 实测值 | 命令 |
 | --- | --- | --- |
 | 单指令测试 | **173 项，0 失败** | `make test` |
-| M2 扫描 | **153 通过，0 失败** | `tools/m2-sweep.sh` |
+| M2 扫描 | **156 通过，0 失败** | `tools/m2-sweep.sh` |
 | M3 扫描 | **95 通过，0 失败** | `tools/m3-sweep.sh` |
 | 差分对比 | **104 一致，0 不同** | `tools/diff-test.sh` |
 | 解码规则重叠 | **无** | `make overlaps` |
@@ -5131,4 +5131,46 @@ pc=0x102fbbf8  insn=0xd1000421   SUB  x1, x1, #1
 
 `E2_TRACE_MMAPRET`——打印每次 mmap 的长度、标志、fd、偏移和返回地址。
 上面第二条证据就是它给出的。**要判断「这个地址是不是映射边界」，没有它只能靠猜。**
+
+## `/dev/null` 是普通文件，所以写入会累积
+
+差分测试里一条 `cmp - /dev/null` 结果对不上，查下去发现：
+
+```
+-rw-r--r-- 1 root root 2 Nov 17 02:43 /tmp/alpine-root/dev/null
+```
+
+**guest 根目录下的 `/dev/null` 是一个 2 字节的普通文件，不是字符设备。**
+
+后果：
+
+| 操作 | 错误表现 |
+| --- | --- |
+| `echo x > /dev/null` | 内容被写进文件，越写越大 |
+| `wc -c < /dev/null` | 读到之前写进去的字节 |
+| `cmp - /dev/null` | 报「第 1 字节不同」而不是「EOF」 |
+
+### 修法
+
+在路径解析里把真正的设备映射到宿主的设备，而不是指向 guest 根下的同名文件：
+
+```c
+static const char *host_device(const char *p) {
+    static const char *const devs[] = {"/dev/null", "/dev/zero", "/dev/full",
+                                       "/dev/random", "/dev/urandom", "/dev/tty"};
+    ...
+}
+```
+
+### 验证
+
+```
+$ echo x > /dev/null; wc -c < /dev/null     → 0
+$ echo test | cmp - /dev/null               → EOF on /dev/null
+```
+
+### 这个缺陷的性质
+
+**它是累积性的**：第一次写 /dev/null 没事，第二次读就出问题。
+而且只有「先写后读」才会暴露——单独测任何一个方向都发现不了。
 

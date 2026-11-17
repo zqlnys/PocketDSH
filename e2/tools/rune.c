@@ -143,7 +143,23 @@ static uint8_t *load_file(const char *p, size_t *n) {
 // subshell exited and its slot was cleared, the parent's working directory became a
 // buffer of zeros and every relative path stopped resolving.
 static char g_cur_cwd[1024] = "/";
+// Device nodes cannot be represented by files under the guest root: opening
+// /dev/null there yields a regular file, so writes accumulate and reads return data.
+// These map to the host's real devices instead.
+static const char *host_device(const char *p) {
+    static const char *const devs[] = {"/dev/null", "/dev/zero", "/dev/full",
+                                       "/dev/random", "/dev/urandom", "/dev/tty"};
+    for (size_t i = 0; i < sizeof(devs) / sizeof(devs[0]); i++) {
+        if (strcmp(p, devs[i]) == 0) return devs[i];
+    }
+    return NULL;
+}
 static void host_path(char *out, size_t n, const char *p) {
+    const char *dev = host_device(p);
+    if (dev != NULL) {
+        snprintf(out, n, "%s", dev);
+        return;
+    }
     if (p[0] == '/') {
         snprintf(out, n, "%s%s", ROOT, p);
     } else if (strcmp(p, ".") == 0) {

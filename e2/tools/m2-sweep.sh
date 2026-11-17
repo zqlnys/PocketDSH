@@ -45,6 +45,11 @@ while IFS= read -r cmd; do
         pass=$((pass + 1))
     fi
 done <<'EOF'
+# /dev/null was a regular file under the guest root, so writes accumulated and reads
+# returned whatever had been written there.
+echo x > /dev/null; wc -c < /dev/null
+echo test | cmp - /dev/null 2>&1 | head -1
+head -c4 /dev/zero | wc -c 2>/dev/null || echo nozero
 # Any binary built with -mbranch-protection begins each function with a BTI hint,
 # so an unimplemented BTI faults before the program does anything.
 /tmp/alpine-root/sbin/apk --version 2>/dev/null | head -1
