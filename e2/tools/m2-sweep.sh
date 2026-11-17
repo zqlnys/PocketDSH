@@ -26,6 +26,9 @@ touch /tmp/alpine-root/tmp/m2tree/a/f1 /tmp/alpine-root/tmp/m2tree/a/b/f2 2>/dev
 
 while IFS= read -r cmd; do
     [ -z "$cmd" ] && continue
+    # A comment is not a test. Running `sh -c "# ..."` succeeds trivially, which
+    # used to inflate the pass count by one for every explanatory line.
+    case "$cmd" in \#*) continue ;; esac
     out=$(timeout "$LIMIT" "$RUNE" "$BUSYBOX" sh -c "$cmd" < /dev/null 2>&1)
     status=$?
     if [ "$status" -eq 124 ]; then
