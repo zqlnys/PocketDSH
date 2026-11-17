@@ -45,6 +45,11 @@ while IFS= read -r cmd; do
         pass=$((pass + 1))
     fi
 done <<'EOF'
+# /proc and statfs: free, uptime and df all failed on a missing file or a missing
+# syscall rather than on anything the interpreter got wrong.
+free | head -1
+cat /proc/version
+df / | tail -1 | awk '{print ($2>0) ? "hasblocks" : "noblocks"}'
 # getpid returned a constant 0, which is the value that means "child, in a fork".
 sh -c 'test "$$" -gt 0 && echo haspid'
 sh -c 'echo $$ | cat' > /dev/null && echo pidstable

@@ -375,6 +375,27 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             E2_RETURN(files->pathop(env->ctx, E2_PATHOP_CHOWN, path, NULL,
                                     (unsigned)(m->cpu.x[3] & 0xFFFFFFFFu)));
         }
+        case 43:      // statfs(path, buf)
+        case 44: {    // fstatfs(fd, buf)
+            if (files == NULL || files->statfs_of == NULL) {
+                E2_RETURN(-E2_ENOSYS);
+            }
+            // The aarch64 layout is 128 bytes: eleven 8-byte words, an 8-byte
+            // fsid and four spare words.
+            uint8_t *dst = e2_memory_host_ptr(&m->mem, a1, 128, E2_PROT_WRITE);
+            if (dst == NULL) {
+                E2_RETURN(-E2_EFAULT);
+            }
+            if (number == 43) {
+                char path[E2_PATH_MAX];
+                const int rc = read_guest_string(m, a0, path, sizeof(path));
+                if (rc != 0) {
+                    E2_RETURN(rc);
+                }
+                E2_RETURN(files->statfs_of(env->ctx, -1, path, dst, 128));
+            }
+            E2_RETURN(files->statfs_of(env->ctx, (int)a0, NULL, dst, 128));
+        }
         case E2_SYS_clone: {
             // The shell uses clone(SIGCHLD, 0, ...) for fork; a NULL stack means
             // "same address space, copied". A non-NULL stack is a thread, which

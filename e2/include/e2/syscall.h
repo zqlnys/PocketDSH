@@ -98,6 +98,9 @@ typedef struct {
     /// path is used. Returns 0 or a negative errno. Optional: without it
     /// truncate and ftruncate report ENOSYS, which is what `truncate -s` hit.
     int (*truncate_file)(void *ctx, int fd, const char *path, long long length);
+    /// Fills the guest's `statfs` layout for a descriptor or a path. Returns 0 or a
+    /// negative errno. Optional: without it df and stat -f report ENOSYS.
+    int (*statfs_of)(void *ctx, int fd, const char *path, void *out, size_t outlen);
 } e2_file_ops;
 
 /// Everything the syscall layer needs from its host. The iOS layer will provide

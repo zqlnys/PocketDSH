@@ -4476,7 +4476,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 | 项目 | 实测值 | 命令 |
 | --- | --- | --- |
 | 单指令测试 | **172 项，0 失败** | `make test` |
-| M2 扫描 | **137 通过，0 失败** | `tools/m2-sweep.sh` |
+| M2 扫描 | **140 通过，0 失败** | `tools/m2-sweep.sh` |
 | M3 扫描 | **95 通过，0 失败** | `tools/m3-sweep.sh` |
 | 差分对比 | **67 一致，0 不同** | `tools/diff-test.sh` |
 | 解码规则重叠 | **无** | `make overlaps` |
@@ -4663,4 +4663,28 @@ $ echo $$; sleep 0.01 & echo $!  → 1, 2      （子进程有自己的 pid）
 ```
 
 **这个缺陷也是「接口有返回，实现给常量」的一类**，和 `prlimit64`、`clock_gettime` 同源。
+
+### 空白的 `/proc` 让 free / uptime / df 全部失败，以及缺失的 `statfs`
+
+`free` 报 `can't open '/proc/meminfo'`——guest 根目录里的 `proc/` 是**空目录**。
+`df` 更进一步，读到了挂载表之后报 `Function not implemented`：**`statfs`（43/44）没有实现**。
+
+两件事都补上了：
+
+| 项目 | 做法 |
+| --- | --- |
+| `/proc` 基础文件 | 宿主启动时写入 meminfo、uptime、version、mounts、cpuinfo、filesystems |
+| `statfs` | 用宿主 `statvfs` 填真实的块数、可用空间 |
+
+**`df /` 的块数、已用、可用与 qemu 完全相同**（因为都是真实磁盘的值）：
+
+```
+本实现:  /dev/root  150591044  20251116  122669224  14% /
+qemu:    /dev/vda2  150591044  20251116  122669224  15% /
+```
+
+设备名与百分比舍入不同，数字本身一致。
+
+**注意**：`/proc` 的这些文件是**宿主代填的**，不是解释器的能力。只在目录已存在时写入，
+没有 `/proc` 的根目录保持原样。将来 iOS 层要自己提供同样的东西。
 

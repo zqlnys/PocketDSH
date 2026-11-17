@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <dirent.h>
 #include <elf.h>
 #include <time.h>
@@ -411,11 +412,85 @@ static int fs_truncate(void *c, int fd, const char *path, long long length) {
 }
 
 
+// statfs for df. Values come from the host filesystem that backs the root, so
+// `df /` reports numbers that are actually true of the disk holding it.
+static int fs_statfs(void *c, int fd, const char *path, void *out, size_t outlen) {
+    (void)c;
+    struct statvfs v;
+    int rc;
+    if (fd >= 0) {
+        if (fd >= 64 || !TAB(c)[fd].used) return -EBADF;
+        rc = fstatvfs(TAB(c)[fd].host, &v);
+    } else {
+        char h[2048];
+        host_path(h, sizeof(h), path);
+        rc = statvfs(h, &v);
+    }
+    if (rc != 0) return -errno;
+    if (outlen < 128) return -EINVAL;
+    uint64_t *w = (uint64_t *)out;
+    memset(w, 0, 128);
+    w[0] = 0xEF53;              // f_type: ext4's magic, so file(1)-style checks pass
+    w[1] = v.f_bsize;
+    w[2] = v.f_blocks;
+    w[3] = v.f_bfree;
+    w[4] = v.f_bavail;
+    w[5] = v.f_files;
+    w[6] = v.f_ffree;
+    // w[7] is fsid, left zero.
+    w[8] = v.f_namemax;
+    w[9] = v.f_frsize;
+    w[10] = v.f_flag;
+    return 0;
+}
+
 static const e2_file_ops FS = {fs_open, fs_read, fs_write, fs_close, fs_stat,
                                fs_opendir, fs_readdir, fs_clock, fs_pipe, fs_dup3,
-                               fs_fcntl, fs_readlink, fs_pollable, fs_pathop, fs_truncate};
+                               fs_fcntl, fs_readlink, fs_pollable, fs_pathop, fs_truncate,
+                               fs_statfs};
 
 
+
+// The guest root has an empty /proc, so free, df, ps and uptime all fail on a
+// missing file rather than on anything the interpreter got wrong. A real kernel
+// synthesises these; the harness states them once at start-up for the same reason.
+// Only written when the directory already exists, so a root without /proc is left
+// exactly as it was.
+static void seed_proc(const char *root) {
+    static const struct { const char *path; const char *body; } files[] = {
+        {"/proc/meminfo",
+         "MemTotal:        1024000 kB\n"
+         "MemFree:          512000 kB\n"
+         "MemAvailable:     768000 kB\n"
+         "Buffers:           10000 kB\n"
+         "Cached:           120000 kB\n"
+         "SwapTotal:             0 kB\n"
+         "SwapFree:              0 kB\n"},
+        {"/proc/uptime", "12345.67 98765.43\n"},
+        {"/proc/version",
+         "Linux version 6.1.0-e2 (e2@localhost) #1 SMP aarch64\n"},
+        {"/proc/mounts", "/dev/root / ext4 rw,relatime 0 0\n"},
+        {"/proc/cpuinfo",
+         "processor\t: 0\nBogoMIPS\t: 100.00\n"
+         "CPU implementer\t: 0x41\nCPU architecture: 8\n"
+         "CPU variant\t: 0x0\nCPU part\t: 0xd0c\nCPU revision\t: 1\n"},
+        {"/proc/filesystems", "\tnodev\nsysfs\nproc\next4\ntmpfs\n"},
+    };
+    char dir[2048];
+    snprintf(dir, sizeof(dir), "%s/proc", root);
+    struct stat st;
+    if (stat(dir, &st) != 0 || !S_ISDIR(st.st_mode)) return;
+    for (size_t i = 0; i < sizeof(files) / sizeof(files[0]); i++) {
+        char full[2048];
+        snprintf(full, sizeof(full), "%s%s", root, files[i].path);
+        // Do not clobber a file the guest has already produced.
+        if (access(full, F_OK) == 0) continue;
+        FILE *f = fopen(full, "wb");
+        if (f == NULL) continue;
+        fputs(files[i].body, f);
+        fclose(f);
+    }
+}
 
 // --- processes -----------------------------------------------------------
 
@@ -1737,6 +1812,12 @@ int main(int argc, char **argv) {
     const char *path = argc > 1 ? argv[1] : "/tmp/bbs/bin/busybox.static";
     g_self_path = path;
     fd_init();
+    // Populate the guest's /proc once, as a kernel would. The root comes from the
+    // same place host_path uses, so E2_ROOT still applies.
+    {
+        const char *root = getenv("E2_ROOT");
+        seed_proc(root != NULL ? root : "/tmp/alpine-root");
+    }
     e2_machine m;
     e2_machine_init(&m, 0, 1 << 20);
 
