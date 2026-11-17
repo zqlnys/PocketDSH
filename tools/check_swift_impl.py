@@ -174,11 +174,38 @@ def check_tool_handling(root: pathlib.Path) -> bool:
     return True
 
 
+def check_tool_specs(root: pathlib.Path) -> bool:
+    """Every declared tool must have a catalogue entry, and vice versa.
+
+    A tool the model is told about only through the catalogue needs a spec there; one
+    with a spec but no declared name would be reached by a string that nothing defines.
+    """
+    models = (root / "Packages/PocketDSHKit/Sources/PocketDSHCore/AgentModels.swift")
+    catalog = root / "PocketDSH/Core/Services/ToolCatalog.swift"
+    if not models.exists() or not catalog.exists():
+        print("  models or catalogue not found, skipping")
+        return True
+    declared = set(re.findall(r'static let (\w+) = "', models.read_text()))
+    spec = set(re.findall(r"name: ToolNames\.(\w+)", catalog.read_text(errors="replace")))
+    problems = []
+    if declared - spec:
+        problems.append("declared without a spec: " + ", ".join(sorted(declared - spec)))
+    if spec - declared:
+        problems.append("spec without a declaration: " + ", ".join(sorted(spec - declared)))
+    if problems:
+        for line in problems:
+            print("  " + line)
+        return False
+    print(f"  {len(declared)} tools, spec and declaration agree")
+    return True
+
+
 def main() -> int:
     root = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
     results = [
         ("tool names", check_tool_names(root)),
         ("tool handling", check_tool_handling(root)),
+        ("tool specs", check_tool_specs(root)),
         ("test labels", check_test_labels(root)),
         ("brace balance", check_braces(root)),
     ]
