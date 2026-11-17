@@ -4478,7 +4478,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 | 单指令测试 | **172 项，0 失败** | `make test` |
 | M2 扫描 | **152 通过，0 失败** | `tools/m2-sweep.sh` |
 | M3 扫描 | **95 通过，0 失败** | `tools/m3-sweep.sh` |
-| 差分对比 | **80 一致，0 不同** | `tools/diff-test.sh` |
+| 差分对比 | **104 一致，0 不同** | `tools/diff-test.sh` |
 | 解码规则重叠 | **无** | `make overlaps` |
 | 规则越界 | **0 条** | `tools/check-rule-mnemonics.py` |
 | iOS 测试 | **24 项** | `PocketDSHTests.swift` |
@@ -4931,4 +4931,24 @@ theirs=$(... | head -8)
 残留在我的过滤结果里**。用 `od` 逐字节对比后确认两侧程序输出都是 6 字节、完全相同。
 
 **又一次是观测方式的问题，不是程序的问题。**
+
+### 差分用例扩到 104
+
+再补 24 条，覆盖：
+
+| 类别 | 用例 |
+| --- | --- |
+| 排序组合 | `sort \| uniq -c`、`sort -n \| head`、`sort -n \| tail -1`、`sort -u \| wc -l` |
+| sed 细节 | `s/a/b/2`（第二个匹配）、`s/b//`、`s/\./-/`、`-n '/2/p'` |
+| awk 细节 | `int()`、`length($0)`、`$2,$3`、`END{print NR}`、字符串拼接 |
+| cut 变体 | `-c1-5`、`-f2`、`-d, -f2` |
+| 管道链 | `tr \| wc -l`、`rev \| rev`、`tee \| cat`、`tac` |
+| 校验与判定 | `md5sum \| cut`、`grep -q` |
+
+**80 → 104，全部与 qemu 一致。**
+
+### 一个「看起来是差异」的用例
+
+`echo $$ | wc -c` 两边不同（2 vs 7）——**这是 PID 位数不同，不是缺陷**。
+我的 pid 是 1，qemu 的是 6 位数。这类依赖运行时标识的用例不适合进差分测试。
 

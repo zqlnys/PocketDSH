@@ -158,6 +158,30 @@ printf 'z\nb\na\n' | sort | tr '\n' ' '
 echo 5 | awk '{printf "%03d\n", $1}'
 printf 'a b\n' | awk '{print $NF}'
 echo abcdef | sed 's/./X/g'
+printf 'b\na\n' | sort | uniq -c
+echo 3.7 | awk '{print int($1)}'
+printf 'aXbXc\n' | tr 'X' '\n' | wc -l
+echo 'Hello World' | cut -c1-5
+printf '1\n2\n' | sed -n '/2/p'
+echo abc | grep -q b && echo yes
+seq 3 | awk '{s=s $1} END{print s}'
+printf 'x\ty\n' | cut -f2
+echo A | tr 'A-Z' 'a-z'
+printf 'ab\ncd\n' | wc -l
+echo test | rev | rev
+seq 4 | awk 'END{print NR}'
+echo 'a.b' | sed 's/\./-/'
+printf 'q\n' | tee /tmp/dt-tee > /dev/null && cat /tmp/dt-tee
+printf '3\n1\n2\n' | sort -n | head -2
+echo 'aaa' | sed 's/a/b/2'
+printf 'x\n' | awk '{print length($0)}'
+echo 'a b c' | awk '{print $2,$3}'
+printf '10\n9\n' | sort -n | tail -1
+echo 'test' | md5sum | cut -c1-4
+printf '%s\n' one two | tac
+echo 'A,B' | cut -d, -f2
+printf 'q\nq\nq\n' | sort -u | wc -l
+echo abc | sed 's/b//'
 sh /tmp/dtbig
 EOF
 echo "diff test: $pass same, $fail different"
