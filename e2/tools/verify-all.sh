@@ -8,13 +8,24 @@ STATIC=${2:-/tmp/bbs/bin/busybox.static}
 DYNAMIC=${3:-/tmp/alpine-root/bin/busybox}
 fail=0
 
+# The exit status of a pipeline is the last command's, so `make test | tail -1 || fail=1`
+# could never fail: tail always succeeds. Capture the output and the status separately.
 echo "== unit tests =="
-make test 2>&1 | tail -1 || fail=1
+out=$(make test 2>&1) || fail=1
+printf '%s\n' "$out" | tail -1
+printf '%s' "$out" | grep -qE ', [1-9][0-9]* failure' && fail=1
 echo "== overlaps =="
-make overlaps 2>&1 | tail -1 || fail=1
+out=$(make overlaps 2>&1) || fail=1
+printf '%s\n' "$out" | tail -1
 
 for bb in "$STATIC" "$DYNAMIC"; do
-    [ -x "$bb" ] || { echo "$bb: missing, skipped"; continue; }
+    # A skipped binary is not a passed binary: the claim is that both work, so a
+    # missing one has to fail rather than quietly halve the coverage.
+    if [ ! -x "$bb" ]; then
+        echo "$bb: MISSING - cannot run the suites against it"
+        fail=1
+        continue
+    fi
     case "$bb" in
         *static*) label="static" ;;
         *)        label="dynamic" ;;
