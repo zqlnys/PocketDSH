@@ -4476,7 +4476,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 | 项目 | 实测值 | 命令 |
 | --- | --- | --- |
 | 单指令测试 | **172 项，0 失败** | `make test` |
-| M2 扫描 | **106 通过，0 失败** | `tools/m2-sweep.sh` |
+| M2 扫描 | **116 通过，0 失败** | `tools/m2-sweep.sh` |
 | M3 扫描 | **100 通过，0 失败** | `tools/m3-sweep.sh` |
 | 差分对比 | **67 一致，0 不同** | `tools/diff-test.sh` |
 | 解码规则重叠 | **无** | `make overlaps` |
@@ -4489,6 +4489,9 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 
 `xargs -I`、`sed y///`、`cut -b`、`tac`、`grep -o`、`nl -w/-s`、`paste -d`、`split`
 ——八个此前没测过的 applet 与选项，全部与 qemu 一致。
+
+第二批：`expr %` 与 `length`、`printf` 浮点格式、`rev`、`fold -w`、`base64` 编解码、
+`od -An -tu1`、`md5sum`、`expand`。其中浮点格式化与 `md5sum` 用 qemu 逐字节核对过。
 
 ### 三个原本全坏的工具
 
@@ -4505,5 +4508,6 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 | CPython 启动时打印多余 traceback | M4 未完成；解释器能跑，`getpath` 阶段有差异 |
 | `pow`（`^` / `**`）结果错误 | 只影响这两个运算符 |
 | `wait4` 只等一个作业成员 | 已用量子 2000000 规避，缺陷仍在 |
+
 
 

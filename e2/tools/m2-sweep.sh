@@ -42,6 +42,16 @@ while IFS= read -r cmd; do
         pass=$((pass + 1))
     fi
 done <<'EOF'
+expr 7 % 3
+expr length hello
+printf '%05.2f\n' 1.5
+echo abc | rev
+echo abc | fold -w2
+echo test | base64
+echo dGVzdAo= | base64 -d
+printf 'ab\n' | od -An -tu1
+echo abc | md5sum
+printf 'a\tb\n' | expand
 printf 'a\n' | xargs -I{} echo got{}
 echo a | sed 'y/a/b/'
 echo abc | cut -b2
