@@ -6095,3 +6095,39 @@ clang --target=aarch64-linux-gnu -c ... ; ld.lld -static -o ...
 `e2/tests/guest/hello.o` 之前被提交进了版本库——**那是构建产物**，和其他六个 `.o`
 一样应该被忽略。已移出并加进 `.gitignore`。
 
+## 审计：还有没有别的地方「失败传不出去」
+
+上一轮发现 `verify-all.sh` 里的 `make test | tail -1 || fail=1` **永远不会触发**——
+管道的退出码是最后一个命令的，`tail` 总是成功。
+
+这类写法的危险在于：**它看起来像在检查，实际什么都没检查。**
+
+### 全库审计
+
+搜索所有脚本里「管道后接 `||`」的模式：
+
+| 位置 | 写法 | 是否有问题 |
+| --- | --- | --- |
+| `check-swift.sh` | `python3 ... \|\| fail=1` | 否，单命令不是管道 |
+| `verify.sh` | `( cd e2 && ./verify-all.sh ) \|\| fail=1` | 否，子 shell 的退出码有效 |
+| `verify.sh` | `sh check-swift.sh \|\| fail=1` | 否 |
+| `verify.sh` | `sh check-docs.sh \|\| fail=1` | 否 |
+| `m2/m3-sweep.sh` | `if echo "$out" \| grep -q ...` | 否，判断的是 grep 的结果 |
+
+**只有上一轮修掉的那一处有问题，其余都正确。**
+
+### 端到端验证失败传递链
+
+把 README 里的数字改错，逐层看：
+
+```
+$ ./tools/check-docs.sh ; echo $?
+1                              ← 检查器返回非零
+$ ./tools/verify.sh | tail -1
+verify: FAILURES above         ← 聚合器如实报告
+```
+
+**恢复后回到 `verify: everything passed`。**
+
+**这条链是完整的：单项检查 → 聚合器 → 退出码。**
+
