@@ -4478,7 +4478,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 | 单指令测试 | **173 项，0 失败** | `make test` |
 | M2 扫描 | **164 通过，0 失败** | `tools/m2-sweep.sh` |
 | M3 扫描 | **95 通过，0 失败** | `tools/m3-sweep.sh` |
-| 差分对比 | **181 一致，0 不同** | `tools/diff-test.sh` |
+| 差分对比 | **182 一致，0 不同** | `tools/diff-test.sh` |
 | 解码规则重叠 | **无** | `make overlaps` |
 | 规则越界 | **0 条**（100883 个唯一指令字） | `tools/check-rule-mnemonics.py` |
 | iOS 测试 | **26 项** | `PocketDSHTests.swift` |
@@ -5039,4 +5039,56 @@ diff test: 181 same, 0 different
 
 **这个检查不能自动判断「空输出是否正确」**（有些用例本来就该空），
 但它把可疑的挑出来，让人去判断，而不是默认相信。
+
+## 修掉一个会让脚本失败的真实缺陷：悬空符号链接无法删除
+
+### 怎么发现的
+
+给 M2 扫描加「检查用例是否在报错」的扫描时，发现几条 `rm -rf /tmp/m2d` 报
+`Directory not empty`。
+
+查下去，`/tmp/m2d` 里有一个**悬空符号链接**（`l -> target`，target 不存在）。
+
+```
+$ rm /tmp/m2d/l
+rm: can't remove '/tmp/m2d/l': No such file or directory
+$ rmdir /tmp/m2d
+rmdir: '/tmp/m2d': Directory not empty
+```
+
+**而参考实现能正常删掉。**
+
+### 根因
+
+`newfstatat`（系统调用 79）的实现是**先 `open` 再 `stat`**：
+
+```c
+const int fd = files->open(env->ctx, path, 0, 0);
+const int src = files->stat(env->ctx, fd, &st, sizeof(st));
+```
+
+**`open` 会跟随符号链接**——悬空链接于是返回 `ENOENT`。
+
+**而 `AT_SYMLINK_NOFOLLOW`（标志位 0x100，在 x3 里）被完全忽略了。**
+
+`rm` 在删除一个名字之前会先 `lstat` 它：**悬空链接没有 `stat` 结果，但有 `lstat` 结果**。
+跟随之后拿不到任何信息，`rm` 就拒绝操作。
+
+### 修法
+
+给文件操作接口加一个按路径 stat 的入口，把「是否跟随」作为参数传下去：
+
+```c
+int (*stat_path)(void *ctx, const char *path, void *st, size_t stlen, int follow);
+```
+
+`newfstatat` 现在读 x3 的 `0x100` 位来决定传 `stat` 还是 `lstat`；
+宿主层没有提供这个入口时，退回原来的 open/stat 路径。
+
+### 影响
+
+**任何删除含悬空符号链接目录的脚本都会失败**——`rm -rf` 是最常见的清理手段，
+这类残留很常见（比如指向已删除目标的链接）。
+
+三条用例进了差分测试。
 

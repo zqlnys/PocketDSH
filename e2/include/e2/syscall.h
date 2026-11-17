@@ -106,6 +106,11 @@ typedef struct {
     /// and without a real seek the second read returns EOF and the two files compare
     /// equal.
     long (*seek)(void *ctx, int fd, long long offset, int whence);
+    /// Stats a path directly. `follow` selects between stat and lstat: a dangling
+    /// symlink has no stat result but does have an lstat one, and tools that delete
+    /// link names - rm among them - ask for the latter before touching anything.
+    /// Optional: without it newfstatat always follows the link.
+    int (*stat_path)(void *ctx, const char *path, void *st, size_t stlen, int follow);
 } e2_file_ops;
 
 /// Everything the syscall layer needs from its host. The iOS layer will provide

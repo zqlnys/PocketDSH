@@ -600,16 +600,27 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             if (dst == NULL) {
                 E2_RETURN(-E2_EFAULT);
             }
-            // The host layer indexes files by descriptor, so resolve the path
-            // through open/close rather than adding a second stat entry point.
-            const int fd = files->open(env->ctx, path, 0, 0);
-            if (fd < 0) {
-                E2_RETURN(fd);
-            }
-            const int src = files->stat(env->ctx, fd, &st, sizeof(st));
-            files->close(env->ctx, fd);
-            if (src < 0) {
-                E2_RETURN(src);
+            // AT_SYMLINK_NOFOLLOW (0x100 in flags, which is x3) has to be honoured:
+            // rm asks for lstat before unlinking a name, and a dangling symlink has no
+            // stat result at all - resolving it first makes the link undeletable.
+            const int follow = (int)((m->cpu.x[3] & 0x100u) == 0);
+            if (files->stat_path != NULL) {
+                const int src = files->stat_path(env->ctx, path, &st, sizeof(st), follow);
+                if (src < 0) {
+                    E2_RETURN(src);
+                }
+            } else {
+                // The host layer indexes files by descriptor, so resolve the path
+                // through open/close rather than adding a second stat entry point.
+                const int fd = files->open(env->ctx, path, 0, 0);
+                if (fd < 0) {
+                    E2_RETURN(fd);
+                }
+                const int src = files->stat(env->ctx, fd, &st, sizeof(st));
+                files->close(env->ctx, fd);
+                if (src < 0) {
+                    E2_RETURN(src);
+                }
             }
             memcpy(dst, &st, sizeof(st));
             E2_RETURN(0);

@@ -291,6 +291,12 @@ echo 'abc' | sed -E 's/(a)(b)/\2\1/'
 echo 'aaa' | grep -c 'a'
 WRAP
 cp /tmp/dtre /tmp/alpine-root/tmp/dtre 2>/dev/null || true
+cat > /tmp/dtlnk.sh 2>/dev/null <<'WRAP'
+rm -rf /tmp/dtlnk; mkdir -p /tmp/dtlnk; ln -s target /tmp/dtlnk/l; ls /tmp/dtlnk | wc -l
+rm -rf /tmp/dtlnk; mkdir -p /tmp/dtlnk; ln -s target /tmp/dtlnk/l; rm -rf /tmp/dtlnk; ls -d /tmp/dtlnk 2>&1
+rm -rf /tmp/dtlnk; mkdir -p /tmp/dtlnk/a; ln -s ../missing /tmp/dtlnk/a/l; find /tmp/dtlnk | sort
+WRAP
+cp /tmp/dtlnk.sh /tmp/alpine-root/tmp/dtlnk.sh 2>/dev/null || true
 pass=0
 fail=0
 empty=
@@ -502,6 +508,7 @@ sh /tmp/dtar
 sh /tmp/dtu
 sh /tmp/dtfs.sh
 sh /tmp/dtpf
+sh /tmp/dtlnk.sh
 sh /tmp/dtex
 EOF
 echo "diff test: $pass same, $fail different"

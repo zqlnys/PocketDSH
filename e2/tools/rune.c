@@ -662,10 +662,36 @@ static long fs_seek(void *c, int fd, long long offset, int whence) {
     return (long)r;
 }
 
+// stat vs lstat on a host path, written with the same byte offsets fs_stat uses.
+static int fs_stat_path(void *c, const char *path, void *out, size_t outlen, int follow) {
+    (void)c;
+    if (outlen < 128) return -EINVAL;
+    char h[2048];
+    host_path(h, sizeof(h), path);
+    struct stat st;
+    if ((follow ? stat(h, &st) : lstat(h, &st)) != 0) return -errno;
+    memset(out, 0, 128);
+    uint8_t *p = out;
+    *(uint64_t *)(p + 0) = (uint64_t)st.st_dev;
+    *(uint64_t *)(p + 8) = (uint64_t)st.st_ino;
+    *(uint32_t *)(p + 16) = (uint32_t)st.st_mode;
+    *(uint32_t *)(p + 20) = (uint32_t)st.st_nlink;
+    *(uint32_t *)(p + 24) = (uint32_t)st.st_uid;
+    *(uint32_t *)(p + 28) = (uint32_t)st.st_gid;
+    *(uint64_t *)(p + 32) = (uint64_t)st.st_rdev;
+    *(int64_t *)(p + 48) = (int64_t)st.st_size;
+    *(int32_t *)(p + 56) = 4096;
+    *(int64_t *)(p + 64) = (int64_t)st.st_blocks;
+    *(int64_t *)(p + 72) = (int64_t)st.st_atime;
+    *(int64_t *)(p + 88) = (int64_t)st.st_mtime;
+    *(int64_t *)(p + 104) = (int64_t)st.st_ctime;
+    return 0;
+}
+
 static const e2_file_ops FS = {fs_open, fs_read, fs_write, fs_close, fs_stat,
                                fs_opendir, fs_readdir, fs_clock, fs_pipe, fs_dup3,
                                fs_fcntl, fs_readlink, fs_pollable, fs_pathop, fs_truncate,
-                               fs_statfs, fs_seek};
+                               fs_statfs, fs_seek, fs_stat_path};
 
 
 
