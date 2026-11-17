@@ -395,6 +395,25 @@ static void test_hint_space_is_noop(void) {
     e2_machine_destroy(&m);
 }
 
+static void test_xtn_narrows_lanes(void) {
+    printf("XTN keeps the low half of each lane\n");
+    e2_machine m;
+    e2_machine_init(&m, 0, 8192);
+    // V1.4S = {1, 300, 3, 70000}. Narrowing to 4H keeps 1 and 300 as they are and
+    // truncates 70000 to its low 16 bits, which is what distinguishes a narrowing
+    // instruction from a copy.
+    m.cpu.v[1][0] = 1 | (300ULL << 32);
+    m.cpu.v[1][1] = 3 | (70000ULL << 32);
+    // XTN V0.4H, V1.4S: size=1 (16-bit destination) in 23:22, rn=1, rd=0.
+    const uint32_t code[] = {0x0E612820u, RET()};
+    load_program(&m, code, 2);
+    e2_run(&m, 100);
+    const uint16_t *h = (const uint16_t *)&m.cpu.v[0][0];
+    CHECK(h[0] == 1 && h[1] == 300 && h[2] == 3 && h[3] == (70000 & 0xFFFF),
+          "xtn gave {%u,%u,%u,%u}", h[0], h[1], h[2], h[3]);
+    e2_machine_destroy(&m);
+}
+
 static void test_simd_permute(void) {
     printf("UZP1, TRN1 and ZIP1 place lanes where the encoding says\n");
     // V1.4S = {1,2,3,4}, V2.4S = {5,6,7,8}. The opcode sits in bits 15:12 (1 UZP1,
@@ -405,6 +424,9 @@ static void test_simd_permute(void) {
         {0x4E821820u, 1, 5, 3, 7, "UZP1"},   // a0 b0 a2 b2 - stride 2
         {0x4E822820u, 1, 5, 3, 7, "TRN1"},   // a0 b0 a2 b2 for 4S
         {0x4E823820u, 1, 2, 5, 6, "ZIP1"},   // a0 a1 b0 b1 - the low halves concatenated
+        {0x4E825820u, 3, 7, 4, 8, "UZP2"},   // a2 b2 a3 b3
+        {0x4E826820u, 2, 6, 4, 8, "TRN2"},   // a1 b1 a3 b3
+        {0x4E827820u, 3, 4, 7, 8, "ZIP2"},   // a2 a3 b2 b3
     };
     for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
         e2_machine m;
@@ -1128,6 +1150,7 @@ int main(void) {
     test_svc();
     test_hint_space_is_noop();
     test_simd_permute();
+    test_xtn_narrows_lanes();
     test_clock_gettime_honours_the_id();
     test_statfs_layout();
     test_truncate_forms();
