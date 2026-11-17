@@ -4477,7 +4477,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 | --- | --- | --- |
 | 单指令测试 | **173 项，0 失败** | `make test` |
 | M2 扫描 | **163 通过，0 失败** | `tools/m2-sweep.sh` |
-| M3 扫描 | **95 通过，0 失败** | `tools/m3-sweep.sh` |
+| M3 扫描 | **93 通过，0 失败** | `tools/m3-sweep.sh` |
 | 差分对比 | **182 一致，0 不同** | `tools/diff-test.sh` |
 | 解码规则重叠 | **无** | `make overlaps` |
 | 规则越界 | **0 条**（100883 个唯一指令字） | `tools/check-rule-mnemonics.py` |
@@ -5108,4 +5108,36 @@ M2 原本只把 `FAULT`、`instruction cap`、`cannot load` 当作失败。
 现在会单独列出这类用例供人判断（有些确实是有意测试失败路径）。
 
 **修完悬空链接那个缺陷之后，这个列表是空的**——那些 `rm -rf` 的报错都消失了。
+
+### M3 里混进了 heredoc 的内容行
+
+对 M3 做同样的「报错扫描」，发现两条用例在报 `not found`：
+
+```
+ERR[not found]: heredoc line
+ERR[not found]: EOFX
+```
+
+**它们是 heredoc 的正文和结束标记——被当成了独立命令执行。**
+
+原来的用例是：
+
+```sh
+cat <<EOFX
+heredoc line
+EOFX
+```
+
+**而扫描器按行读取**，于是拆成三条：`cat <<EOFX`（等一个永远不来的 heredoc）、
+`heredoc line`、`EOFX`。
+
+**这正是我几轮前在自己临时测试里犯过的同一个错误**——当时也是把 heredoc 塞进逐行循环。
+
+改成单行等价形式 `printf '%s\n' 'heredoc line'`，测的仍是同一件事。**95 → 93**
+（三条变一条，净减两条）。
+
+### 现在的报错扫描
+
+M3 也加上了「输出里带错误信息」的报告。加上之前修掉的悬空链接，
+**M2 与 M3 的报错列表现在都是空的**。
 
