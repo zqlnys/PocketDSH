@@ -163,7 +163,7 @@ true && echo and || echo or
 ! false && echo negated
 WRAP
 cp /tmp/dtj /tmp/alpine-root/tmp/dtj 2>/dev/null || true
-cat > /tmp/dtrp 2>/dev/null <<'WRAP'
+cat > /tmp/dt-rp.sh 2>/dev/null <<'WRAP'
 cd /tmp && rm -rf dtrp && mkdir dtrp && cd dtrp
 for i in $(seq 1 30); do
   printf 'user%02d,%d,%s\n' $i $((i * 7 % 13)) "$([ $((i % 3)) -eq 0 ] && echo active || echo idle)"
@@ -183,7 +183,7 @@ cut -d, -f3 data.csv | sort | uniq -c | sort -nr
 cd /tmp && rm -rf dtrp
 echo done
 WRAP
-cp /tmp/dtrp /tmp/alpine-root/tmp/dtrp 2>/dev/null || true
+cp /tmp/dt-rp.sh /tmp/alpine-root/tmp/dt-rp.sh 2>/dev/null || true
 cat > /tmp/dtar 2>/dev/null <<'WRAP'
 echo $((2147483647 + 1))
 echo $((9223372036854775807))
@@ -503,7 +503,7 @@ sh /tmp/dther
 sh /tmp/dtf
 sh /tmp/dtre
 sh /tmp/dtj
-sh /tmp/dtrp
+sh /tmp/dt-rp.sh
 sh /tmp/dtar
 sh /tmp/dtu
 sh /tmp/dtfs.sh
