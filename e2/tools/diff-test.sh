@@ -243,6 +243,31 @@ printf '%+d|% d\n' 5 5
 printf '%i\n' 42
 WRAP
 cp /tmp/dtpf /tmp/alpine-root/tmp/dtpf 2>/dev/null || true
+cat > /tmp/dtex 2>/dev/null <<'WRAP'
+expr 1 + 2
+expr 10 - 3
+expr 3 \* 4
+expr 10 / 3
+expr 10 % 3
+expr 1 \< 2
+expr 2 \<= 2
+expr abc = abc
+expr abc != def
+expr length abcdef
+expr substr abcdef 2 3
+expr index abcdef cd
+expr match abcdef abc
+expr "a:b:c" : '.*:\([a-z]*\)'
+[ 1 -eq 1 ] && echo eq
+[ 2 -ne 3 ] && echo ne
+[ 5 -ge 5 ] && echo ge
+[ -n "x" ] && echo nonempty
+[ -z "" ] && echo empty
+[ "a" = "a" ] && echo streq
+test -e /etc && echo exists
+test ! -e /nonexistent && echo missing
+WRAP
+cp /tmp/dtex /tmp/alpine-root/tmp/dtex 2>/dev/null || true
 pass=0
 fail=0
 while IFS= read -r cmd; do
@@ -445,6 +470,7 @@ sh /tmp/dtar
 sh /tmp/dtu
 sh /tmp/dtfs.sh
 sh /tmp/dtpf
+sh /tmp/dtex
 EOF
 echo "diff test: $pass same, $fail different"
 [ "$fail" -eq 0 ]
