@@ -70,6 +70,10 @@ if [ -x "$DT_STATIC" ]; then
         ln -sf "$DT_STATIC" "/tmp/dt-applets/$app" 2>/dev/null
         ln -sf "$DT_STATIC" "$ROOT/tmp/dt-applets/$app" 2>/dev/null
     done
+    # The applet directory comes first, so a busybox applet always wins over the host
+    # tool of the same name. Tools the harness itself needs (timeout, env) still
+    # resolve, and an applet busybox does not have falls through to the same host
+    # binary on both sides - which keeps the comparison fair.
     DT_PATH="/tmp/dt-applets:/bin:/usr/bin"
 else
     DT_PATH="/bin:/usr/bin:/sbin:/usr/sbin"
@@ -209,6 +213,13 @@ printf 'aa\nbb\n' | uniq -c | tr -s ' '
 echo 'Hello' | cut -c2-3
 printf 'z\n' | wc -c
 echo 'k=v' | awk -F= '{print $2}'
+printf 'abc\n' | sum
+printf 'abc\n' | cksum
+printf 'abc\n' | sha256sum | cut -c1-16
+printf 'abc\n' | sha1sum | cut -c1-16
+printf 'abc\n' | md5sum | cut -c1-16
+printf 'abc\n' | base64
+printf 'abc\n' | od -An -tx1
 sh /tmp/dtbig
 EOF
 echo "diff test: $pass same, $fail different"

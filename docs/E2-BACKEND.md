@@ -4478,7 +4478,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 | 单指令测试 | **173 项，0 失败** | `make test` |
 | M2 扫描 | **164 通过，0 失败** | `tools/m2-sweep.sh` |
 | M3 扫描 | **95 通过，0 失败** | `tools/m3-sweep.sh` |
-| 差分对比 | **113 一致，0 不同** | `tools/diff-test.sh` |
+| 差分对比 | **120 一致，0 不同** | `tools/diff-test.sh` |
 | 解码规则重叠 | **无** | `make overlaps` |
 | 规则越界 | **0 条** | `tools/check-rule-mnemonics.py` |
 | iOS 测试 | **24 项** | `PocketDSHTests.swift` |
@@ -5835,4 +5835,31 @@ qemu:  BusyBox v1.36.1 (2025-11-23 14:32:18 UTC) multi-call binary.
 
 **现在 113 条差分用例是真正的保真度测试：同一个二进制，两个模拟器，输出必须一致。**
 
+### 差分用例扩到 120
+
+保真度修正之后，补上**之前被 GNU 对照掩盖**的那批——都是 applet 的输出格式：
+
+```
+printf 'abc\n' | sum
+printf 'abc\n' | cksum
+printf 'abc\n' | sha256sum | cut -c1-16
+printf 'abc\n' | sha1sum | cut -c1-16
+printf 'abc\n' | md5sum | cut -c1-16
+printf 'abc\n' | base64
+printf 'abc\n' | od -An -tx1
+```
+
+**7 条全部一致。**之前 `sum` 的「差异」正是因为一边是 GNU 一边是 busybox。
+
+### PATH 配置的一个折中
+
+试过把 PATH 收窄到只有 applet 目录——**破坏了 `timeout`/`env` 自身的查找**。
+
+最终保留 `/tmp/dt-applets:/bin:/usr/bin`：
+
+- **applet 目录在最前**，所以 busybox 的实现总是优先
+- 工具本身需要的命令仍能解析
+- **busybox 没有的 applet 会回落到宿主同名程序——两边回落到同一个**，对比仍然公平
+
+**关键是「两边落到同一个东西」，而不是「绝不回落」。**
 
