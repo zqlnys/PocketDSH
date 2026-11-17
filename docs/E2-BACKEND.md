@@ -4478,7 +4478,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 | 单指令测试 | **173 项，0 失败** | `make test` |
 | M2 扫描 | **164 通过，0 失败** | `tools/m2-sweep.sh` |
 | M3 扫描 | **95 通过，0 失败** | `tools/m3-sweep.sh` |
-| 差分对比 | **174 一致，0 不同** | `tools/diff-test.sh` |
+| 差分对比 | **175 一致，0 不同** | `tools/diff-test.sh` |
 | 解码规则重叠 | **无** | `make overlaps` |
 | 规则越界 | **0 条**（100883 个唯一指令字） | `tools/check-rule-mnemonics.py` |
 | iOS 测试 | **26 项** | `PocketDSHTests.swift` |
@@ -4858,4 +4858,27 @@ seq N | sort -n | tail -3 | tr '\n' ' '
 **这次排查的副产品是一个认识**：**
 「跑一次通过」不足以说明测试稳定**。
 **一个三次里失败一次的用例，单次运行有三分之二的概率给出错误的信心。**
+
+### 第六个综合脚本：报表生成
+
+一个 30 行数据的处理脚本，模拟真实工具的典型流程：
+
+```sh
+for i in $(seq 1 30); do
+  printf 'user%02d,%d,%s\n' $i $((i * 7 % 13)) "$([ $((i % 3)) -eq 0 ] && echo active || echo idle)"
+done > data.csv
+grep -c ',active$' data.csv
+cut -d, -f2 data.csv | sort -n | tail -1
+cut -d, -f2 data.csv | awk '{s+=$1} END{printf "%.2f\n", s/NR}'
+sort -t, -k2 -nr data.csv | head -3 | cut -d, -f1
+cut -d, -f3 data.csv | sort | uniq -c | sort -nr
+```
+
+**输出与参考实现逐行一致。**
+
+覆盖的点：`printf` 的 `%02d`、取模运算、**命令替换嵌在格式参数里**、
+锚定正则 `',active$'`、浮点格式化 `%.2f` 配合 `NR`、
+`sort -t, -k2 -nr` 的复合选项、`uniq -c | sort -nr`。
+
+**174 → 175。**
 

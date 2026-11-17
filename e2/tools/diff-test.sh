@@ -163,6 +163,27 @@ true && echo and || echo or
 ! false && echo negated
 WRAP
 cp /tmp/dtj /tmp/alpine-root/tmp/dtj 2>/dev/null || true
+cat > /tmp/dtrp 2>/dev/null <<'WRAP'
+cd /tmp && rm -rf dtrp && mkdir dtrp && cd dtrp
+for i in $(seq 1 30); do
+  printf 'user%02d,%d,%s\n' $i $((i * 7 % 13)) "$([ $((i % 3)) -eq 0 ] && echo active || echo idle)"
+done > data.csv
+echo "== head =="
+head -2 data.csv
+echo "== active count =="
+grep -c ',active$' data.csv
+echo "== max score =="
+cut -d, -f2 data.csv | sort -n | tail -1
+echo "== avg =="
+cut -d, -f2 data.csv | awk '{s+=$1} END{printf "%.2f\n", s/NR}'
+echo "== top 3 users =="
+sort -t, -k2 -nr data.csv | head -3 | cut -d, -f1
+echo "== by status =="
+cut -d, -f3 data.csv | sort | uniq -c | sort -nr
+cd /tmp && rm -rf dtrp
+echo done
+WRAP
+cp /tmp/dtrp /tmp/alpine-root/tmp/dtrp 2>/dev/null || true
 pass=0
 fail=0
 while IFS= read -r cmd; do
@@ -360,6 +381,7 @@ sh /tmp/dts
 sh /tmp/dther
 sh /tmp/dtf
 sh /tmp/dtj
+sh /tmp/dtrp
 EOF
 echo "diff test: $pass same, $fail different"
 [ "$fail" -eq 0 ]
