@@ -1,6 +1,6 @@
 # PocketDSH 交接文档
 
-最后更新：2026-11-16
+最后更新：2026-11-17
 用途：换新会话后，先读这个文件，再继续开发。
 
 ---
@@ -13,6 +13,7 @@
 cd /root/dsh/PocketDSH
 git status -sb
 git log --oneline -5
+./tools/verify.sh          # 一条命令验证全部，先确认起点是绿的
 cat docs/HANDOFF.md
 cat docs/BUILD.md
 cat docs/TIER-C.md
@@ -556,9 +557,26 @@ examples/workspace-inspector.dshplugin/
 | 里程碑 | 内容 | 状态 |
 | --- | --- | --- |
 | M1 | 解释器 + ELF 加载 + 基础 syscall，跑通 hello world 与递归 fib | ✅ |
-| M2 | SIMD/FP + 动态链接 + 更多 syscall，跑通 musl ld.so | 未开始 |
-| M3 | busybox / sh 脚本 / 管道 | 未开始 |
-| M4 | python | 未开始 |
+| M2 | SIMD/FP + 动态链接 + 更多 syscall，跑通 musl ld.so 与静态 busybox | ✅ |
+| M3 | busybox / sh 脚本 / 管道 / 重定向 / here-document / 作业控制 | ✅ |
+| M4 | python | ❌ 未完成，CPython 在 `getpath` 阶段仍有差异 |
+
+**这三个里程碑不是「跑通一次」，是有可重复的验证**：
+
+| 层 | 数量 | 命令 |
+| --- | --- | --- |
+| 单指令测试 | 225 | `make test` |
+| M2 扫描（不崩溃） | 163 | `tools/m2-sweep.sh` |
+| M3 扫描（不崩溃） | 93 | `tools/m3-sweep.sh` |
+| 差分对比（与参考实现逐字节一致） | 182 | `tools/diff-test.sh` |
+| 静态检查（无 Swift 编译器时的替代） | 6 类 | `tools/check-swift.sh` |
+
+一条命令跑完：`./tools/verify.sh`。
+
+**`grep`、`sed`、`awk` 与参考实现逐字节一致**——这是当初的目标，已达成。
+
+**已知未解决**：CPython 启动差异、`pow` 运算符（`^`/`**`）、命令替换在管道中丢输出（测试工具层）、
+`wait4` 只等一个作业成员（已用量子规避）。
 
 代码在 `e2/`，文档在 [E2-BACKEND.md](E2-BACKEND.md)。**E2 不阻塞上架**——发布版与它无关。
 
