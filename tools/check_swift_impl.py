@@ -149,10 +149,36 @@ def check_test_labels(root: pathlib.Path) -> bool:
     return True
 
 
+def check_tool_handling(root: pathlib.Path) -> bool:
+    """Every declared tool must be handled somewhere.
+
+    Most go through ToolExecutor's switch, but a few need the agent's own context -
+    subagent needs the API key and the nesting depth - and are intercepted before the
+    executor sees them. Either place counts; a tool declared in the catalogue and
+    handled in neither is a tool the model can call and nothing will answer.
+    """
+    models = (root / "Packages/PocketDSHKit/Sources/PocketDSHCore/AgentModels.swift")
+    if not models.exists():
+        print("  AgentModels.swift not found, skipping")
+        return True
+    declared = set(re.findall(r'static let (\w+) = "', models.read_text()))
+    handled = set()
+    for path in (root / "PocketDSH").rglob("*.swift"):
+        text = path.read_text(errors="replace")
+        handled |= set(re.findall(r"ToolNames\.(\w+)", text))
+    missing = sorted(declared - handled)
+    if missing:
+        print("  declared but never handled:", ", ".join(missing))
+        return False
+    print(f"  {len(declared)} tools declared, all handled")
+    return True
+
+
 def main() -> int:
     root = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
     results = [
         ("tool names", check_tool_names(root)),
+        ("tool handling", check_tool_handling(root)),
         ("test labels", check_test_labels(root)),
         ("brace balance", check_braces(root)),
     ]
