@@ -4478,7 +4478,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 | 单指令测试 | **173 项，0 失败** | `make test` |
 | M2 扫描 | **164 通过，0 失败** | `tools/m2-sweep.sh` |
 | M3 扫描 | **95 通过，0 失败** | `tools/m3-sweep.sh` |
-| 差分对比 | **129 一致，0 不同** | `tools/diff-test.sh` |
+| 差分对比 | **130 一致，0 不同** | `tools/diff-test.sh` |
 | 解码规则重叠 | **无** | `make overlaps` |
 | 规则越界 | **0 条** | `tools/check-rule-mnemonics.py` |
 | iOS 测试 | **24 项** | `PocketDSHTests.swift` |
@@ -5880,4 +5880,22 @@ printf 'abc\n' | od -An -tx1
 | M3 扫描 | 95 |
 | 差分对比 | 129 |
 | **合计** | **561** |
+
+### 第三个综合脚本
+
+```
+i=0
+while [ $i -lt 20 ]; do i=$((i + 1)); echo "item$i $((i * 3))"; done > data.txt
+echo "sum: $(awk '{s+=$2} END{print s}' data.txt)"
+echo "max: $(sort -k2 -n data.txt | tail -1 | cut -d' ' -f2)"
+case "$first" in item*) echo "prefix ok" ;; esac
+echo "len: ${#upper}"
+```
+
+**输出与 qemu 逐行一致。**
+
+同时考验：`while` 循环与算术、重定向、`awk` 累加、`sort -k -n`、`cut`、
+`awk` 的正则模式匹配、`case` 分支、命令替换嵌套、`tr`、`${#var}` 长度展开。
+
+**129 → 130。**
 

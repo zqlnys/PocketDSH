@@ -78,6 +78,30 @@ if [ -x "$DT_STATIC" ]; then
 else
     DT_PATH="/bin:/usr/bin:/sbin:/usr/sbin"
 fi
+cat > /tmp/dts 2>/dev/null <<'STRESS'
+set -e
+cd /tmp && rm -rf dtst && mkdir dtst && cd dtst
+i=0
+while [ $i -lt 20 ]; do
+  i=$((i + 1))
+  echo "item$i $((i * 3))"
+done > data.txt
+echo "lines: $(wc -l < data.txt)"
+echo "sum: $(awk '{s+=$2} END{print s}' data.txt)"
+echo "max: $(sort -k2 -n data.txt | tail -1 | cut -d' ' -f2)"
+echo "even: $(awk '$1 ~ /2$/ {c++} END{print c+0}' data.txt)"
+first=$(head -1 data.txt | cut -d' ' -f1)
+case "$first" in
+  item*) echo "prefix ok" ;;
+  *) echo "prefix bad" ;;
+esac
+upper=$(echo "$first" | tr a-z A-Z)
+echo "upper: $upper"
+echo "len: ${#upper}"
+cd /tmp && rm -rf dtst
+echo done
+STRESS
+cp /tmp/dts /tmp/alpine-root/tmp/dts 2>/dev/null || true
 pass=0
 fail=0
 while IFS= read -r cmd; do
@@ -230,6 +254,7 @@ printf 'q\n' | sed 's/q/Q/;s/Q/!/'
 echo 'A B' | tr -s ' ' '_'
 seq 3 | awk 'NR%2'
 sh /tmp/dtbig
+sh /tmp/dts
 EOF
 echo "diff test: $pass same, $fail different"
 [ "$fail" -eq 0 ]
