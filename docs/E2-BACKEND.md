@@ -5039,17 +5039,22 @@ if ((insn & 0xFFFFF01Fu) == 0xD503201Fu) { ... }
 但 getpath 仍然抛出 `Exception ignored error evaluating path`。**所以不是系统调用的问题**——
 和 `pow` 属于同一类：**计算层面的细微错误**。
 
-### 一个有价值的发现
+### 一个被推翻的结论
 
-加 `PYTHONHOME=/usr` 之后，**那个异常完全消失了**：
+上一节写「加 `PYTHONHOME=/usr` 之后异常消失了」——**那是错的**。
+
+当时的运行被 `E2_CAP=4000000` 截断在异常打印之前，我把「没来得及打印」当成了「没有异常」。
+把上限放到 4 亿重跑，异常依然在：
 
 ```
-$ PYTHONHOME=/usr python3 -c "print(1)"
-              ← 没有 "Exception ignored error evaluating path"
+$ PYTHONHOME=/usr E2_CAP=400000000 python3 -c "print(1+1)"
+Exception ignored error evaluating path:
+Traceback (most recent call last):
+
+FAULT reason=load outside mapped memory addr=0xfffffff pc=0x102fbbf4 insn=0x39c00024
 ```
 
-说明 getpath 的**前缀推导**失败，而显式指定之后就绕过了。**这给下一步指明了方向**：
-读 getpath 的前缀搜索逻辑，看它依赖哪个计算。
+**教训**：用「没有输出」证明「没有发生」，必须先确认程序跑到了会输出的位置。
 
 ### 工具：`E2_TRACE_EFAIL`
 
@@ -5067,4 +5072,21 @@ $ PYTHONHOME=/usr python3 -c "print(1)"
 ```
 
 **「在哪观察」又一次比「观察什么」更重要。**
+
+### Python 当前的精确状态
+
+| 事实 | 证据 |
+| --- | --- |
+| 没有系统调用失败 | `E2_TRACE_EFAIL` 只报 3 次预期内的 `ENOENT`（路径搜索） |
+| 共享库正常加载 | `/usr/lib/libpython3.12.so.1.0` 打开成功 |
+| 没有 `stat` 调用 | 追踪里 `79`/`78` 一条都没有——getpath 在 stat 之前就失败了 |
+| `PYTHONHOME` 无效 | 4 亿指令上限下异常依旧 |
+| 崩溃点 | `insn=0x39c00024`（`LDRB w4,[x1]`），**x1 = 0xfffffff** |
+
+**`0xFFFFFFF` 只有 28 位，像一个被截断的指针。** 下一步从这里查：谁把这个值放进了 x1。
+
+### 这一轮的净收获
+
+工具：`E2_TRACE_EFAIL` 修好了（第一版误报 `AT_FDCWD`）；
+认知：Python 的问题**不是系统调用，也不是前缀推导**，而是某个计算出错后拿它当地址用。
 
