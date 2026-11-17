@@ -4475,7 +4475,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 
 | 项目 | 实测值 | 命令 |
 | --- | --- | --- |
-| 单指令测试 | **183 项，0 失败** | `make test` |
+| 单指令测试 | **187 项，0 失败** | `make test` |
 | M2 扫描 | **163 通过，0 失败** | `tools/m2-sweep.sh` |
 | M3 扫描 | **93 通过，0 失败** | `tools/m3-sweep.sh` |
 | 差分对比 | **182 一致，0 不同** | `tools/diff-test.sh` |
@@ -5248,4 +5248,29 @@ FAIL tests/main.c:366: a failed chdir must not move cwd
 **两条断言同时失败**——正是这段检查要防的两个后果。恢复后 183 项全绿。
 
 **177 → 183。**
+
+### 给 `AT_SYMLINK_NOFOLLOW` 加单元测试
+
+上一轮修的那个缺陷（悬空符号链接删不掉）现在有了隔离环境下的测试。
+
+mock 会**模拟一个悬空链接**：路径 `/dangling` 在 `lstat` 下存在、在 `stat` 下不存在。
+
+| 调用 | 期望 |
+| --- | --- |
+| `newfstatat("/dangling", AT_SYMLINK_NOFOLLOW)` | 成功，返回 0 |
+| `newfstatat("/dangling", 0)` | **失败，返回 `-ENOENT`** |
+
+**两条一起才完整**：只有「不跟随能成功」或者只有「跟随会失败」，都说明不了标志位被正确处理。
+
+### 验证测试真的能抓到回归
+
+把标志位判断改回「永远跟随」：
+
+```
+FAIL tests/main.c:372: x0 = 0xfffffffffffffffe, want 0x0
+```
+
+`-2` 就是 `ENOENT`——**正是那个让 `rm -rf` 失败的错误返回值**。恢复后 187 项全绿。
+
+**183 → 187。**
 

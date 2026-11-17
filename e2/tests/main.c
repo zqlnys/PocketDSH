@@ -89,6 +89,17 @@ static int test_file_close(void *ctx, int fd) { (void)ctx; (void)fd; return 0; }
 // Only /bin exists in this mock. chdir asks before accepting a path, so a host that
 // answers "yes" to everything makes `cd` report success for directories that are not
 // there - which is the thing worth testing.
+// A path that only resolves without following: the shape of a dangling symlink. lstat
+// succeeds, stat does not. This is what rm needs before it will unlink a name.
+static int test_stat_path(void *ctx, const char *path, void *out, size_t outlen, int follow) {
+    (void)ctx;
+    if (outlen < 128) return -22;
+    if (strcmp(path, "/dangling") == 0 && follow) return -2;  // ENOENT
+    if (strcmp(path, "/dangling") != 0 && strcmp(path, "/bin") != 0) return -2;
+    memset(out, 0, 128);
+    *(uint32_t *)((uint8_t *)out + 16) = 0120777;  // S_IFLNK | 0777
+    return 0;
+}
 static int test_opendir(void *ctx, const char *path) {
     (void)ctx;
     if (strcmp(path, "/bin") == 0 || strcmp(path, "/") == 0) return 3;
@@ -124,6 +135,7 @@ static const e2_file_ops test_files = {
     .clock_ns = test_clock_ns,
     .seek = test_file_seek,
     .opendir = test_opendir,
+    .stat_path = test_stat_path,
 };
 
 
@@ -333,6 +345,42 @@ static void test_hint_space_is_noop(void) {
     load_program(&m, code, sizeof(code) / sizeof(code[0]));
     e2_run(&m, 100);
     CHECK_REG(m, 7, 33);
+    e2_machine_destroy(&m);
+}
+
+static void test_newfstatat_honours_no_follow(void) {
+    printf("newfstatat can stat a dangling symlink when told not to follow\n");
+    e2_machine m;
+    e2_machine_init(&m, 0, 1 << 20);
+    const uint64_t path_addr = 0x30000000ULL, buf = 0x30001000ULL;
+    e2_memory_map_at(&m.mem, path_addr, 0x1000, E2_PROT_READ | E2_PROT_WRITE);
+    e2_memory_map_at(&m.mem, buf, 0x1000, E2_PROT_READ | E2_PROT_WRITE);
+    e2_syscall_env env = {0};
+    env.files = &test_files;
+
+    const char p[] = "/dangling";
+    e2_memory_write(&m.mem, path_addr, p, sizeof(p));
+
+    // AT_SYMLINK_NOFOLLOW (0x100) in x3: the link itself is what gets reported, so a
+    // dangling target does not matter. Without this, rm cannot remove such a name.
+    m.cpu.x[8] = 79;
+    m.cpu.x[0] = (uint64_t)-100;   // AT_FDCWD
+    m.cpu.x[1] = path_addr;
+    m.cpu.x[2] = buf;
+    m.cpu.x[3] = 0x100;
+    CHECK(e2_service_syscall(&m, &env) == E2_OK, "newfstatat should complete");
+    CHECK_REG(m, 0, 0);
+
+    // And without the flag it must follow, which fails for a dangling link.
+    m.cpu.x[8] = 79;
+    m.cpu.x[0] = (uint64_t)-100;
+    m.cpu.x[1] = path_addr;
+    m.cpu.x[2] = buf;
+    m.cpu.x[3] = 0;
+    CHECK(e2_service_syscall(&m, &env) == E2_OK, "newfstatat should complete");
+    CHECK((int64_t)m.cpu.x[0] == -2, "following a dangling link must fail, got %lld",
+          (long long)(int64_t)m.cpu.x[0]);
+
     e2_machine_destroy(&m);
 }
 
@@ -902,6 +950,7 @@ int main(void) {
     test_load_store();
     test_svc();
     test_hint_space_is_noop();
+    test_newfstatat_honours_no_follow();
     test_chdir_checks_the_directory_exists();
     test_lseek_reports_the_new_position();
     test_nop();
