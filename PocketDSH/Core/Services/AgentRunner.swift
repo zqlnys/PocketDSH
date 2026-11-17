@@ -322,7 +322,17 @@ final class AgentRunner: ObservableObject {
     /// Built from the same events the transcript shows, so what is exported is
     /// what was on screen - including tool calls, which are the part of a run
     /// that is hardest to reconstruct later.
-    func exportMarkdown() -> String {
+    /// The transcript as Markdown.
+    ///
+    /// Pure, so the shape of what a user copies or shares can be tested without
+    /// standing up a runner: a transcript that silently dropped the plan or the
+    /// tool calls would still look plausible in another app.
+    nonisolated static func transcriptMarkdown(
+        projectName: String,
+        todos: [TodoItem],
+        deliverables: [Deliverable] = [],
+        events: [AgentEvent]
+    ) -> String {
         var lines: [String] = ["# \(projectName)", ""]
         if !todos.isEmpty {
             lines.append("## Plan")
@@ -368,6 +378,16 @@ final class AgentRunner: ObservableObject {
             }
         }
         return lines.joined(separator: "\n")
+    }
+
+    /// Instance wrapper so callers keep the short form.
+    func exportMarkdown() -> String {
+        Self.transcriptMarkdown(
+            projectName: projectName,
+            todos: todos,
+            deliverables: deliverables,
+            events: events
+        )
     }
 
     private func appendEvent(_ kind: AgentEvent.Kind, title: String, detail: String) {

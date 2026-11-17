@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import PocketDSHCore
 
 struct AgentView: View {
@@ -79,6 +80,16 @@ struct AgentView: View {
                         }
                         ShareLink(item: agent.exportMarkdown()) {
                             Label("Export transcript", systemImage: "square.and.arrow.up")
+                        }
+                        .disabled(agent.events.isEmpty)
+
+                        // Copying is a different errand from sharing: it stays on the
+                        // device, and the pasteboard round-trips faster than the share
+                        // sheet when the destination is another app on this phone.
+                        Button {
+                            UIPasteboard.general.string = agent.exportMarkdown()
+                        } label: {
+                            Label("Copy transcript", systemImage: "doc.on.doc")
                         }
                         .disabled(agent.events.isEmpty)
 

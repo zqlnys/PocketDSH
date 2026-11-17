@@ -358,6 +358,24 @@ final class PocketDSHTests: XCTestCase {
         XCTAssertTrue(name.range(of: "^[A-Za-z0-9_-]+$", options: .regularExpression) != nil)
     }
 
+    func testExportedTranscriptContainsTheRun() {
+        // Copy and share both hand the user `exportMarkdown()`, so what it contains
+        // is the thing worth pinning: a transcript that omits tool calls or the plan
+        // would still look plausible but would be useless once pasted elsewhere.
+        let markdown = AgentRunner.transcriptMarkdown(
+            projectName: "Demo",
+            todos: [TodoItem(content: "check the parser", status: .completed)],
+            events: [
+                AgentEvent(kind: .user, title: "You", detail: "run the tests"),
+                AgentEvent(kind: .assistant, title: "Assistant", detail: "on it"),
+            ]
+        )
+        XCTAssertTrue(markdown.contains("# Demo"))
+        XCTAssertTrue(markdown.contains("check the parser"))
+        XCTAssertTrue(markdown.contains("run the tests"))
+        XCTAssertTrue(markdown.contains("on it"))
+    }
+
     func testSubagentIsDeclaredWithARequiredPrompt() {
         let spec = ToolCatalog.specs.first { $0.function.name == ToolNames.subagent }
         XCTAssertNotNil(spec, "subagent must be offered to the model")
