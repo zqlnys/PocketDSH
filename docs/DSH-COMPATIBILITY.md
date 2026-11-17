@@ -76,8 +76,9 @@ E2 是自写的 aarch64 解释器 + syscall 层，不复用 iSH 的 GPL 代码�
 | `subagent` | 有 `subagent` | 独立会话、只回传最终答案；最多嵌套 2 层，防止无限递归；子 Agent 与父共享工具状态，但看不到父的对话 |
 | 并行委派 | **缺失** | 子 Agent 串行执行，不并行 |
 | `skill` 技能目录 | 有 `use_skill` | 工作区 `skills/*.md`；无参列出、给名加载 |
-| `bash` | 部分 | `run_linux` 依赖 E2（解释器本身已通过 545 项验证），M4/CPython 未完成 |
+| `bash` | 部分 | `run_linux` 依赖 E2（解释器本身已通过 663 项验证，见 [E2-BACKEND.md](E2-BACKEND.md)），M4/CPython 未完成 |
 | `grep` 正则 | 有 | `search_files` 默认字面搜索；传 `regex: true` 走 `NSRegularExpression`，模式非法会报错而不是静默返回空 |
+| 系统动作 | 有 `prepare_call` / `prepare_message` | 只**准备**，不直接拨号或发送；必须经过用户确认（`SystemActionSheet`）。桌面 DSH 没有对应能力 |
 | `schedule_*` | 等价 | 有 `schedule_alert` / `schedule_reminder`，但只到通知/提醒 |
 | `present` 交付物 | 有 `present` | 校验文件存在；对话上方以卡片显示，点击跳到文件页 |
 

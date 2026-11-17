@@ -55,6 +55,27 @@ def actual(name: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
+def check_tool_coverage() -> int:
+    """Every declared tool name must appear somewhere in the compatibility document.
+
+    The identifier and the wire name differ (`webSearch` is `web_search`), and the
+    document writes the wire name - so this compares the strings the model actually sees.
+    """
+    models = ROOT / "Packages/PocketDSHKit/Sources/PocketDSHCore/AgentModels.swift"
+    doc = ROOT / "docs/DSH-COMPATIBILITY.md"
+    if not models.exists() or not doc.exists():
+        print("  models or compatibility doc not found, skipping")
+        return 0
+    names = re.findall(r'static let \w+ = "([a-z_]+)"', models.read_text())
+    text = doc.read_text(errors="replace")
+    missing = [n for n in sorted(set(names)) if n not in text]
+    if missing:
+        print("  tools not described in DSH-COMPATIBILITY.md: " + ", ".join(missing))
+        return 1
+    print(f"  {len(set(names))} tools all described")
+    return 0
+
+
 def main() -> int:
     cache: dict[str, int | None] = {}
     problems = []
@@ -82,8 +103,11 @@ def main() -> int:
             problems.append(label)
         else:
             print(f"  {document}: {label} {claimed} matches")
+    covered = check_tool_coverage()
     if problems:
         print(f"  ^ {len(problems)} of {checked} claims are out of date")
+        return 1
+    if covered != 0:
         return 1
     print(f"  {checked} claim(s) match the suites")
     return 0
