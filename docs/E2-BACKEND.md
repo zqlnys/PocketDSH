@@ -4478,7 +4478,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 | 单指令测试 | **173 项，0 失败** | `make test` |
 | M2 扫描 | **164 通过，0 失败** | `tools/m2-sweep.sh` |
 | M3 扫描 | **95 通过，0 失败** | `tools/m3-sweep.sh` |
-| 差分对比 | **177 一致，0 不同** | `tools/diff-test.sh` |
+| 差分对比 | **178 一致，0 不同** | `tools/diff-test.sh` |
 | 解码规则重叠 | **无** | `make overlaps` |
 | 规则越界 | **0 条**（100883 个唯一指令字） | `tools/check-rule-mnemonics.py` |
 | iOS 测试 | **26 项** | `PocketDSHTests.swift` |
@@ -4924,4 +4924,19 @@ cut -d, -f3 data.csv | sort | uniq -c | sort -nr
 - `tr 'ñ' 'n'` 输出 `n n` 也是同样原因：`ñ` 是 2 字节，`n` 是 1 字节，**逐字节替换后变成两个 n**
 
 **这些不是缺陷，是与参考实现一致的行为**——而「看起来合理」的字符级语义反而不对。
+
+### 文件系统边界：特殊字符、深目录、长文件名
+
+| 场景 | 结果 |
+| --- | --- |
+| 文件名含空格 `'file with spaces.txt'` | ✅ |
+| 文件名含双引号 `'quote"inside.txt'` | ✅ |
+| 五层目录 `a/b/c/d/e/f.txt` | ✅ |
+| **100 字符文件名** | ✅ |
+| `ls \| wc -l` 与 `find . -type f \| wc -l` | 5 与 5，一致 |
+
+**177 → 178，全部一致。**
+
+这些用例一起覆盖了**路径字符串在 shell 展开、系统调用、宿主映射三处的传递**——
+任何一处把特殊字符处理错，`cat` 就会打不开文件。
 

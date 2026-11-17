@@ -209,6 +209,25 @@ echo 'ñ' | tr 'ñ' 'n' | od -An -c
 printf '%s\n' '①' '②' | wc -l
 WRAP
 cp /tmp/dtu /tmp/alpine-root/tmp/dtu 2>/dev/null || true
+rm -rf /tmp/dtfs /tmp/alpine-root/tmp/dtfs
+mkdir -p /tmp/dtfs /tmp/alpine-root/tmp/dtfs
+cat > /tmp/dtfs.sh 2>/dev/null <<'WRAP'
+cd /tmp/dtfs 2>/dev/null || { cd /tmp && rm -rf dtfs && mkdir dtfs && cd dtfs; }
+echo a > 'file with spaces.txt'
+echo b > 'quote"inside.txt'
+mkdir -p a/b/c/d/e
+echo deep > a/b/c/d/e/f.txt
+name=$(printf 'x%.0s' $(seq 100))
+echo long > "$name.txt"
+ls | wc -l
+find . -type f | wc -l
+cat 'file with spaces.txt'
+cat "./quote\"inside.txt"
+cat a/b/c/d/e/f.txt
+wc -c < "$name.txt"
+cd /tmp && rm -rf dtfs
+WRAP
+cp /tmp/dtfs.sh /tmp/alpine-root/tmp/dtfs.sh 2>/dev/null || true
 pass=0
 fail=0
 while IFS= read -r cmd; do
@@ -409,6 +428,7 @@ sh /tmp/dtj
 sh /tmp/dtrp
 sh /tmp/dtar
 sh /tmp/dtu
+sh /tmp/dtfs.sh
 EOF
 echo "diff test: $pass same, $fail different"
 [ "$fail" -eq 0 ]
