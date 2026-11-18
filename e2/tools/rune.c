@@ -791,6 +791,37 @@ static const char *elf_interp(const uint8_t *img, size_t n) {
 // How many arguments are carried across an exec. Eight was enough for the tests that
 // existed when it was chosen, not for a shell, which is free to pass more.
 #define ARG_COUNT 32
+// Resolve the program path inside the guest root, following symlinks there rather than
+// in the host namespace. `/usr/bin/basename` is an absolute symlink to `/bin/busybox`;
+// opened directly on the host that resolves to the host's /bin/busybox, which is a
+// different architecture, so the load fails even though the guest copy is fine.
+static void guest_program_path(const char *path, char *out, size_t outlen) {
+    char cur[2048];
+    snprintf(cur, sizeof(cur), "%s", path);
+    for (int hop = 0; hop < 8; hop++) {
+        char target[2048];
+        ssize_t n = readlink(cur, target, sizeof(target) - 1);
+        if (n <= 0) break;
+        target[n] = '\0';
+        if (target[0] == '/') {
+            char mapped[2048];
+            host_path(mapped, sizeof(mapped), target);
+            snprintf(cur, sizeof(cur), "%s", mapped);
+        } else {
+            char *slash = strrchr(cur, '/');
+            if (slash != NULL) {
+                *slash = '\0';
+                // Build into a buffer the compiler can reason about: cur is 2048 and
+                // target is 2048, so the join needs both plus a separator.
+                char joined[2 * 2048 + 2];
+                snprintf(joined, sizeof(joined), "%s/%s", cur, target);
+                if (strlen(joined) < sizeof(cur)) snprintf(cur, sizeof(cur), "%s", joined);
+            }
+        }
+    }
+    snprintf(out, outlen, "%s", cur);
+}
+
 static int start_image(e2_machine *m, const char *path, char args[][ARG_MAX], int nargs,
                        char envs[][ARG_MAX], int nenv) {
     // /proc/self/cmdline reports argv[0], which is the applet name for busybox and
@@ -819,7 +850,9 @@ static int start_image(e2_machine *m, const char *path, char args[][ARG_MAX], in
         g_cur_cmdline_len = off;
     }
     size_t size = 0;
-    uint8_t *img = load_file(path, &size);
+    char prog[2048];
+    guest_program_path(path, prog, sizeof(prog));
+    uint8_t *img = load_file(prog, &size);
     if (img == NULL) return -2;   // ENOENT
 
     e2_memory_destroy(&m->mem);
