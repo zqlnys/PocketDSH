@@ -301,6 +301,11 @@ def main() -> int:
     for name, ok in results:
         if not ok:
             print(f"  ^ {name}")
+    passed = sum(1 for _, ok in results if ok)
+    # State the count rather than leaving callers to infer it from how many lines were
+    # printed: a check that prints two lines, or none, would silently change the figure
+    # the documentation is compared against.
+    print(f"SWIFT_CHECK_COUNT={passed}")
     return 0 if all(ok for _, ok in results) else 1
 
 

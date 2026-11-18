@@ -67,9 +67,11 @@ def actual(name: str) -> int | None:
         "diff": r"diff test: (\d+) same",
     }
     if name == "static":
-        # Count the indented result lines; there is one per check.
-        lines = [l for l in out.split("\n") if l.startswith("  ") and l.strip()]
-        return len(lines) if lines else None
+        # The checker states its own count. Counting indented lines worked until a check
+        # printed two of them, which changed the figure the documentation was compared
+        # against without anything actually changing.
+        m = re.search(r"SWIFT_CHECK_COUNT=(\d+)", out)
+        return int(m.group(1)) if m else None
     m = re.search(patterns[name], out)
     return int(m.group(1)) if m else None
 
