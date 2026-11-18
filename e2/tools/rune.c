@@ -963,7 +963,17 @@ static int proc_slot(void) {
 // while pipe data stays shared, which is what the shell needs.
 static void fd_table_copy(int dst, int src) {
     for (int i = 0; i < 64; i++) {
-        g_dirs[dst][i] = NULL;
+        // A destination slot that is still in use holds a reference. Overwriting it
+        // without releasing that reference pushes the host descriptor's count above
+        // what it should be, and host_close_if_done then never closes it - the reader
+        // of that pipe gets an end with no writer rather than an EOF.
+        if (g_fds[dst][i].used) {
+            host_unref(g_fds[dst][i].host);
+            host_close_if_done(g_fds[dst][i].host);
+            g_fds[dst][i].used = 0;
+            g_fds[dst][i].host = -1;
+        }
+        if (g_dirs[dst][i]) { closedir((DIR *)g_dirs[dst][i]); g_dirs[dst][i] = NULL; }
         g_cloexec[dst][i] = g_cloexec[src][i];
         if (g_fds[src][i].used) {
             g_fds[dst][i].used = 1;

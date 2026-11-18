@@ -6572,3 +6572,49 @@ $ ./tools/rune busybox sh -c 'echo $(echo hi) | wc -w'
 **看 `host_ref` / `host_unref` 的配对**：`fs_pipe` 对 `p[0]` 和 `p[1]` 各 `host_ref` 一次，
 **那么替换的子 shell 退出时释放的引用，是否错误地作用在了 `tab=1` 的 fd 4 上。**
 
+## 引用计数卡在 1
+
+给 `host_unref` 加了一条打印（每次递减后报出剩余计数），跑 `echo $(echo hi) | cat`：
+
+```
+[unref] host=4 refs=1
+[unref] host=4 refs=1
+[unref] host=4 refs=1
+```
+
+**三次 `unref`，每次之后都还是 1。**
+
+**递减没有生效**——所以 `host_close_if_done` 看到的永远是 1，**宿主 fd 4 永远不会被关闭**。
+
+### 这说明什么
+
+**不是「没人尝试关闭」，是「关闭的判断条件永远不成立」。**
+
+`host_unref` 的实现是：
+
+```c
+static void host_unref(int h) { if (h >= 0 && h < 1024 && g_refs[h] > 0) g_refs[h]--; }
+```
+
+**计数在 1 的时候，递减一次应该变 0。三次都是 1，只能是中间有人把它加回去了。**
+
+**也就是说：`host_ref(4)` 的调用次数比 `host_unref(4)` 多——但这三条 unref 之间如果没有 ref，
+计数不可能停住。**
+
+**除非 `g_refs[4]` 与追踪读的不是同一个数组元素**，或者**这两条 `host_unref` 调用来自不同的逻辑路径，
+而真正持有引用的那条路径从未被走到。**
+
+### 顺带修掉的一处真实泄漏
+
+`fd_table_copy(dst, src)` 覆盖**已在使用**的目标槽位时，没有释放原有的引用：
+
+```c
+g_fds[dst][i].used = 1;
+g_fds[dst][i].host = g_fds[src][i].host;
+host_ref(g_fds[dst][i].host);   // 旧值直接丢失
+```
+
+**已加上 `host_unref` + `host_close_if_done`。** 这个修复本身是对的，
+（三个套件全绿，210 条差分一致），**但它不是这个症状的原因**——
+修完之后关闭模式仍然是 `6, 3, 5`，少了 4。
+
