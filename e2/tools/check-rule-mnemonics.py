@@ -23,47 +23,29 @@ import tempfile
 from collections import Counter, defaultdict
 from pathlib import Path
 
-# Keep this in step with exec.c; it is the whole point of the check.
-RULES = [
-    ("ADR/ADRP",        0x1F000000, 0x10000000),
-    ("ADD/SUB imm",     0x1F000000, 0x11000000),
-    ("ADD/SUB shifted", 0x1F200000, 0x0B000000),
-    ("ADD/SUB extended",0x1F200000, 0x0B200000),
-    ("logical imm",     0x1F800000, 0x12000000),
-    ("logical shifted", 0x1F000000, 0x0A000000),
-    ("bitfield",        0x1F800000, 0x13000000),
-    ("DUP",             0x9FF0FC00, 0x0E000C00),
-    ("UMOV",            0x9FE0FC00, 0x0E003C00),
-    ("MOVI",            0x9FF80400, 0x0F000400),
-    ("CSEL",            0x1FE00000, 0x1A800000),
-    ("2-source",        0x7FE00000, 0x1AC00000),
-    ("FMOV general",    0xFFFFFC00, 0x1E270000),
-    ("FMOV scalar imm", 0xFF201FE0, 0x1E201000),
-    ("FP 2-source",     0xFF200C00, 0x1E200800),
-    ("SHLL",            0x9F80FC00, 0x0F00A400),
-    ("LD1/ST1 pair",    0xFF3FF000, 0x4C00A000),
-    ("LD1/ST1 lane",    0xBF9FF400, 0x0D008400),
-    # Load/store families. Bit 26 is what separates the general and Advanced
-    # SIMD halves; leaving it out of a mask is exactly how `ldr q0, [x21, x2]`
-    # ended up executed as an integer load.
-    ("LD/ST uoff general", 0x3F000000, 0x39000000),
-    ("LD/ST uoff SIMD",    0x3F000000, 0x3D000000),
-    ("LD/ST unscaled general", 0x3F200000, 0x38000000),
-    ("LD/ST unscaled SIMD",    0x3F200000, 0x3C000000),
-    ("LD/ST reg offset general", 0x3F200C00, 0x38200800),
-    ("LD/ST reg offset SIMD",    0x3F200000, 0x3C200000),
-    ("LD/ST pair general", 0x3E000000, 0x28000000),
-    # Bit 22 is the size and bit 23 belongs to the opcode here, unlike the
-    # one-source group; masking both out merged six different conversions into
-    # one key the first time this was written.
-    ("FP to int (in FP reg)", 0xFFBFFC00, 0x5EA1B800),
-    ("SIMD shift immediate", 0x8F000400, 0x0F000400),
-    ("Int to FP fixed point", 0xFF3F0000, 0x1E020000),
-    # MOVI and MVNI share this mask; bit 29 selects the complement. A rule that
-    # ignored that bit ran mvni as movi, which is how the regex engine ended up
-    # with zero where it needed all ones.
-    ("MOVI/MVNI", 0x9FF80400, 0x0F000400),
-]
+def _rules_from_source():
+    """Read the decode guards straight out of exec.c.
+
+    RULES used to be a hand-maintained copy, and it drifted: exec.c grew to 73 guards
+    while this list still held 29, so the check silently verified 40% of the decoder it
+    claimed to check. A copy of a changing thing is a copy that will be wrong; reading the
+    source removes the failure mode rather than asking people to be careful.
+    """
+    import os
+    import re
+    here = os.path.dirname(os.path.abspath(__file__))
+    src = open(os.path.join(here, "..", "src", "exec.c"), encoding="utf-8").read()
+    found = []
+    for mask, value in re.findall(
+            r"\(insn & (0x[0-9A-Fa-f]+)u?\)\s*==\s*(0x[0-9A-Fa-f]+)u?", src):
+        pair = (int(mask, 16), int(value, 16))
+        if pair not in [(m, v) for _, m, v in found]:
+            found.append((f"rule_{len(found)}", pair[0], pair[1]))
+    return found
+
+
+RULES = _rules_from_source()
+
 
 # llvm reports "unknown" for words that are data rather than instructions; a
 # binary's .rodata is full of them, so they are not a signal.
