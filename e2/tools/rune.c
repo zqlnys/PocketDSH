@@ -477,6 +477,8 @@ static int fs_pipe(void *c, int fds[2]) {
         close(p[0]); close(p[1]); return -24;
     }
     const int b = fd_alloc_tab(tab, p[1]);
+    if (getenv("E2_TRACE_PIPE") && b >= 0)
+        fprintf(stderr, "[pipehost] tab=%d guest=%d/%d host=%d/%d\n", tab, a, b, p[0], p[1]);
     if (b < 0) {
         if (getenv("E2_TRACE_CLOSE")) fprintf(stderr, "[bareclose] pipe-b %d %d\n", p[0], p[1]);
         close(p[0]); close(p[1]); g_fds[tab][a].used = 0; return -24;

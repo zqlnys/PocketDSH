@@ -6532,3 +6532,43 @@ $ ./tools/rune busybox sh -c 'echo $(echo hi) | wc -w'
 具体该看：**`fs_pipe` 里 `host_ref` 的配对**，以及 **`p_wait4` 之后 fd 表的清理**——
 无替换时只有一对 `close`，有替换时有三条，**多出来的那条对应的是哪个管道端**。
 
+## 精确定位：宿主 fd 4 从未被关闭
+
+在 `fs_pipe` 里加了一条追踪，把 guest 与宿主 fd 对应起来：
+
+```
+=== 无替换 ===
+[pipehost] tab=1 guest=3/4 host=3/4
+[close] host=4
+[close] host=3              ← 两端都关了
+
+=== 有替换 ===
+[pipehost] tab=1 guest=3/4 host=3/4     ← shell 的管道
+[pipehost] tab=2 guest=3/4 host=5/6     ← 替换产生的子 shell 的管道
+[close] host=6
+[close] host=3
+[close] host=5              ← 少了 host=4
+```
+
+**两条管道共 4 个宿主 fd（3/4 和 5/6），只出现了 3 次关闭。**
+
+**没被关的是 `host=4`——shell 那条管道的写端。**
+
+### 这解释了现象
+
+**`echo hi` 本该往 host=4 写，`cat` 从 host=3 读。**
+
+**而 host=4 从头到尾没有被正确地传递下去或被关闭。**
+
+**症状是 `cat` 一个字节都没收到就结束了**——不是「读到 EOF」，是**读端拿到了一个没有写者的管道**。
+
+### 之前那个「fd 覆盖」的假设为什么不成立
+
+`guest=3/4` 在两张表里重复出现是正常的（**guest fd 是每个进程独立的**）。
+**真正的问题在宿主侧：`tab=1` 的写端宿主 fd 4 在替换发生之后失去了跟踪。**
+
+### 下一步
+
+**看 `host_ref` / `host_unref` 的配对**：`fs_pipe` 对 `p[0]` 和 `p[1]` 各 `host_ref` 一次，
+**那么替换的子 shell 退出时释放的引用，是否错误地作用在了 `tab=1` 的 fd 4 上。**
+
