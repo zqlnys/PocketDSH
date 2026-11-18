@@ -608,6 +608,8 @@ seq 10 | nl
 printf 'x\ny\n' | paste -sd+
 seq 4 | fold -w2
 echo test | sha256sum
+seq 500 | awk '{s+=$1} END{print s}'
+awk 'BEGIN{for(i=1;i<=500;i++)t+=i; print t}'
 sh /tmp/dtalgo.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh
