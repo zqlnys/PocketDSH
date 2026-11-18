@@ -38,7 +38,7 @@
 | Bash / PowerShell / tmux | iOS 无系统 shell；App 内自带 E2 Linux 后端可提供自有 shell（见下） | 部分替代 |
 | ripgrep 二进制工具 | 不能启动任意二进制；本地用 Swift 搜索 | 不兼容 |
 | MCP 客户端 | 未实现；需要独立传输与权限模型 | 未实现 |
-| DSH session log 格式 | 自有 JSON 格式 | 未实现 |
+| DSH session log 格式 | 自有 JSON 格式 | **未实现，已知其复杂度**（见下）|
 | DSH profile / bundle 配置 | 自有 SwiftUI/AppState | 不兼容 |
 | 子 Agent | `subagent` 工具：独立会话、只回传最终答案、最多嵌套 2 层 | **已实现** |
 | Agent Team（多 Agent 协作）| 未实现 | 未实现 |
@@ -126,4 +126,42 @@ PocketDSH 是 DSH 体验启发的原生 iPhone Agent，**不是上游 DSH 或 ds
 | 能力 | 状态 | 说明 |
 | --- | --- | --- |
 | 流式响应 | 未实现 | 请求体里的 `stream` 恒为 `false`，客户端按一次性 JSON 响应处理。流式需要读 SSE 分块并增量刷新 UI；在没有 Swift 编译器的环境里改这条路径无法验证，因此保持现状并记录，而不是留下半成品。 |
+
+## DSH session log 格式：查过了，是 62 种事件
+
+本来想补上这个互操作能力，先把格式查清楚，结论是**现在不该动**。
+
+### 格式的实际规模
+
+`@deepseek-ai/dsh-session` 定义了一份**带版本门、带校验契约的事件日志**：
+
+| 方面 | 实际情况 |
+| --- | --- |
+| 事件类型 | **62 种**（`KNOWED_SESSION_EVENT_TYPES`）|
+| 事件种类示例 | `turn/start`、`turn/end`、`assistant/message`、`tool/result`、`approval/asked`、`workspace/changes`、`working-directory/change`…… |
+| 版本 | 头部带 `version`，读取时 `assertVersion` 拒绝不匹配的 |
+| 未知事件 | 默认**拒绝整个日志**；只有显式标记 `ignorable: true` 的才能跳过 |
+| 存储契约 | `validateStoredEvents` 会冻结并逐条校验，失败抛 `SessionPersistenceCorruptionError` |
+
+**这是「写错一个字段就打不开」的格式，不是「大致对齐就行」的 JSON。**
+
+### 为什么现在不做
+
+**没有 Swift 编译器，写完无法编译、无法验证。**
+
+**一个写出来但没人跑过的导出器，比没有更糟**——用户会以为导出的文件能被 DSH 打开，
+**而在真机上发现打不开时，已经浪费了他们的时间。**
+
+**这和项目里其他时候的判断一致**：`run_linux` 的流式路径、Tier C 的真机验证，
+都是「宁可明确未实现，也不留半成品」。
+
+### 真要做的话
+
+**最小可行的做法不是实现全部 62 种**，而是：
+
+1. 找一个由 DSH 自己写出的、最小的真实 session 文件当样本
+2. 只覆盖 `turn/start`、`user/message`、`assistant/message`、`turn/end` 四种
+3. **用 DSH 自己的读取路径验证它能打开**——不通过就不算完成
+
+**第 3 步是关键**：格式的所有权在 DSH 那边，**没有它的读取器点头，写出来的东西不算兼容。**
 
