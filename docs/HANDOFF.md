@@ -568,7 +568,7 @@ examples/workspace-inspector.dshplugin/
 | 单指令测试 | 240 | `make test` |
 | M2 扫描（不崩溃） | 163 | `tools/m2-sweep.sh` |
 | M3 扫描（不崩溃） | 93 | `tools/m3-sweep.sh` |
-| 差分对比（与参考实现逐字节一致） | 226 | `tools/diff-test.sh` |
+| 差分对比（与参考实现逐字节一致） | 235 | `tools/diff-test.sh` |
 | 静态检查（无 Swift 编译器时的替代） | 6 类 | `tools/check-swift.sh` |
 
 一条命令跑完：`./tools/verify.sh`。

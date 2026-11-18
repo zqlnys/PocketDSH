@@ -599,6 +599,15 @@ printf 'abc 123\nxy 789\nqq 456\n' | awk '{print toupper($1)}'
 printf 'abc 123\nxy 789\nqq 456\n' | awk 'NF>1{print $2}'
 printf 'abc 123\nxy 789\nqq 456\n' | awk '{print length($0)}'
 printf 'abc 123\nxy 789\nqq 456\n' | awk 'BEGIN{print "x"}{print $1}'
+seq 5 | md5sum
+printf 'abc' | base64
+seq 100 | sum
+echo abc | od -An -tx1
+printf 'a,b\nc,d\n' | cut -d, -f2
+seq 10 | nl
+printf 'x\ny\n' | paste -sd+
+seq 4 | fold -w2
+echo test | sha256sum
 sh /tmp/dtalgo.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh
