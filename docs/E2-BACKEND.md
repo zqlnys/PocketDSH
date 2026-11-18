@@ -7792,3 +7792,55 @@ guard coverage: 29/70
 
 **在那之前，「29/70」这个数字就是它该说的话。**
 
+## 重新设计：一条记录包含名字和允许集合
+
+上一轮两次失败之后，做对了设计。
+
+### 旧结构（会漂移）
+
+```python
+RULES  = [("LDR/LDRB", 0x3B000000, 0x39000000), ...]   # 名字和掩码
+FAMILY = {"LDR/LDRB": {"ldr", "str", ...}}             # 名字 → 允许集合
+```
+
+**两个平行结构靠「名字一致」维系。** 名字一旦重复或改动，查表就落到别人身上——
+**这正是它漂移、也是我两次自动化失败的原因。**
+
+### 新结构（`tools/check-decode-families.py`）
+
+```python
+GUARDS = [
+    ("LDR/LDRB+7", 0x3B000000, 0x39000000,
+     {"ldr", "ldrb", "ldrh", "ldrsb", "ldrsh", "ldrsw", "str", "strb", "strh"}),
+    ...
+]
+```
+
+**一条记录里同时有名字、掩码、值和允许集合。没有第二处要对齐。**
+
+### 结果
+
+```
+70 guards, 0 matching outside their recorded set
+```
+
+**覆盖从 29 条变成 70 条**，而且这次是真的——**因为判据和规则在同一行。**
+
+### 判别力验证
+
+把一条守卫的掩码改成 `0x00000000`（匹配一切）：
+
+```
+LDR/LDRB+7  matches outside its set: adc:10, add:21710, adds:85, addv:1, adr:61, adrp:10829
+70 guards, 1 matching outside their recorded set
+```
+
+**抓到了。** 恢复后归零。
+
+### 保留旧工具
+
+**`check-rule-mnemonics.py` 留着**——它用 `llvm-mc` 做另一种交叉验证（把指令编码反汇编成助记符），
+和这个基于 `llvm-objdump` 的家族检查是不同角度。
+
+**但它的覆盖度仍是 29/70，并且在输出里如实说明。**
+
