@@ -346,6 +346,18 @@ seq 100 | awk 'BEGIN{m=0} {if($1>m)m=$1} END{print "max="m}'
 for i in 1 2; do for j in 3 4; do for k in 5 6; do echo "$i$j$k"; done; done; done | wc -l
 WRAP
 cp /tmp/dtstress.sh /tmp/alpine-root/tmp/dtstress.sh 2>/dev/null || true
+cat > /tmp/dtreal.sh 2>/dev/null <<'WRAP'
+printf 'the quick brown fox\njumps over the lazy dog\nthe fox runs\n' | tr ' ' '\n' | sort | uniq -c | sort -rn | head -3
+n=0; sum=0
+while read -r w; do n=$((n+1)); sum=$((sum + ${#w})); done <<EOF
+alpha
+beta
+gamma
+EOF
+echo "words=$n chars=$sum avg=$((sum / n))"
+printf '%s\n' "$(( (10 * sum) / n ))" | awk '{printf "%.1f\n", $1/10}' 
+WRAP
+cp /tmp/dtreal.sh /tmp/alpine-root/tmp/dtreal.sh 2>/dev/null || true
 pass=0
 fail=0
 empty=
@@ -615,6 +627,7 @@ echo test | sha256sum
 seq 500 | awk '{s+=$1} END{print s}'
 awk 'BEGIN{for(i=1;i<=500;i++)t+=i; print t}'
 sh /tmp/dtalgo.sh
+sh /tmp/dtreal.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh
 sh /tmp/dtex
