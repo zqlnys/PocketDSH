@@ -787,6 +787,11 @@ static const char *elf_interp(const uint8_t *img, size_t n) {
 // this - a large awk program is one string - and the previous 1024 silently truncated
 // anything past it, which showed up as awk reporting a syntax error in a program that was
 // never handed to it whole. qemu handles several kilobytes without complaint.
+// Guest RAM. 1 MB was enough for the tests that existed when it was chosen, but a shell
+// function recursing a thousand levels needs more - busybox sh keeps every frame on the
+// guest stack, and at 1 MB it ran out around level 670 and stopped silently, while the
+// same script under qemu (which gets a normal stack) finished.
+#define E2_GUEST_RAM (16u << 20)
 #define ARG_MAX 2048
 // How many arguments are carried across an exec. Eight was enough for the tests that
 // existed when it was chosen, not for a shell, which is free to pass more.
@@ -856,7 +861,7 @@ static int start_image(e2_machine *m, const char *path, char args[][ARG_MAX], in
     if (img == NULL) return -2;   // ENOENT
 
     e2_memory_destroy(&m->mem);
-    e2_machine_init(m, 0, 1 << 20);
+    e2_machine_init(m, 0, E2_GUEST_RAM);
 
     const char *interp_path = elf_interp(img, size);
     e2_loaded_image app = {0}, ld = {0};
@@ -2227,7 +2232,7 @@ int main(int argc, char **argv) {
         seed_proc(root != NULL ? root : "/tmp/alpine-root");
     }
     e2_machine m;
-    e2_machine_init(&m, 0, 1 << 20);
+    e2_machine_init(&m, 0, E2_GUEST_RAM);
 
     // Automatic: run_proc nests, so a static buffer would be shared across subshells.
     char args[ARG_COUNT][ARG_MAX]; int nargs = 0;
