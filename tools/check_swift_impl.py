@@ -246,6 +246,46 @@ def check_test_classes(root: pathlib.Path) -> bool:
     return True
 
 
+def check_local_imports(root: pathlib.Path) -> bool:
+    """Imports of this repository's own modules must name something that exists.
+
+    There is no compiler here, so `import LuaRuntime` in a file after the module was
+    renamed stays invisible until someone builds. The local module names are the
+    directories under Packages/*/Sources, which is checkable against the tree.
+
+    Returns True/False like the other checks: main() tests the return value for truth, so
+    a function returning 0 for success would be read as failure.
+    """
+    sources = list((root / "Packages/PocketDSHKit/Sources").glob("*"))
+    local = {d.name for d in sources if d.is_dir()}
+    if not local:
+        print("  no local modules found, skipping")
+        return True
+
+    imported: dict[str, int] = {}
+    unknown: set[str] = set()
+    for path in root.rglob("*.swift"):
+        if ".build" in str(path):
+            continue
+        for m in re.finditer(r"(?m)^import (\w+)", path.read_text(errors="replace")):
+            name = m.group(1)
+            if name in local:
+                imported[name] = imported.get(name, 0) + 1
+            elif name in {"CLua", "LuaRuntime", "PocketDSHCore"}:
+                # A name that looks like ours but has no Sources directory.
+                unknown.add(name)
+
+    if unknown:
+        for name in sorted(unknown):
+            print(f"  import {name} - no such module under Packages/*/Sources")
+        return False
+    # One line per check: the documentation count is derived from the number of indented
+    # result lines, so a check that prints three of them inflates the figure.
+    detail = ", ".join(f"{n}x{imported[n]}" for n in sorted(imported))
+    print(f"  {len(local)} local module(s) exist; imports: {detail or 'none'}")
+    return True
+
+
 def main() -> int:
     root = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
     results = [
@@ -255,6 +295,7 @@ def main() -> int:
         ("tool specs", check_tool_specs(root)),
         ("test labels", check_test_labels(root)),
         ("test classes", check_test_classes(root)),
+        ("local imports", check_local_imports(root)),
         ("brace balance", check_braces(root)),
     ]
     for name, ok in results:

@@ -569,7 +569,7 @@ examples/workspace-inspector.dshplugin/
 | M2 扫描（不崩溃） | 163 | `tools/m2-sweep.sh` |
 | M3 扫描（不崩溃） | 93 | `tools/m3-sweep.sh` |
 | 差分对比（与参考实现逐字节一致） | 237 | `tools/diff-test.sh` |
-| 静态检查（无 Swift 编译器时的替代） | 7 类 | `tools/check-swift.sh` |
+| 静态检查（无 Swift 编译器时的替代） | 8 类 | `tools/check-swift.sh` |
 
 一条命令跑完：`./tools/verify.sh`。
 
