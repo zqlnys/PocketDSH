@@ -331,6 +331,17 @@ for i in 3 1 2; do for j in 3 1 2; do echo "$i$j"; done; done | sort | head -3
 n=10; s=0; while [ $n -gt 0 ]; do s=$((s+n)); n=$((n-1)); done; echo "sum=$s"
 WRAP
 cp /tmp/dtalgo.sh /tmp/alpine-root/tmp/dtalgo.sh 2>/dev/null || true
+cat > /tmp/dtstress.sh 2>/dev/null <<'WRAP'
+echo "$(echo "$(echo "$(echo deep)")")"
+x=$(printf 'a%.0s' $(seq 500)); echo ${#x}
+long=$(seq 200 | tr '\n' ' '); echo "$long" | wc -w
+( ( ( ( echo nested ) ) ) )
+echo "$(( 1 + 2 * 3 - 4 / 2 ))"
+echo $(seq 50 | tail -1)
+seq 100 | awk 'BEGIN{m=0} {if($1>m)m=$1} END{print "max="m}'
+for i in 1 2; do for j in 3 4; do for k in 5 6; do echo "$i$j$k"; done; done; done | wc -l
+WRAP
+cp /tmp/dtstress.sh /tmp/alpine-root/tmp/dtstress.sh 2>/dev/null || true
 pass=0
 fail=0
 empty=
@@ -566,6 +577,7 @@ sh /tmp/dtu
 sh /tmp/dtfs.sh
 sh /tmp/dtpf
 sh /tmp/dtalgo.sh
+sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh
 sh /tmp/dtex
 EOF
