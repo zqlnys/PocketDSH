@@ -679,6 +679,16 @@ cat /proc/sys/kernel/osrelease
 head -1 /proc/stat | cut -d' ' -f1
 cat /proc/loadavg | cut -d' ' -f1-3
 grep -c . /proc/meminfo
+# Paths, the working directory and symlink resolution were all untestable while qemu ran
+# outside the root: it read the host's /etc, started in the host's directory and followed
+# absolute links to host binaries. Under chroot they are ordinary cases.
+cat /etc/hostname
+pwd
+cd /tmp && pwd
+echo $PWD
+command -v ls
+readlink /usr/bin/basename
+stat -c %s /etc/hostname
 sh /tmp/dtreal2.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh
