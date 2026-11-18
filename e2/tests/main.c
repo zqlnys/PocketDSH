@@ -1393,6 +1393,16 @@ int main(void) {
     test_shll();
     test_scalar_immediates();
 
+    // A list that ran almost nothing reports "0 checks, 0 failure(s)", which reads like a
+    // clean run. The suites below have the same guard for the same reason.
+    // One constant, used by both the test and the message: a hardcoded literal in the
+    // text would drift from the threshold and describe a check that is not the one made.
+    enum { MIN_CHECKS = 50 };
+    if (checks < MIN_CHECKS) {
+        fprintf(stderr, "only %d check(s) ran, expected at least %d - is the call list intact?\n",
+                checks, (int)MIN_CHECKS);
+        return 1;
+    }
     printf("\n%d checks, %d failure(s)\n", checks, failures);
     return failures == 0 ? 0 : 1;
 }
