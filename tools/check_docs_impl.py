@@ -267,6 +267,27 @@ def check_boolean_claims() -> int:
     return 0
 
 
+def check_readme_tool_list() -> int:
+    """Every declared tool should be named in the README.
+
+    It listed six of seventeen under "real Agent tools", which reads as the complete set to
+    anyone who does not open the catalogue.
+    """
+    models = ROOT / "Packages/PocketDSHKit/Sources/PocketDSHCore/AgentModels.swift"
+    readme = ROOT / "README.md"
+    if not models.exists():
+        print("  models not found, skipping")
+        return 0
+    names = set(re.findall(r'static let \w+ = "([a-z_]+)"', models.read_text()))
+    text = readme.read_text(errors="replace")
+    missing = sorted(n for n in names if f"`{n}`" not in text)
+    if missing:
+        print("  README does not name: " + ", ".join(missing))
+        return 1
+    print(f"  all {len(names)} tools named in the README")
+    return 0
+
+
 def main() -> int:
     cache: dict[str, int | None] = {}
     problems = []
@@ -299,10 +320,11 @@ def main() -> int:
     covered = check_tool_coverage()
     stated = check_stated_total()
     booleans = check_boolean_claims()
+    readme_tools = check_readme_tool_list()
     if problems:
         print(f"  ^ {len(problems)} of {checked} claims are out of date")
         return 1
-    if covered != 0 or headings != 0 or stray != 0 or stated != 0 or booleans != 0:
+    if covered != 0 or headings != 0 or stray != 0 or stated != 0 or booleans != 0 or readme_tools != 0:
         return 1
     print(f"  {checked} claim(s) match the suites")
     return 0

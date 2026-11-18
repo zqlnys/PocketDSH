@@ -4,7 +4,11 @@
 
 - 原生 SwiftUI，iOS 17+
 - 多项目本地工作区 + 文件树 / 编辑器 / 搜索 / diff
-- 真实 Agent 工具：`list_files`、`read_file`、`write_file`、`search_files`、`apply_patch`、`run_lua`
+- **17 个 Agent 工具**：
+  - 文件与执行：`list_files`、`read_file`、`write_file`、`search_files`、`apply_patch`、`run_lua`、`run_linux`
+  - 网络：`fetch_url`、`web_search`
+  - 系统能力：`schedule_reminder`、`schedule_alert`、`prepare_message`、`prepare_call`
+  - 流程：`todo_write`、`present`、`subagent`、`use_skill`
 - 嵌入 Lua 5.4.7，无 JIT、无 shell、无子进程
 - DeepSeek API 推理，API Key 存 iOS Keychain
 - 覆盖前备份、恢复历史、任务日志、取消、对话持久化
