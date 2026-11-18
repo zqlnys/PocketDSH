@@ -324,7 +324,19 @@ static long fs_read(void *c, int fd, void *b, size_t n, long long o) {
         const int ran = pump_children_for_tab(((const procctx *)c)->fdtab);
         if (getenv("E2_TRACE_PUMP"))
             fprintf(stderr, "[pump] tab=%d ran=%d\n", ((const procctx *)c)->fdtab, ran);
-        if (!ran) return 0;
+        if (!ran) {
+            // "Nothing could be run" is not the same as "the pipe has ended". A
+            // writer that is currently on the call stack is skipped by the pump, and
+            // that writer is exactly the one that will fill this pipe - reporting EOF
+            // there made a pipeline whose left side contained a command substitution
+            // come back empty, because the reader gave up before the writer ran.
+            //
+            // The pipe has truly ended only when nothing else holds its write end. The
+            // read end we are sitting on accounts for one reference.
+            if (g_refs[TAB(c)[fd].host] > 1)
+                return -EAGAIN;
+            return 0;
+        }
     }
 }
 static long fs_write(void *c, int fd, const void *b, size_t n, long long o) {
