@@ -702,6 +702,11 @@ stat -c %U /etc/passwd
 stat -c %F /etc/passwd
 ls -l /etc/passwd | cut -d' ' -f1
 find /etc -perm -644 | wc -l
+printf 'a\nb\nc\n' | sed -n '$p'
+seq 5 | awk 'NR==3{print}'
+echo abc | cut -c2-3
+seq 3 | awk '{sum+=$1}END{print sum}'
+echo test | base32 2>&1 | head -1
 sh /tmp/dtreal2.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh
