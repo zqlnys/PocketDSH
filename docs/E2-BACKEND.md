@@ -4566,6 +4566,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 | 差分对比 | **270 一致，0 不同** | `tools/diff-test.sh` |
 | 解码规则重叠 | **无** | `make overlaps` |
 | 规则越界 | **0 条**（100883 个唯一指令字） | `tools/check-rule-mnemonics.py` |
+| 解码守卫覆盖 | **70/70 条**，0 条越界 | `tools/check-decode-families.py` |
 | iOS 测试 | **26 项** | `PocketDSHTests.swift` |
 
 **没有豁免，没有 `|| true`，没有「已知失败」抵扣。** 每一条都是真的通过。

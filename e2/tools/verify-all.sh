@@ -14,6 +14,10 @@ echo "== unit tests =="
 out=$(make test 2>&1) || fail=1
 printf '%s\n' "$out" | tail -1
 printf '%s' "$out" | grep -qE ', [1-9][0-9]* failure' && fail=1
+echo "== decode families =="
+out=$(python3 tools/check-decode-families.py /tmp/bbs/bin/busybox.static 2>&1)
+printf '%s\n' "$out" | tail -1
+printf '%s' "$out" | grep -qE '^[0-9]+ guards, 0 ' || fail=1
 echo "== overlaps =="
 out=$(make overlaps 2>&1) || fail=1
 printf '%s\n' "$out" | tail -1

@@ -240,11 +240,30 @@ def check_boolean_claims() -> int:
     else:
         problems.append("decode rules overlap")
 
+    # The family check covers every guard; the old one covered 29 of 70.
+    try:
+        out = subprocess.run(["python3", "tools/check-decode-families.py",
+                              "/tmp/bbs/bin/busybox.static"],
+                             cwd=e2, capture_output=True, text=True, timeout=600).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        out = ""
+    fam = re.search(r"(\d+) guards, (\d+) matching outside", out)
+    if fam is None:
+        print("  decode families did not report - not checked")
+    else:
+        if int(fam.group(2)) != 0:
+            problems.append(f"{fam.group(2)} guard(s) match outside their set")
+        doc = (ROOT / "docs/E2-BACKEND.md").read_text(errors="replace")
+        claimed = re.search(r"\*\*(\d+)/(\d+) 条\*\*", doc)
+        if claimed and int(claimed.group(1)) != int(fam.group(1)):
+            problems.append(f"guard coverage: doc says {claimed.group(1)}, "
+                            f"actual {fam.group(1)}")
+
     if problems:
         for item in problems:
             print("  " + item)
         return 1
-    print("  no rule out of family, no decode overlap")
+    print("  no rule out of family, no guard outside its set, no decode overlap")
     return 0
 
 

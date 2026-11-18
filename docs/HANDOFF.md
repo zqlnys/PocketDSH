@@ -570,6 +570,7 @@ examples/workspace-inspector.dshplugin/
 | M3 扫描（不崩溃） | 93 | `tools/m3-sweep.sh` |
 | 差分对比（与参考实现逐字节一致） | 270 | `tools/diff-test.sh` |
 | 静态检查（无 Swift 编译器时的替代） | 8 类 | `tools/check-swift.sh` |
+| 解码守卫覆盖 | 70/70 条，0 条越界 | `tools/check-decode-families.py` |
 
 一条命令跑完：`./tools/verify.sh`。
 
