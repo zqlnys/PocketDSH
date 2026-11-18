@@ -7152,3 +7152,40 @@ busybox sh 的函数递归把每一帧留在 guest 栈上，**约 1.5 KB 一帧�
 
 **这次的教训和前几次完全一样**：**先看未经处理的原始输出，再做判断。**
 
+## `tools/e2run.sh`：让状态行不可能被过滤掉
+
+「用 `grep -v '^\[exit'` 滤掉状态行，然后从剩下的字节下结论」这个错误已经犯了不止一次。
+**现在有一个工具专门防这个。**
+
+```sh
+$ ./tools/e2run.sh /tmp/bbs/bin/busybox.static echo hi
+hi
+
+[status] [exit 0] instructions=9327
+
+$ ./tools/e2run.sh ... sh -c 'f() { ... }; f 5000'
+
+[status] [exit 0] instructions=60000000 FAULT reason=instruction cap
+```
+
+### 设计
+
+**程序输出走 stdout，状态行原位加 `[status]` 前缀走 stderr。**
+
+**两个效果**：
+
+1. **`grep` 只过滤 stdout 时，状态行仍然可见**
+2. **`>/dev/null` 也藏不住它**
+
+### 第一版是错的
+
+最初写成「按第一个 `[exit` 切成两半，后半加前缀」。**但 harness 会输出多个方括号段落**
+（包括 `[stderr]`），**按第一个标记切分把内容切错了位置。**
+
+**改成原位 `sed` 标记，不分段。**
+
+### 这个工具的定位
+
+**它不替代 `diff-test.sh`**——那个是「与参考实现对比」。
+**它替代的是「临时写一行命令看输出」**，而这正是最容易踩坑的地方。
+
