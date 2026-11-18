@@ -164,6 +164,41 @@ def check_any_stale_counts() -> int:
     return 0
 
 
+def check_stated_total() -> int:
+    """The "N 项验证" figure must equal the sum of the suites that make it up.
+
+    It appears in README and at the top of E2-BACKEND, and it is the number a reader is
+    most likely to quote. Adding a case without updating it was caught only by reading.
+    """
+    names = {"unit": "单指令测试", "m2": "M2", "m3": "M3", "diff": "差分"}
+    total = 0
+    for key in names:
+        value = actual(key)
+        if value is None:
+            print(f"  could not determine {names[key]}, skipping the total")
+            return 0
+        total += value
+
+    stale = []
+    # E2-BACKEND is chronological; a "N 项验证" in its middle chapters is a snapshot of
+    # what was true then, and flagging it would be flagging correct history.
+    for name in ("README.md",):
+        path = ROOT / name
+        if not path.exists():
+            continue
+        text = path.read_text(errors="replace")
+        for m in re.finditer(r"(\d+) 项验证", text):
+            if int(m.group(1)) != total:
+                line = text[:m.start()].count("\n") + 1
+                stale.append(f"{name}:{line} says {m.group(1)} 项验证, suites total {total}")
+    if stale:
+        for item in stale:
+            print("  " + item)
+        return 1
+    print(f"  stated total {total} matches the suites")
+    return 0
+
+
 def main() -> int:
     cache: dict[str, int | None] = {}
     problems = []
@@ -194,10 +229,11 @@ def main() -> int:
     stray = check_any_stale_counts()
     headings = check_no_duplicate_headings()
     covered = check_tool_coverage()
+    stated = check_stated_total()
     if problems:
         print(f"  ^ {len(problems)} of {checked} claims are out of date")
         return 1
-    if covered != 0 or headings != 0 or stray != 0:
+    if covered != 0 or headings != 0 or stray != 0 or stated != 0:
         return 1
     print(f"  {checked} claim(s) match the suites")
     return 0

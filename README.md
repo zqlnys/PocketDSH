@@ -202,6 +202,19 @@ Agent 只会拿到相对路径。绝对路径、`..`、symlink 逃逸都会被 `
 - [iOS 本地 Linux 三方案调研](docs/IOS-LOCAL-LINUX.md)
 - [构建与安装](docs/BUILD-INSTALL.md)
 
+**E2 后端**（自写的 aarch64 解释器，不复用 iSH）：
+
+- [E2 后端：设计、进度与踩坑记录](docs/E2-BACKEND.md) —— 761 项验证背后的每一次修复
+- [交接文档](docs/HANDOFF.md) —— 换新会话时先读这个
+
+**调试工具**（都在 `e2/tools/`）：
+
+| 工具 | 用途 |
+| --- | --- |
+| `e2run.sh` | 跑 harness，状态行不会因为管道过滤而丢失 |
+| `mutation-check.sh` | 验证一条测试是否真能抓到回归 |
+| `diff-test.sh` | 与参考实现逐字节对比；写临时对比脚本时复用它的剥离逻辑 |
+
 ## 许可
 
 Lua 5.4.7 以 MIT 许可证 vendored，见 `Packages/PocketDSHKit/Sources/CLua/LICENSE`。
