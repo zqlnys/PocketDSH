@@ -7509,3 +7509,44 @@ $ cat /proc/sys/kernel/osrelease
 
 **`if (f == NULL) continue;` 这一行的意图是对的（缺目录就跳过），但它让「补了没补上」和「本来就不需要」变得无法区分。**
 
+## 为什么 `/proc` 的内容不能用差分测试验证
+
+想给新 seed 的几个 `/proc` 文件加差分用例，四条里有三条不同：
+
+```
+qemu: 6.8.0-149-generic      ← 宿主的内核版本
+mine: 6.1.0-e2
+```
+
+**原因还是 qemu 未 chroot**——它读的是宿主的 `/proc`。
+
+**这批文件的正确内容只能靠单元测试或直接断言，不能靠「两边对比」。**
+
+### 已经能验证的部分
+
+**guest 侧的可见性**（这是 seed 逻辑的正确性，与本实现有关）：
+
+```
+/proc/stat                 → cpu  100 0 100 10000 0 0 0 0 0 0
+/proc/loadavg              → 0.00 0.00 0.00 1/1 1
+/proc/sys/kernel/hostname  → localhost
+/proc/sys/kernel/osrelease → 6.1.0-e2
+/proc/self/mountinfo       → 1 1 0:1 / / rw,relatime - ext4 /dev/root
+```
+
+**五个文件全部可见、内容正确。**
+
+### 一条反复出现的边界
+
+**这个项目里「qemu 未 chroot」已经造成了至少五种假差异**：
+
+| 类型 | 表现 |
+| --- | --- |
+| PATH 解析 | `dd` 变成宿主 GNU 版 |
+| `pwd` 初值 | 宿主工作目录 |
+| `/etc/hostname` | 宿主的 16 字节文件 |
+| `/proc/*` | 宿主的内核信息 |
+| `/tmp` 路径 | 需要两个根都放 fixture |
+
+**每次遇到「两边不一样」，第一个该问的问题是：「它们读的是同一份数据吗」。**
+
