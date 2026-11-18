@@ -569,6 +569,12 @@ sh /tmp/dtalgo.sh
 sh /tmp/dtlnk.sh
 sh /tmp/dtex
 EOF
+# The same guard the sweeps have: an emptied case list would report "0 same, 0 different",
+# which reads like a clean run.
+if [ $((pass + fail)) -lt 100 ]; then
+    echo "diff test: only $((pass + fail)) case(s) ran, expected at least 100" >&2
+    exit 1
+fi
 echo "diff test: $pass same, $fail different"
 if [ -n "$empty" ]; then
     echo "  $(( $(printf '%s' "$empty" | grep -c '^  \[') )) case(s) produced no output on either side:"

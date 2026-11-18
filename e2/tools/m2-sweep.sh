@@ -243,6 +243,12 @@ awk '{print $1}'
 find /tmp -maxdepth 1 -name t*
 grep -c x /dev/null
 EOF
+# A list that produced almost nothing reports "0 passed, 0 failed", which reads like
+# success. If the case list is ever emptied or mangled, say so instead.
+if [ $((pass + fail)) -lt 100 ]; then
+    echo "M2 sweep: only $((pass + fail)) case(s) ran, expected at least 100" >&2
+    exit 1
+fi
 echo "M2 sweep: $pass passed, $fail failed"
 if [ -n "$noisy" ]; then
     echo "  cases whose output mentions an error (may be intentional):"
