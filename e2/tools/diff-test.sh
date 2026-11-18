@@ -707,6 +707,11 @@ seq 5 | awk 'NR==3{print}'
 echo abc | cut -c2-3
 seq 3 | awk '{sum+=$1}END{print sum}'
 echo test | base32 2>&1 | head -1
+# Root filesystem paths a program may probe. Under chroot both sides see the same ones.
+cat /etc/hosts | head -1
+cat /etc/group | head -1 | cut -d: -f1
+ls /root | head -1
+test -d /var/tmp && echo exists
 sh /tmp/dtreal2.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh
