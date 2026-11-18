@@ -414,6 +414,37 @@ static void test_xtn_narrows_lanes(void) {
     e2_machine_destroy(&m);
 }
 
+static void test_ld1_lane_loads_one_lane(void) {
+    printf("LD1 loads a single lane from memory and leaves the rest alone\n");
+    // Neither unit-tested nor present in any binary this project runs, so before this it
+    // had no coverage of any kind. The encoding family is 0x0D008000, with bit 22 selecting
+    // load and bits 11:10 the element size.
+    e2_machine m;
+    e2_machine_init(&m, 0, 8192);
+    const uint64_t data = 0x30000000ULL;
+    e2_memory_map_at(&m.mem, data, 0x1000, E2_PROT_READ | E2_PROT_WRITE);
+    const uint32_t src[4] = {0xAAAA1111u, 0xBBBB2222u, 0xCCCC3333u, 0xDDDD4444u};
+    e2_memory_write(&m.mem, data, src, sizeof(src));
+
+    // Pre-fill V0 so an untouched lane is distinguishable from a written one.
+    m.cpu.v[0][0] = 0x1111111111111111ULL;
+    m.cpu.v[0][1] = 0x2222222222222222ULL;
+
+    // LD1 {V0.S}[0], [x1] -> 0x0D408020: load bit 22, size 0 (32-bit lanes), Q=0, S=0.
+    // S is inside the guarded mask, so this form can only select lane 0 or 2; lane 1 would
+    // need a different encoding, which is worth knowing before writing a test against it.
+    const uint32_t code[] = {0x0D408020u, RET()};
+    load_program(&m, code, 2);
+    m.cpu.x[1] = data;
+    e2_run(&m, 100);
+
+    const uint32_t lane0 = (uint32_t)m.cpu.v[0][0];
+    const uint32_t lane1 = (uint32_t)(m.cpu.v[0][0] >> 32);
+    CHECK(lane0 == 0xAAAA1111u, "lane 0 should hold the loaded word, got 0x%08x", lane0);
+    CHECK(lane1 == 0x11111111u, "lane 1 should be untouched, got 0x%08x", lane1);
+    e2_machine_destroy(&m);
+}
+
 static void test_sysinfo_writes_the_struct(void) {
     printf("sysinfo fills the struct rather than returning success and writing nothing\n");
     // Absent entirely until it was noticed that busybox `free` printed a row of
@@ -1395,6 +1426,7 @@ int main(void) {
     test_load_store();
     test_svc();
     test_hint_space_is_noop();
+    test_ld1_lane_loads_one_lane();
     test_sysinfo_writes_the_struct();
     test_barriers_retire();
     test_ldrsb_backward_scan();
