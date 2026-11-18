@@ -199,6 +199,55 @@ def check_stated_total() -> int:
     return 0
 
 
+def check_boolean_claims() -> int:
+    """Claims of the form "no overlaps" and "0 out of family" are checkable too.
+
+    They are the kind of statement that stays true for a long time and then quietly stops
+    being true when a decode rule is added.
+    """
+    e2 = ROOT / "e2"
+    problems = []
+
+    try:
+        out = subprocess.run(["./tools/check-rule-mnemonics.py",
+                              "/tmp/bbs/bin/busybox.static"],
+                             cwd=e2, capture_output=True, text=True, timeout=600).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        out = ""
+    m = re.search(r"(\d+) rule\(s\) match instructions outside their family", out)
+    words = re.search(r"(\d+) unique words", out)
+    if m is None:
+        print("  rule-mnemonics did not report a count - not checked")
+    else:
+        if int(m.group(1)) != 0:
+            problems.append(f"rule-mnemonics reports {m.group(1)} out of family")
+        if words is not None:
+            doc = (ROOT / "docs/E2-BACKEND.md").read_text(errors="replace")
+            claimed = re.search(r"(\d+) 个唯一指令字", doc)
+            if claimed and int(claimed.group(1)) != int(words.group(1)):
+                problems.append(f"unique words: doc says {claimed.group(1)}, "
+                                f"actual {words.group(1)}")
+
+    try:
+        out = subprocess.run(["make", "overlaps"], cwd=e2, capture_output=True,
+                             text=True, timeout=600).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        out = ""
+    if "no overlaps" in out:
+        pass
+    elif "skip" in out:
+        print("  overlaps skipped - not checked")
+    else:
+        problems.append("decode rules overlap")
+
+    if problems:
+        for item in problems:
+            print("  " + item)
+        return 1
+    print("  no rule out of family, no decode overlap")
+    return 0
+
+
 def main() -> int:
     cache: dict[str, int | None] = {}
     problems = []
@@ -230,10 +279,11 @@ def main() -> int:
     headings = check_no_duplicate_headings()
     covered = check_tool_coverage()
     stated = check_stated_total()
+    booleans = check_boolean_claims()
     if problems:
         print(f"  ^ {len(problems)} of {checked} claims are out of date")
         return 1
-    if covered != 0 or headings != 0 or stray != 0 or stated != 0:
+    if covered != 0 or headings != 0 or stray != 0 or stated != 0 or booleans != 0:
         return 1
     print(f"  {checked} claim(s) match the suites")
     return 0
