@@ -799,9 +799,18 @@ static void seed_proc(const char *root) {
         // Do not clobber a file the guest has already produced.
         if (access(full, F_OK) == 0) continue;
         FILE *f = fopen(full, "wb");
-        if (f == NULL) continue;
+        if (f == NULL) {
+            // Say so. A seed that quietly fails is indistinguishable from one that was
+            // never needed, and /proc/sys/kernel/hostname was added to this list and
+            // silently did not appear for exactly that reason.
+            if (getenv("E2_TRACE_SEED"))
+                fprintf(stderr, "[seed] failed: %s (%s)\n", full, strerror(errno));
+            continue;
+        }
         fputs(files[i].body, f);
         fclose(f);
+        if (getenv("E2_TRACE_SEED"))
+            fprintf(stderr, "[seed] wrote %s\n", full);
     }
 }
 
