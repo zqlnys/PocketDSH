@@ -846,8 +846,12 @@ static int start_image(e2_machine *m, const char *path, char args[][ARG_MAX], in
                 (unsigned long long)app.load_bias, (unsigned long long)ld.entry,
                 (unsigned long long)ld.load_bias, (unsigned long long)entry);
 
+    // The pointer arrays and the string area both have to match the argument limits.
+    // They were sized 16 and 2048 when args held eight entries of 1024, so raising those
+    // without raising these just moved the truncation: a command with thirty arguments
+    // reached the guest with fourteen.
     uint64_t top = m->cpu.sp - 64, strs = top - 2048, cur = strs;
-    uint64_t argp[16], envp[16];
+    uint64_t argp[ARG_COUNT + 1], envp[65];
     // Strings are packed back to back, as a real kernel does. Padding each one
     // to 16 bytes changes their addresses, and an aligned address takes a
     // different branch inside musl's word-at-a-time strlen - which shows up as
@@ -877,7 +881,10 @@ static int start_image(e2_machine *m, const char *path, char args[][ARG_MAX], in
         e2_memory_write(&m->mem, rnd, seed, sizeof(seed));
         cur += 16;
     }
-    uint64_t sp = (strs - 512) & ~15ULL;
+    // Room for both pointer arrays plus the NULL terminators and padding. A fixed 512 was
+    // enough for 16 + 16 entries; with 33 + 65 it is not, and the overflow lands on the
+    // strings just above.
+    uint64_t sp = (strs - ((ARG_COUNT + 66) * 8 + 512)) & ~15ULL;
     // AT_* come from <elf.h>.
     uint64_t st[80];
     int k = 0;
@@ -2175,7 +2182,7 @@ int main(int argc, char **argv) {
         snprintf(args[nargs++], sizeof(args[0]), "%s",
                  override ? override : (base ? base + 1 : path));
     }
-    for (int i = 2; i < argc && nargs < 16; i++)
+    for (int i = 2; i < argc && nargs < ARG_COUNT; i++)
         snprintf(args[nargs++], sizeof(args[0]), "%s", argv[i]);
     char envs[64][ARG_MAX]; int nenv = 0;
     // E2_MIN_ENV=1 passes no environment at all. If an applet behaves
