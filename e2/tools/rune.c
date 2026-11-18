@@ -717,13 +717,28 @@ static const e2_file_ops FS = {fs_open, fs_read, fs_write, fs_close, fs_stat,
 static void seed_proc(const char *root) {
     static const struct { const char *path; const char *body; } files[] = {
         {"/proc/meminfo",
+         // The full set a modern reader looks for. A short file does not make the missing
+         // values zero: `free` parses whichever lines it finds into a struct it does not
+         // clear first, so anything absent arrives as whatever was on the stack - the
+         // symptom was a column of 30-digit numbers where the memory figures belong.
          "MemTotal:        1024000 kB\n"
          "MemFree:          512000 kB\n"
          "MemAvailable:     768000 kB\n"
          "Buffers:           10000 kB\n"
          "Cached:           120000 kB\n"
+         "SwapCached:            0 kB\n"
+         "Active:           300000 kB\n"
+         "Inactive:         200000 kB\n"
          "SwapTotal:             0 kB\n"
-         "SwapFree:              0 kB\n"},
+         "SwapFree:              0 kB\n"
+         "Shmem:                 0 kB\n"
+         "SReclaimable:       4096 kB\n"
+         "SUnreclaim:         2048 kB\n"
+         "MemShared:             0 kB\n"
+         "HighTotal:             0 kB\n"
+         "HighFree:              0 kB\n"
+         "LowTotal:        1024000 kB\n"
+         "LowFree:          512000 kB\n"},
         {"/proc/uptime", "12345.67 98765.43\n"},
         {"/proc/version",
          "Linux version 6.1.0-e2 (e2@localhost) #1 SMP aarch64\n"},

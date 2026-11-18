@@ -414,6 +414,41 @@ static void test_xtn_narrows_lanes(void) {
     e2_machine_destroy(&m);
 }
 
+static void test_sysinfo_writes_the_struct(void) {
+    printf("sysinfo fills the struct rather than returning success and writing nothing\n");
+    // Absent entirely until it was noticed that busybox `free` printed a row of
+    // thirty-digit numbers: it calls sysinfo first and, when the call has no handler,
+    // prints a struct it never initialised. Returning 0 without writing would have the
+    // same effect, so both are checked here.
+    e2_machine m;
+    e2_machine_init(&m, 0, 1 << 20);
+    const uint64_t buf = 0x30000000ULL;
+    e2_memory_map_at(&m.mem, buf, 0x1000, E2_PROT_READ | E2_PROT_WRITE);
+    e2_syscall_env env = {0};
+
+    // Pre-fill with a marker so "written nothing" is distinguishable from "wrote zeros".
+    uint8_t marker[112];
+    memset(marker, 0xAB, sizeof(marker));
+    e2_memory_write(&m.mem, buf, marker, sizeof(marker));
+
+    m.cpu.x[8] = 179;   // sysinfo
+    m.cpu.x[0] = buf;
+    CHECK(e2_service_syscall(&m, &env) == E2_OK, "sysinfo should complete");
+    CHECK_REG(m, 0, 0);
+
+    uint8_t got[112];
+    e2_memory_read(&m.mem, buf, got, sizeof(got));
+    int untouched = 0;
+    for (int i = 0; i < 112; i++) if (got[i] == 0xAB) untouched++;
+    CHECK(untouched == 0, "sysinfo left %d byte(s) unwritten", untouched);
+
+    uint64_t totalram = 0;
+    memcpy(&totalram, got + 32, 8);
+    CHECK(totalram == 1024000ULL * 1024, "totalram %llu should match meminfo",
+          (unsigned long long)totalram);
+    e2_machine_destroy(&m);
+}
+
 static void test_barriers_retire(void) {
     printf("DSB, DMB and ISB are accepted and change nothing\n");
     // Execution here is strictly sequential and the host provides the ordering, so these
@@ -1360,6 +1395,7 @@ int main(void) {
     test_load_store();
     test_svc();
     test_hint_space_is_noop();
+    test_sysinfo_writes_the_struct();
     test_barriers_retire();
     test_ldrsb_backward_scan();
     test_frame_pointer_prologue();

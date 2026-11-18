@@ -428,6 +428,41 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             }
             E2_RETURN(env->execve(env->ctx, m, path, a1, a2));
         }
+        case 179: {  // sysinfo: total and free memory, uptime, load averages
+            // Absent until now, and its absence was not loud: busybox `free` calls this
+            // first and, on failure, prints a struct it never initialised - a row of
+            // thirty-digit numbers where the memory figures belong. The values below
+            // match the synthetic /proc/meminfo so both sources agree.
+            uint8_t *dst = e2_memory_host_ptr(&m->mem, a0, 112, E2_PROT_WRITE);
+            if (dst == NULL) {
+                E2_RETURN(-E2_EFAULT);
+            }
+            memset(dst, 0, 112);
+            const int64_t uptime = 12345;
+            memcpy(dst + 0, &uptime, 8);                 // uptime
+            const uint64_t loads[3] = {0, 0, 0};
+            memcpy(dst + 8, loads, sizeof(loads));       // loads[3]
+            const uint64_t totalram = 1024000ULL * 1024; // bytes, matching meminfo
+            const uint64_t freeram = 512000ULL * 1024;
+            const uint64_t sharedram = 0;
+            const uint64_t bufferram = 10000ULL * 1024;
+            const uint64_t totalswap = 0;
+            const uint64_t freeswap = 0;
+            memcpy(dst + 32, &totalram, 8);
+            memcpy(dst + 40, &freeram, 8);
+            memcpy(dst + 48, &sharedram, 8);
+            memcpy(dst + 56, &bufferram, 8);
+            memcpy(dst + 64, &totalswap, 8);
+            memcpy(dst + 72, &freeswap, 8);
+            const uint16_t procs = 1;
+            memcpy(dst + 80, &procs, 2);                 // procs
+            const uint64_t totalhigh = 0, freehigh = 0;
+            memcpy(dst + 88, &totalhigh, 8);
+            memcpy(dst + 96, &freehigh, 8);
+            const uint32_t mem_unit = 1;
+            memcpy(dst + 104, &mem_unit, 4);
+            E2_RETURN(0);
+        }
         case E2_SYS_wait4: {
             if (env->wait4 == NULL) {
                 E2_RETURN(-E2_ENOSYS);
