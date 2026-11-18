@@ -10,6 +10,7 @@ The check is deliberately narrow. It knows where each headline number is written
 produces it; anything phrased differently is left alone rather than guessed at.
 """
 
+import os
 import pathlib
 import re
 import subprocess
@@ -32,7 +33,16 @@ CLAIMS = [
 
 
 def actual(name: str) -> int | None:
-    """Runs the suite and reads its count. None when it cannot be determined."""
+    """The count for a suite, from the environment when the caller already knows it.
+
+    verify.sh runs every suite and then calls this check, which used to run them all a
+    second time to count them - so a full verification did the work twice, 21 minutes
+    instead of 10. The caller now passes what it measured; running the suite here is only
+    the fallback for a standalone invocation.
+    """
+    cached = os.environ.get("DSH_COUNT_" + name.upper())
+    if cached is not None and cached.strip().isdigit():
+        return int(cached)
     e2 = ROOT / "e2"
     busybox = "/tmp/bbs/bin/busybox.static"
     commands = {
