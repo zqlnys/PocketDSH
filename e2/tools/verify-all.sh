@@ -45,6 +45,10 @@ run_one() {
     dt=$(./tools/diff-test.sh "$bb" "$RUNE" "$STATIC" 2>&1 | tail -1)
     printf '  %s\n' "$dt"
     case "$dt" in *" 0 different"*) ;; *) return 1 ;; esac
+    # State the counts rather than leaving the caller to parse them back out of prose.
+    printf 'COUNT_%s_M2=%s\n' "$label" "${m2##*: }" | sed 's/ passed.*//'
+    printf 'COUNT_%s_M3=%s\n' "$label" "${m3##*: }" | sed 's/ passed.*//'
+    printf 'COUNT_%s_DIFF=%s\n' "$label" "${dt##*: }" | sed 's/ same.*//'
     return 0
 }
 

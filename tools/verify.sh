@@ -17,10 +17,12 @@ if [ -x "$here/e2/tools/rune" ]; then
     rc=$?
     printf '%s\n' "$e2out"
     [ "$rc" -eq 0 ] || fail=1
+    # The suites state their counts; read those rather than parsing the prose above them.
+    # Prose changes shape, a key=value line does not.
     UNIT_COUNT=$(printf '%s\n' "$e2out" | sed -n 's/^\([0-9]\+\) checks.*/\1/p' | head -1)
-    M2_COUNT=$(printf '%s\n' "$e2out" | sed -n 's/^  M2 sweep: \([0-9]\+\) passed.*/\1/p' | head -1)
-    M3_COUNT=$(printf '%s\n' "$e2out" | sed -n 's/^  M3 sweep: \([0-9]\+\) passed.*/\1/p' | head -1)
-    DIFF_COUNT=$(printf '%s\n' "$e2out" | sed -n 's/^  diff test: \([0-9]\+\) same.*/\1/p' | head -1)
+    M2_COUNT=$(printf '%s\n' "$e2out" | sed -n 's/^COUNT_static_M2=\([0-9]\+\).*/\1/p' | head -1)
+    M3_COUNT=$(printf '%s\n' "$e2out" | sed -n 's/^COUNT_static_M3=\([0-9]\+\).*/\1/p' | head -1)
+    DIFF_COUNT=$(printf '%s\n' "$e2out" | sed -n 's/^COUNT_static_DIFF=\([0-9]\+\).*/\1/p' | head -1)
 else
     echo "e2/tools/rune missing - build it first"
     fail=1
