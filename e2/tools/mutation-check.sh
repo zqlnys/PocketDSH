@@ -60,7 +60,10 @@ fi
 # Only compiler diagnostics count as a build failure. `make: *** [target] Error 1` is
 # how make reports a non-zero exit from the tests themselves, and treating that as a
 # build error made this script call a working mutation INVALID.
-if printf '%s' "$out" | grep -qE 'error:|cc1:'; then
+# A compiler diagnostic has the form "file:line:col: error:" or comes from cc1. Matching a
+# bare "error:" also caught a runtime message from the test itself - "sh: syntax error:
+# unterminated quoted string" - and reported a working mutation as a build failure.
+if printf '%s' "$out" | grep -qE '\.c:[0-9]+:[0-9]+: error:|cc1:|ld\.lld: error:'; then
     echo "INVALID  (the mutation did not compile)"
     printf '%s\n' "$out" | grep -E 'error:' | head -3
     exit 1

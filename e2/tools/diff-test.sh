@@ -576,6 +576,13 @@ sh /tmp/dtar
 sh /tmp/dtu
 sh /tmp/dtfs.sh
 sh /tmp/dtpf
+# Argument limits that were silently truncating: a long single argument, and many
+# arguments. Both regressed once already, in opposite directions. The awk program below
+# is 2018 characters, past the 1024 that used to cut it in half and make awk report a
+# syntax error in a program it was never given whole.
+awk 'BEGIN{s=0;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;print s}'
+echo $(seq 30)
+set -- $(seq 25); echo $#
 sh /tmp/dtalgo.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh
