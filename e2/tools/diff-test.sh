@@ -696,6 +696,12 @@ cut -d: -f1 /etc/passwd | head -3
 find /etc -maxdepth 1 -type f | wc -l
 test -r /etc/passwd && echo readable
 wc -l /etc/passwd | awk '{print ($1 > 0)}'
+# File metadata: mode, owner, type and permission tests over a real guest file.
+stat -c %a /etc/passwd
+stat -c %U /etc/passwd
+stat -c %F /etc/passwd
+ls -l /etc/passwd | cut -d' ' -f1
+find /etc -perm -644 | wc -l
 sh /tmp/dtreal2.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh
