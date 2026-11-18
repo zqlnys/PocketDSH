@@ -583,6 +583,22 @@ sh /tmp/dtpf
 awk 'BEGIN{s=0;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;s+=1;print s}'
 echo $(seq 30)
 set -- $(seq 25); echo $#
+printf 'abc 123\nxy 789\nqq 456\n' | sed 's/a/X/g'
+printf 'abc 123\nxy 789\nqq 456\n' | sed 's/[0-9]/N/g'
+printf 'abc 123\nxy 789\nqq 456\n' | sed 's/^/>/'
+printf 'abc 123\nxy 789\nqq 456\n' | sed 's/$/</'
+printf 'abc 123\nxy 789\nqq 456\n' | sed 's/  */ /g'
+printf 'abc 123\nxy 789\nqq 456\n' | sed 's/.*/\U&/'
+printf 'abc 123\nxy 789\nqq 456\n' | sed 'y/abc/xyz/'
+printf 'abc 123\nxy 789\nqq 456\n' | sed 's/\(.\)\(.\)/\2\1/'
+printf 'abc 123\nxy 789\nqq 456\n' | awk '{print NR": "$0}'
+printf 'abc 123\nxy 789\nqq 456\n' | awk '{s+=$2; print s}'
+printf 'abc 123\nxy 789\nqq 456\n' | awk 'END{print NR}'
+printf 'abc 123\nxy 789\nqq 456\n' | awk '/abc/{print}'
+printf 'abc 123\nxy 789\nqq 456\n' | awk '{print toupper($1)}'
+printf 'abc 123\nxy 789\nqq 456\n' | awk 'NF>1{print $2}'
+printf 'abc 123\nxy 789\nqq 456\n' | awk '{print length($0)}'
+printf 'abc 123\nxy 789\nqq 456\n' | awk 'BEGIN{print "x"}{print $1}'
 sh /tmp/dtalgo.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh
