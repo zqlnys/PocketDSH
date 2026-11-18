@@ -689,6 +689,13 @@ echo $PWD
 command -v ls
 readlink /usr/bin/basename
 stat -c %s /etc/hostname
+# Absolute paths into the real guest filesystem. These were unreachable while qemu ran
+# outside the root - it read the host's /etc/passwd, and the counts never agreed.
+head -1 /etc/passwd | cut -d: -f1
+cut -d: -f1 /etc/passwd | head -3
+find /etc -maxdepth 1 -type f | wc -l
+test -r /etc/passwd && echo readable
+wc -l /etc/passwd | awk '{print ($1 > 0)}'
 sh /tmp/dtreal2.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh
