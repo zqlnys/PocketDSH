@@ -7424,3 +7424,48 @@ x=$(echo hi); echo $x | cat     # 正常
 
 **而且它不影响产品：`grep`、`sed`、`awk` 和目标第 (1) 项都在解释器层，与这里无关。**
 
+## 缺失的 `/proc` 文件：不是「没有」，是「有但内容错」
+
+修完 `sysinfo` 之后，把系统信息类程序过了一遍，发现另一批相似的问题。
+
+### 当时只有 6 个 `/proc` 文件
+
+```
+/proc/cpuinfo  /proc/filesystems  /proc/meminfo
+/proc/mounts   /proc/uptime       /proc/version
+```
+
+**而一个状态读取器会去找 `stat`、`loadavg`、`mountinfo`……**
+
+| 现象 | 原因 |
+| --- | --- |
+| `iostat: can't open '/proc/stat'` | 文件不存在 |
+| `uptime` 的 load average 恒为 0 | 没有 `/proc/loadavg` |
+
+**`iostat` 至少报错了。但 `uptime` 那一条不报错——它用了另一个来源，
+于是「显示 0」和「真的没有负载」看起来一样。**
+
+### 补齐之后
+
+```
+$ iostat
+Linux 6.1.0-e2 (e2)   11/18/26   _aarch64_
+$ cat /proc/loadavg
+0.00 0.00 0.00 1/1 1
+```
+
+**新增：`/proc/stat`、`/proc/loadavg`、`/proc/sys/kernel/hostname`、
+`/proc/sys/kernel/osrelease`、`/proc/self/mountinfo`。**
+
+### 这一族问题的共同点
+
+| 缺陷 | 缺失时的表现 |
+| --- | --- |
+| `sysinfo` 系统调用 | **打印未初始化的结构体**（三十位数字）|
+| `/proc/stat` | `iostat` 报错退出 |
+| `/proc/loadavg` | **静默显示 0** |
+
+**三种不同的失败形态，同一个根因：模拟层不完整。**
+
+**而只有第一种和第二种会说话。第三种什么都不说，看起来像「真的没有负载」。**
+

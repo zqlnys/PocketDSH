@@ -743,6 +743,18 @@ static void seed_proc(const char *root) {
         {"/proc/version",
          "Linux version 6.1.0-e2 (e2@localhost) #1 SMP aarch64\n"},
         {"/proc/mounts", "/dev/root / ext4 rw,relatime 0 0\n"},
+        // Files a status reader expects to find. Absent ones are not silently zero: the
+        // reader either fails outright (iostat on /proc/stat) or computes from whatever
+        // its struct held.
+        {"/proc/stat",
+         "cpu  100 0 100 10000 0 0 0 0 0 0\n"
+         "cpu0 100 0 100 10000 0 0 0 0 0 0\n"
+         "intr 0\nctxt 0\nbtime 1700000000\nprocesses 1\n"
+         "procs_running 1\nprocs_blocked 0\n"},
+        {"/proc/loadavg", "0.00 0.00 0.00 1/1 1\n"},
+        {"/proc/sys/kernel/hostname", "localhost\n"},
+        {"/proc/sys/kernel/osrelease", "6.1.0-e2\n"},
+        {"/proc/self/mountinfo", "1 1 0:1 / / rw,relatime - ext4 /dev/root rw\n"},
         {"/proc/cpuinfo",
          "processor\t: 0\nBogoMIPS\t: 100.00\n"
          "CPU implementer\t: 0x41\nCPU architecture: 8\n"
