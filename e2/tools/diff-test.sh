@@ -15,6 +15,10 @@ set -u
 BUSYBOX=${1:-/tmp/bbs/bin/busybox.static}
 RUNE=${2:-./tools/rune}
 ROOT=/tmp/alpine-root
+# Overridable so two runs can proceed concurrently: the applet directory is created and
+# populated, and two processes doing that at once race over the same path. verify-all.sh
+# runs the static and dynamic suites in parallel and gives each its own.
+DT_APPLETS=${DT_APPLETS:-/tmp/dt-applets}
 
 # Refuse to run without the pieces, rather than comparing a subset and reporting a
 # smaller number. Without this, a missing root filesystem produced "25 same" instead of
@@ -81,18 +85,18 @@ cp /tmp/dtbig /tmp/alpine-root/tmp/dtbig 2>/dev/null || true
 # loader needed) and which this backend resolves under the guest root.
 DT_STATIC="${3:-/tmp/bbs/bin/busybox.static}"
 if [ -x "$DT_STATIC" ]; then
-    rm -rf /tmp/dt-applets "$ROOT/tmp/dt-applets"
-    mkdir -p /tmp/dt-applets "$ROOT/tmp/dt-applets"
+    rm -rf "$DT_APPLETS" "$ROOT${DT_APPLETS}"
+    mkdir -p "$DT_APPLETS" "$ROOT${DT_APPLETS}"
     "$RUNE" "$DT_STATIC" busybox --list 2>/dev/null | while read -r app; do
         [ -z "$app" ] && continue
-        ln -sf "$DT_STATIC" "/tmp/dt-applets/$app" 2>/dev/null
-        ln -sf "$DT_STATIC" "$ROOT/tmp/dt-applets/$app" 2>/dev/null
+        ln -sf "$DT_STATIC" "$DT_APPLETS/$app" 2>/dev/null
+        ln -sf "$DT_STATIC" "$ROOT${DT_APPLETS}/$app" 2>/dev/null
     done
     # The applet directory comes first, so a busybox applet always wins over the host
     # tool of the same name. Tools the harness itself needs (timeout, env) still
     # resolve, and an applet busybox does not have falls through to the same host
     # binary on both sides - which keeps the comparison fair.
-    DT_PATH="/tmp/dt-applets:/bin:/usr/bin"
+    DT_PATH="$DT_APPLETS:/bin:/usr/bin"
 else
     DT_PATH="/bin:/usr/bin:/sbin:/usr/sbin"
 fi

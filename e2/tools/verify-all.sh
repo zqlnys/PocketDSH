@@ -18,6 +18,51 @@ echo "== overlaps =="
 out=$(make overlaps 2>&1) || fail=1
 printf '%s\n' "$out" | tail -1
 
+# The two binaries are independent, so run them concurrently and print the results in
+# order afterwards. Sequential execution cost 562 seconds of a 716-second verification;
+# the suites are the same work either way, just no longer one after the other.
+run_one() {
+    bb=$1
+    case "$bb" in
+        *static*) label="static" ;;
+        *)        label="dynamic" ;;
+    esac
+    if [ ! -x "$bb" ]; then
+        printf '%s\n' "$bb: MISSING - cannot run the suites against it"
+        return 1
+    fi
+    printf '== %s: %s ==\n' "$label" "$bb"
+    # Each run gets its own applet directory: the suites create and populate it, and two
+    # processes doing that at the same path race.
+    DT_APPLETS="/tmp/dt-applets-$label"
+    DT_APPLETS=$DT_APPLETS; export DT_APPLETS
+    m2=$(./tools/m2-sweep.sh "$bb" "$RUNE" 40 2>&1 | tail -1)
+    printf '  %s\n' "$m2"
+    case "$m2" in *" 0 failed"*) ;; *) return 1 ;; esac
+    m3=$(./tools/m3-sweep.sh "$bb" "$RUNE" 40 2>&1 | tail -1)
+    printf '  %s\n' "$m3"
+    case "$m3" in *" 0 failed"*) ;; *) return 1 ;; esac
+    dt=$(./tools/diff-test.sh "$bb" "$RUNE" "$STATIC" 2>&1 | tail -1)
+    printf '  %s\n' "$dt"
+    case "$dt" in *" 0 different"*) ;; *) return 1 ;; esac
+    return 0
+}
+
+par_out_static=$(mktemp) || exit 1
+par_out_dynamic=$(mktemp) || exit 1
+par_rc_static=0
+par_rc_dynamic=0
+( run_one "$STATIC"  > "$par_out_static"  2>&1 ) & par_pid_static=$!
+( run_one "$DYNAMIC" > "$par_out_dynamic" 2>&1 ) & par_pid_dynamic=$!
+wait "$par_pid_static"  || par_rc_static=1
+wait "$par_pid_dynamic" || par_rc_dynamic=1
+cat "$par_out_static"
+cat "$par_out_dynamic"
+rm -f "$par_out_static" "$par_out_dynamic"
+[ "$par_rc_static" -eq 0 ] || fail=1
+[ "$par_rc_dynamic" -eq 0 ] || fail=1
+
+if false; then
 for bb in "$STATIC" "$DYNAMIC"; do
     # A skipped binary is not a passed binary: the claim is that both work, so a
     # missing one has to fail rather than quietly halve the coverage.
@@ -41,6 +86,7 @@ for bb in "$STATIC" "$DYNAMIC"; do
     echo "  $out"
     case "$out" in *" 0 different"*) ;; *) fail=1 ;; esac
 done
+fi
 
 echo
 if [ "$fail" -eq 0 ]; then echo "verify-all: everything passed"; else echo "verify-all: FAILURES above"; fi
