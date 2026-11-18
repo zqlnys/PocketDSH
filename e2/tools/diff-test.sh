@@ -358,6 +358,29 @@ echo "words=$n chars=$sum avg=$((sum / n))"
 printf '%s\n' "$(( (10 * sum) / n ))" | awk '{printf "%.1f\n", $1/10}' 
 WRAP
 cp /tmp/dtreal.sh /tmp/alpine-root/tmp/dtreal.sh 2>/dev/null || true
+cat > /tmp/dtreal2.sh 2>/dev/null <<'WRAP'
+keys="host port user"; vals="example.com 8080 admin"
+set -- $vals
+for k in $keys; do echo "$k=$1"; shift; done
+echo "---"
+printf 'INFO start\nERROR x\nINFO y\nWARN z\nERROR w\n' | awk '{c[$1]++} END{for(k in c) printf "%s=%d\n", k, c[k]}' | sort
+echo "---"
+printf 'bak-1\nbak-2\nbak-3\nbak-4\nbak-5\n' | sort -r | tail -3 | sort
+echo "---"
+printf 'a,1\nb,x\nc,3\nd\ne,5\n' | while IFS=, read -r name num; do
+  case "$num" in
+    ''|*[!0-9]*) echo "bad: $name=$num" ;;
+    *) echo "ok: $name" ;;
+  esac
+done
+echo "---"
+printf 'x,10\nyy,2\nzzz,300\n' | awk -F, '{printf "%-4s %5s\n", $1, $2}'
+echo "---"
+tries=0; ok=0
+while [ $tries -lt 3 ]; do tries=$((tries+1)); [ $tries -eq 2 ] && ok=1 && break; done
+echo "tries=$tries ok=$ok"
+WRAP
+cp /tmp/dtreal2.sh /tmp/alpine-root/tmp/dtreal2.sh 2>/dev/null || true
 pass=0
 fail=0
 empty=
@@ -628,6 +651,7 @@ seq 500 | awk '{s+=$1} END{print s}'
 awk 'BEGIN{for(i=1;i<=500;i++)t+=i; print t}'
 sh /tmp/dtalgo.sh
 sh /tmp/dtreal.sh
+sh /tmp/dtreal2.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh
 sh /tmp/dtex
