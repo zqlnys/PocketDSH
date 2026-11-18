@@ -7,9 +7,13 @@ names in one table and the expectations in another, and the two drifted apart, s
 silently verified 29 of 73 guards. Two attempts to repair that by generating one table from
 the other produced a table that looked complete and checked nothing.
 
-The allowed sets were generated from busybox.static with llvm-objdump. A guard that starts
-matching something new means either a decoder regression or a binary with instructions not
-seen here; both are worth knowing.
+The allowed sets are the union of what these guards match in three binaries: the static
+busybox, the dynamic one, and the musl loader. One binary is not enough - the static busybox
+alone left add, and, bif and sub outside the SIMD logical guard, and those are legitimate
+members that simply do not appear there.
+
+A guard that starts matching something none of them contain means either a decoder regression
+or a new binary, and both are worth looking at.
 """
 import os, re, shutil, subprocess, sys
 
@@ -19,7 +23,7 @@ GUARDS = [
     ("ADD/ADDS+5", 0x1F000000, 0x11000000, {"add", "adds", "cmn", "cmp", "mov", "sub", "subs"}),
     ("ADD/ADDS+6", 0x1F200000, 0x0B000000, {"add", "adds", "cmn", "cmp", "neg", "negs", "sub", "subs"}),
     ("ADD/ADDS+3", 0x1F200000, 0x0B200000, {"add", "adds", "cmp", "sub", "subs"}),
-    ("EOR/MOV", 0x1F200400, 0x0E200400, {"eor", "mov"}),
+    ("ADD/AND+4", 0x1F200400, 0x0E200400, {"add", "and", "bif", "eor", "mov", "sub"}),
     ("MADD/MNEG+2", 0x1F600000, 0x1B000000, {"madd", "mneg", "msub", "mul"}),
     ("AND/ANDS+4", 0x1F800000, 0x12000000, {"and", "ands", "eor", "mov", "orr", "tst"}),
     ("ASR/BFI+10", 0x1F800000, 0x13000000, {"asr", "bfi", "bfxil", "lsl", "lsr", "sbfiz", "sbfx", "sxtb", "sxth", "sxtw", "ubfiz", "ubfx"}),
@@ -45,7 +49,7 @@ GUARDS = [
     ("CLZ/RBIT+2", 0x7FE00000, 0x5AC00000, {"clz", "rbit", "rev", "rev16"}),
     ("SMULH", 0x7FE0FC00, 0x1B407C00, {"smulh"}),
     ("UMULH", 0x7FE0FC00, 0x1BC07C00, {"umulh"}),
-    ("FMADD/FMSUB+6", 0x8F000400, 0x0F000400, {"fmadd", "fmsub", "movi", "mvni", "shl", "sshll", "ushll", "ushr"}),
+    ("FMADD/FMSUB+7", 0x8F000400, 0x0F000400, {"fmadd", "fmsub", "fnmsub", "movi", "mvni", "shl", "sshll", "ushll", "ushr"}),
     ("guard_32", 0x9F3FFC00, 0x0E212800, {}),
     ("guard_33", 0x9F3FFC00, 0x0E214800, {}),
     ("SSHLL/USHLL", 0x9F80FC00, 0x0F00A400, {"sshll", "ushll"}),
@@ -57,9 +61,9 @@ GUARDS = [
     ("guard_40", 0xBF9FF400, 0x0D008000, {}),
     ("guard_41", 0xBF9FF400, 0x0D008400, {}),
     ("SCVTF/UCVTF", 0xDF3FFC00, 0x5E21D800, {"scvtf", "ucvtf"}),
-    ("B.EQ/B.GE+10", 0xFF000010, 0x54000000, {"b.eq", "b.ge", "b.gt", "b.hi", "b.hs", "b.le", "b.lo", "b.ls", "b.lt", "b.mi", "b.ne", "b.pl"}),
+    ("B.EQ/B.GE+12", 0xFF000010, 0x54000000, {"b.eq", "b.ge", "b.gt", "b.hi", "b.hs", "b.le", "b.lo", "b.ls", "b.lt", "b.mi", "b.ne", "b.pl", "b.vc", "b.vs"}),
     ("EOR/MOV", 0xFF008400, 0x6E000400, {"eor", "mov"}),
-    ("FADD/FDIV+2", 0xFF200C00, 0x1E200800, {"fadd", "fdiv", "fmul", "fsub"}),
+    ("FADD/FDIV+4", 0xFF200C00, 0x1E200800, {"fadd", "fdiv", "fmaxnm", "fminnm", "fmul", "fsub"}),
     ("FCSEL", 0xFF200C00, 0x1E200C00, {"fcsel"}),
     ("FMOV", 0xFF201FE0, 0x1E201000, {"fmov"}),
     ("FCMP/FCMPE", 0xFF207C00, 0x1E202000, {"fcmp", "fcmpe"}),
