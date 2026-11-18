@@ -34,6 +34,20 @@ def repo_root(start: pathlib.Path) -> pathlib.Path | None:
     return pathlib.Path(out) if out else None
 
 
+def check_files_found(root: pathlib.Path) -> bool:
+    """The checks walk the tree; if the walk finds nothing they all pass vacuously.
+
+    A glob that stops matching - a directory renamed, a path filter too narrow - would
+    turn every check below into a no-op that reports success. This states the count.
+    """
+    files = [f for f in root.rglob("*.swift") if ".build" not in str(f)]
+    if len(files) < 10:
+        print(f"  only {len(files)} Swift file(s) found - the tree walk is not working")
+        return False
+    print(f"  {len(files)} Swift files found to check")
+    return True
+
+
 def check_braces(root: pathlib.Path) -> bool:
     """Compare each file's brace balance against its committed version.
 
@@ -235,6 +249,7 @@ def check_test_classes(root: pathlib.Path) -> bool:
 def main() -> int:
     root = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
     results = [
+        ("files found", check_files_found(root)),
         ("tool names", check_tool_names(root)),
         ("tool handling", check_tool_handling(root)),
         ("tool specs", check_tool_specs(root)),
