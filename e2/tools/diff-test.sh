@@ -84,6 +84,16 @@ cp /tmp/dtbig /tmp/alpine-root/tmp/dtbig 2>/dev/null || true
 # directory of links to one static busybox, which the host can execute directly (no
 # loader needed) and which this backend resolves under the guest root.
 DT_STATIC="${3:-/tmp/bbs/bin/busybox.static}"
+# chroot gives qemu the same filesystem view as the interpreter. It needs root and a
+# /tmp/qemu inside the guest root, so it is used only when both are present.
+DT_CHROOT=0
+DT_STATIC_IN=/tmp/busybox-dt
+if [ -x "$ROOT/tmp/qemu" ] && [ "$(id -u)" = "0" ]; then
+    if cp "$DT_STATIC" "$ROOT$DT_STATIC_IN" 2>/dev/null; then
+        chmod +x "$ROOT$DT_STATIC_IN" 2>/dev/null
+        DT_CHROOT=1
+    fi
+fi
 if [ -x "$DT_STATIC" ]; then
     rm -rf "$DT_APPLETS" "$ROOT${DT_APPLETS}"
     mkdir -p "$DT_APPLETS" "$ROOT${DT_APPLETS}"
@@ -395,8 +405,19 @@ while IFS= read -r cmd; do
     # before it are stripped; nothing else is.
     mine=$(timeout 60 env PATH="$DT_PATH" "$RUNE" "$DT_STATIC" sh -c "$cmd" 2>&1 \
            | grep -v '^\[exit ' | sed -e :a -e '/^$/{$d;N;ba' -e '}')
-    theirs=$(env -i PATH="$DT_PATH" timeout 60 qemu-aarch64-static -L "$ROOT" "$DT_STATIC" sh -c "$cmd" 2>&1 \
-           | sed -e :a -e '/^$/{$d;N;ba' -e '}')
+    # Run qemu inside the guest root when that is possible. Without chroot it resolves
+    # PATH, /proc, /etc and absolute symlinks against the host, which produced five
+    # separate classes of false difference. With it, both sides see the same filesystem.
+    if [ "$DT_CHROOT" = "1" ]; then
+        # The same binary on both sides, addressed by its path inside the chroot. Using
+        # /bin/busybox here would compare the static build against the dynamic one and
+        # lose the property that makes this a fidelity test.
+        theirs=$(env -i PATH="$DT_PATH" timeout 60 chroot "$ROOT" /tmp/qemu "$DT_STATIC_IN" sh -c "$cmd" 2>&1 \
+               | sed -e :a -e '/^$/{$d;N;ba' -e '}')
+    else
+        theirs=$(env -i PATH="$DT_PATH" timeout 60 qemu-aarch64-static -L "$ROOT" "$DT_STATIC" sh -c "$cmd" 2>&1 \
+               | sed -e :a -e '/^$/{$d;N;ba' -e '}')
+    fi
     if [ "$mine" = "$theirs" ]; then
         pass=$((pass + 1))
         # Both sides empty is a pass that proves very little: a case whose command was
@@ -651,6 +672,13 @@ seq 500 | awk '{s+=$1} END{print s}'
 awk 'BEGIN{for(i=1;i<=500;i++)t+=i; print t}'
 sh /tmp/dtalgo.sh
 sh /tmp/dtreal.sh
+# /proc contents were untestable while qemu ran outside the root: it read the host's
+# /proc and reported the host kernel version. With chroot both sides see the same files.
+cat /proc/sys/kernel/hostname
+cat /proc/sys/kernel/osrelease
+head -1 /proc/stat | cut -d' ' -f1
+cat /proc/loadavg | cut -d' ' -f1-3
+grep -c . /proc/meminfo
 sh /tmp/dtreal2.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh
