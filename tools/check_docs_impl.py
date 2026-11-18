@@ -27,6 +27,7 @@ CLAIMS = [
     ("docs/HANDOFF.md", r"(?m)^\| M2 扫描.*?\| (\d+) \|", "m2", "M2 cases"),
     ("docs/HANDOFF.md", r"(?m)^\| M3 扫描.*?\| (\d+) \|", "m3", "M3 cases"),
     ("docs/HANDOFF.md", r"(?m)^\| 差分对比.*?\| (\d+) \|", "diff", "differential cases"),
+    ("docs/HANDOFF.md", r"(?m)^\| 静态检查.*?\| (\d+) 类 \|", "static", "static checks"),
 ]
 
 
@@ -39,6 +40,10 @@ def actual(name: str) -> int | None:
         "m2": ["./tools/m2-sweep.sh", busybox, "./tools/rune", "40"],
         "m3": ["./tools/m3-sweep.sh", busybox, "./tools/rune", "40"],
         "diff": ["./tools/diff-test.sh", busybox, "./tools/rune"],
+        # Counts the static checks by running them: seven indented result lines means
+        # seven checks. Reading the script's own structure would break the moment the
+        # output format changed.
+        "static": ["sh", str(ROOT / "tools/check-swift.sh"), str(ROOT)],
     }
     try:
         out = subprocess.run(commands[name], cwd=e2, capture_output=True, text=True,
@@ -51,6 +56,10 @@ def actual(name: str) -> int | None:
         "m3": r"M3 sweep: (\d+) passed",
         "diff": r"diff test: (\d+) same",
     }
+    if name == "static":
+        # Count the indented result lines; there is one per check.
+        lines = [l for l in out.split("\n") if l.startswith("  ") and l.strip()]
+        return len(lines) if lines else None
     m = re.search(patterns[name], out)
     return int(m.group(1)) if m else None
 

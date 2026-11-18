@@ -569,7 +569,7 @@ examples/workspace-inspector.dshplugin/
 | M2 扫描（不崩溃） | 163 | `tools/m2-sweep.sh` |
 | M3 扫描（不崩溃） | 93 | `tools/m3-sweep.sh` |
 | 差分对比（与参考实现逐字节一致） | 237 | `tools/diff-test.sh` |
-| 静态检查（无 Swift 编译器时的替代） | 6 类 | `tools/check-swift.sh` |
+| 静态检查（无 Swift 编译器时的替代） | 7 类 | `tools/check-swift.sh` |
 
 一条命令跑完：`./tools/verify.sh`。
 
@@ -577,6 +577,16 @@ examples/workspace-inspector.dshplugin/
 
 **已知未解决**：CPython 启动差异、`pow` 运算符（`^`/`**`）、命令替换在管道中丢输出（测试工具层）、
 `wait4` 只等一个作业成员（已用量子规避）。
+
+**调试与验证用的工具**（都在 `e2/tools/`）：
+
+| 工具 | 用途 |
+| --- | --- |
+| `e2run.sh` | 跑 harness，**状态行加 `[status]` 前缀走 stderr**——防止 `grep -v` 把故障原因滤掉 |
+| `mutation-check.sh` | 验证「这条测试真的能抓到回归吗」：`CAUGHT` / `NOT CAUGHT` / `INVALID` |
+| `diff-test.sh` | 与参考实现逐字节对比（**这个文件定义了「一致」的含义，写临时脚本时复用它**）|
+
+顶层还有 `tools/verify.sh`（两个技术栈一起跑）和 `tools/check-docs.sh`（文档数字与实际是否相符）。
 
 代码在 `e2/`，文档在 [E2-BACKEND.md](E2-BACKEND.md)。**E2 不阻塞上架**——发布版与它无关。
 
