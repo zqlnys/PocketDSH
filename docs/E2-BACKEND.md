@@ -7469,3 +7469,43 @@ $ cat /proc/loadavg
 
 **而只有第一种和第二种会说话。第三种什么都不说，看起来像「真的没有负载」。**
 
+## 上一轮的修复其实没生效
+
+上轮给 `/proc` 加了几个文件，其中 `/proc/sys/kernel/hostname` **加了但没出现**：
+
+```
+$ cat /proc/sys/kernel/hostname
+cat: can't open '/proc/sys/kernel/hostname': No such file or directory
+```
+
+**原因**：`seed_proc` 只创建了 `/proc/self` 和 `/proc/self/fd` 两个目录，
+**其余文件的父目录不存在时 `fopen` 失败——而失败被 `continue` 吞掉了。**
+
+```c
+FILE *f = fopen(full, "wb");
+if (f == NULL) continue;      // ← 静默跳过
+```
+
+**修法**：写入前逐级创建父目录。
+
+**修完**：
+
+```
+$ cat /proc/sys/kernel/hostname
+localhost
+$ cat /proc/sys/kernel/osrelease
+6.1.0-e2
+```
+
+### 这是同一个错误的第三次
+
+| 轮次 | 表现 |
+| --- | --- |
+| 304 | `sysinfo` 不存在 → 打印垃圾 |
+| 305 | `/proc/stat` 不存在 → `iostat` 报错 |
+| **306** | **我以为加了的文件其实没加 → 静默失败** |
+
+**前两次是「模拟层缺东西」，这一次是「补的东西没到位」——而到位与否没有任何反馈。**
+
+**`if (f == NULL) continue;` 这一行的意图是对的（缺目录就跳过），但它让「补了没补上」和「本来就不需要」变得无法区分。**
+

@@ -777,6 +777,25 @@ static void seed_proc(const char *root) {
     for (size_t i = 0; i < sizeof(files) / sizeof(files[0]); i++) {
         char full[2048];
         snprintf(full, sizeof(full), "%s%s", root, files[i].path);
+        // Create the parent directories first. A file whose directory does not exist
+        // makes fopen fail, and the failure was silent - /proc/sys/kernel/hostname was
+        // added to the list and simply never appeared.
+        {
+            char parent[2048];
+            snprintf(parent, sizeof(parent), "%s", full);
+            char *slash = strrchr(parent, '/');
+            if (slash != NULL) {
+                *slash = '\0';
+                for (char *q = parent + strlen(root) + 1; *q != '\0'; q++) {
+                    if (*q == '/') {
+                        *q = '\0';
+                        mkdir(parent, 0555);
+                        *q = '/';
+                    }
+                }
+                mkdir(parent, 0555);
+            }
+        }
         // Do not clobber a file the guest has already produced.
         if (access(full, F_OK) == 0) continue;
         FILE *f = fopen(full, "wb");
