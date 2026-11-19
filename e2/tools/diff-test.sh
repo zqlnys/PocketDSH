@@ -732,6 +732,16 @@ printf '\t\n' | cat -A
 echo 'a.b' | grep -c 'a\\.b'
 echo 'a*b' | grep -c 'a[*]b'
 echo 'axb' | grep -c 'a\\.b'
+# Interval bounds, anchors and character classes - including the cases that must NOT
+# match. A loose engine passes the positive cases and fails these.
+echo aaa | grep -c 'a\\{2,3\\}'
+echo aa | grep -c 'a\\{3\\}'
+echo abc | grep -c '^b' || true
+echo abc | grep -c 'b$'
+printf 'a\nb\n' | grep -vc 'a'
+echo ABC | grep -ic 'abc'
+echo 'a1' | grep -c '[[:alpha:]][[:digit:]]'
+echo '1a' | grep -c '[[:alpha:]][[:digit:]]' || true
 sh /tmp/dtreal2.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh
