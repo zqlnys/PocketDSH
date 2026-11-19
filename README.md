@@ -72,6 +72,7 @@ make check
 
 - `PocketDSHCore` 8 个测试
 - `LuaRuntime` 8 个测试（含 3 个持久插件运行时测试）
+- `PocketDSHTests` **26 个测试**（应用层，Xcode 中运行）
 - `swiftc -parse` 全部 Swift 源文件
 - XcodeGen spec 解析和工程生成（Linux 上使用 XcodeGen 二进制）
 - 无 Token / 私钥 / WebView / Flutter 依赖
