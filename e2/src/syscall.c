@@ -217,17 +217,32 @@ unsigned long long g_dbg_last_syscall;
 // argument and environment buffers had.
 #define E2_PATH_MAX 1024
 
+// getenv walks environ and compares strings, and these two switches are consulted on every
+// single syscall. Profiling put getenv at 84% of the run: the tracing that exists to debug
+// was costing more than the work being debugged. Resolved once, on first use.
+static int trace_path_on(void) {
+    static int cached = -1;
+    if (cached < 0) cached = getenv("E2_TRACE_PATH") != NULL;
+    return cached;
+}
+
+static int trace_sys_on(void) {
+    static int cached = -1;
+    if (cached < 0) cached = getenv("E2_TRACE_SYS") != NULL;
+    return cached;
+}
+
 e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
     // One line per syscall, opt-in. Comparing this against qemu's -strace is the
     // fastest way to see which operation a program takes and where the two
     // implementations diverge.
-    if (getenv("E2_TRACE_PATH") != NULL && m->cpu.x[8] == 56) {
+    if (trace_path_on() && m->cpu.x[8] == 56) {
         char pbuf[256];
         if (read_guest_string(m, m->cpu.x[1], pbuf, sizeof(pbuf)) == 0) {
             fprintf(stderr, "[open] %s\n", pbuf);
         }
     }
-    if (getenv("E2_TRACE_SYS") != NULL) {
+    if (trace_sys_on()) {
         fprintf(stderr, "[sys@%llu p%d pc=0x%llx] %llu(0x%llx, 0x%llx, 0x%llx, 0x%llx, 0x%llx, 0x%llx)\n",
                 g_global_step, g_dbg_pid, (unsigned long long)m->cpu.pc,
                 (unsigned long long)m->cpu.x[8],
