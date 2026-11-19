@@ -742,6 +742,14 @@ printf 'a\nb\n' | grep -vc 'a'
 echo ABC | grep -ic 'abc'
 echo 'a1' | grep -c '[[:alpha:]][[:digit:]]'
 echo '1a' | grep -c '[[:alpha:]][[:digit:]]' || true
+echo 'a b c' | awk '{print NF}'
+echo 'a b c' | awk '{print $NF}'
+printf '1 2\n3 4\n' | awk '{print $1+$2}'
+echo x | sed 's/x/y/;s/y/z/'
+seq 3 | sed -n '2,3p'
+echo abc | sed 'y/abc/xyz/'
+printf 'a\nb\nc\n' | sed -n '/b/p'
+echo 5 | awk '{print ($1>3)?"big":"small"}'
 sh /tmp/dtreal2.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh
