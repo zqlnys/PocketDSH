@@ -200,6 +200,7 @@ Agent 只会拿到相对路径。绝对路径、`..`、symlink 逃逸都会被 `
 - [DSH / dsh-Go 兼容范围](docs/DSH-COMPATIBILITY.md)
 - [PocketDSH 插件 SDK](docs/PLUGIN-SDK.md)
 - [闹钟 / 电话 / 消息的系统能力边界](docs/SYSTEM-ACTIONS.md)
+- [执行探测：iOS 能不能跑运行时加载的代码](docs/EXECUTION-PROBE.md) —— **E2 为什么必须存在**
 - [Tier C 本地 Linux 可行性](docs/TIER-C.md)
 - [Tier C 项目工作区挂载](docs/WORKSPACE-MOUNT.md)
 - [Tier C 持久 shell](docs/PERSISTENT-SHELL.md)

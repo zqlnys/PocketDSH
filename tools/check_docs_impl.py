@@ -328,6 +328,27 @@ def check_readme_test_counts() -> int:
     return 0
 
 
+def check_doc_index() -> int:
+    """Every document in docs/ should be linked from the README.
+
+    EXECUTION-PROBE.md was not - the document that establishes why E2 has to exist at all.
+    A reader following the README's index would never have found the premise.
+    """
+    docs = ROOT / "docs"
+    readme = ROOT / "README.md"
+    if not docs.exists():
+        print("  docs/ not found, skipping")
+        return 0
+    on_disk = {f.name for f in docs.glob("*.md")}
+    linked = set(re.findall(r"docs/([A-Za-z0-9._-]+\.md)", readme.read_text(errors="replace")))
+    missing = sorted(on_disk - linked)
+    if missing:
+        print("  not linked from the README: " + ", ".join(missing))
+        return 1
+    print(f"  all {len(on_disk)} document(s) linked from the README")
+    return 0
+
+
 def main() -> int:
     cache: dict[str, int | None] = {}
     problems = []
@@ -362,10 +383,11 @@ def main() -> int:
     booleans = check_boolean_claims()
     readme_tools = check_readme_tool_list()
     readme_tests = check_readme_test_counts()
+    doc_index = check_doc_index()
     if problems:
         print(f"  ^ {len(problems)} of {checked} claims are out of date")
         return 1
-    if covered != 0 or headings != 0 or stray != 0 or stated != 0 or booleans != 0 or readme_tools != 0 or readme_tests != 0:
+    if covered != 0 or headings != 0 or stray != 0 or stated != 0 or booleans != 0 or readme_tools != 0 or readme_tests != 0 or doc_index != 0:
         return 1
     print(f"  {checked} claim(s) match the suites")
     return 0
