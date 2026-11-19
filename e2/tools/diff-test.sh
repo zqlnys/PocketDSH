@@ -719,6 +719,10 @@ echo 'a  b' | tr -s ' '
 seq 3 | awk '{printf "%s,", $1}'
 printf 'x\n' | cat -n
 seq 4 | tac
+seq 20 | awk 'NR%4==0' | wc -l
+printf 'a1b2\n' | tr -d '0-9'
+echo abc | sed 's/b/[&]/'
+printf '1\n2\n3\n' | awk '{a[NR]=$1} END{for(i=NR;i>0;i--) print a[i]}'
 sh /tmp/dtreal2.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh
