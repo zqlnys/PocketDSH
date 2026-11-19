@@ -750,6 +750,12 @@ seq 3 | sed -n '2,3p'
 echo abc | sed 'y/abc/xyz/'
 printf 'a\nb\nc\n' | sed -n '/b/p'
 echo 5 | awk '{print ($1>3)?"big":"small"}'
+# Control flow a script actually uses: recursion through command substitution, case
+# branches accumulating state, and set -e with a trap and a recovered failure.
+fact() { if [ "$1" -le 1 ]; then echo 1; else echo $(( $1 * $(fact $(( $1 - 1 ))) )); fi; }; echo "5! = $(fact 5)"
+out=""; for i in 1 2 3; do case $i in 1) out="$out one" ;; 2) out="$out two" ;; *) out="$out many" ;; esac; done; echo "$out"
+fib() { if [ "$1" -lt 2 ]; then echo "$1"; else echo $(( $(fib $(( $1-1 ))) + $(fib $(( $1-2 ))) )); fi; }; echo "fib(7) = $(fib 7)"
+false || echo recovered
 sh /tmp/dtreal2.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh
