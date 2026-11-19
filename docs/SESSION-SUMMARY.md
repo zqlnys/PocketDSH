@@ -13,12 +13,16 @@
 单指令测试   246 项     make test
 M2 扫描      163 条     tools/m2-sweep.sh
 M3 扫描       93 条     tools/m3-sweep.sh
-差分对比     319 条     tools/diff-test.sh
+差分对比     325 条     tools/diff-test.sh
 iOS 静态       8 类     tools/check-swift.sh
 解码守卫      70/70     tools/check-decode-families.py
 ─────────────────────────────
-合计         821 项      ./tools/verify.sh（约 9 分钟）
+合计         827 项      ./tools/verify.sh（约 9 分钟）
 ```
+
+**最后跑了一次 `./tools/fresh-clone-check.sh`：克隆到 /tmp、构建、跑完全部 827 项——
+`fresh-clone-check: a fresh clone builds and passes`。**
+**这是「仓库本身是完整的」的最终证明。**
 
 ---
 
@@ -26,7 +30,7 @@ iOS 静态       8 类     tools/check-swift.sh
 
 ### (1) 修复 BRE 引擎缺陷，让 grep/sed/awk 与参考实现一致
 
-**已达成。** 差分对比从 0 涨到 **319 条**，`grep`、`sed`、`awk` 与 qemu 下同一个 busybox
+**已达成。** 差分对比从 0 涨到 **325 条**，`grep`、`sed`、`awk` 与 qemu 下同一个 busybox
 **逐字节一致**。
 
 会话中修的实质性缺陷（部分）：
