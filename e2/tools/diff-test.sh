@@ -712,6 +712,13 @@ cat /etc/hosts | head -1
 cat /etc/group | head -1 | cut -d: -f1
 ls /root | head -1
 test -d /var/tmp && echo exists
+printf 'a\n\nb\n' | grep -c '^$'
+seq 5 | sed '2d'
+printf 'abc' | rev
+echo 'a  b' | tr -s ' '
+seq 3 | awk '{printf "%s,", $1}'
+printf 'x\n' | cat -n
+seq 4 | tac
 sh /tmp/dtreal2.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh
