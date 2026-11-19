@@ -56,19 +56,12 @@ run_one() {
     return 0
 }
 
-par_out_static=$(mktemp) || exit 1
-par_out_dynamic=$(mktemp) || exit 1
-par_rc_static=0
-par_rc_dynamic=0
-( run_one "$STATIC"  > "$par_out_static"  2>&1 ) & par_pid_static=$!
-( run_one "$DYNAMIC" > "$par_out_dynamic" 2>&1 ) & par_pid_dynamic=$!
-wait "$par_pid_static"  || par_rc_static=1
-wait "$par_pid_dynamic" || par_rc_dynamic=1
-cat "$par_out_static"
-cat "$par_out_dynamic"
-rm -f "$par_out_static" "$par_out_dynamic"
-[ "$par_rc_static" -eq 0 ] || fail=1
-[ "$par_rc_dynamic" -eq 0 ] || fail=1
+# Sequential, and not by preference. Running the two concurrently saved about 130 seconds
+# and made the suite flaky: both sides share the guest root's /tmp, and a growing number of
+# cases create files there, so one run could read what the other had just written. A
+# verification that fails intermittently is worth less than a slow one that does not.
+run_one "$STATIC"  || fail=1
+run_one "$DYNAMIC" || fail=1
 
 if false; then
 for bb in "$STATIC" "$DYNAMIC"; do
