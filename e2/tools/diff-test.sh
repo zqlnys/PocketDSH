@@ -793,6 +793,9 @@ printf 'one two\n' | awk '{print toupper($2)}'
 srcs=$(printf 'main.c\nutil.c\nmain.h\n'); c_files=$(printf '%s\n' "$srcs" | grep '\.c$' | sort); count=$(printf '%s\n' "$c_files" | wc -l); echo "$count"; printf '%s\n' "$c_files" | while read -r f; do echo "  ${f%.c}.o"; done
 printf 'alice:90\nbob:75\ncarol:88\ndave:60\n' | awk -F: '{t+=$2;n++;if($2>=80)p++} END{printf "n=%d total=%d avg=%.1f pass=%d\n",n,t,t/n,p}'
 printf 'alice:90\nbob:75\ncarol:88\ndave:60\n' | sort -t: -k2 -n | tail -1 | cut -d: -f1
+# Holding more descriptors than the old table allowed. Three places capped at 64 - the
+# descriptor table, the lowest-free search and F_DUPFD - and only the third showed up.
+i=1; while [ $i -le 70 ]; do eval "exec $((i+2))>/tmp/dtf_$i"; i=$((i+1)); done; echo held; i=1; while [ $i -le 70 ]; do eval "exec $((i+2))>&-"; i=$((i+1)); done; echo released
 sh /tmp/dtreal2.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh
