@@ -770,6 +770,12 @@ printf 'x\ny\n' | sed '1!G;h;$!d'
 seq 5 | awk 'BEGIN{s=0}{s+=$1}END{printf "%.2f\n", s/5}'
 printf 'AbC\n' | tr '[:upper:]' '[:lower:]'
 echo 'a b' | cut -d' ' -f1
+printf 'a\nb\nc\n' | sed -n '1~2p'
+seq 10 | awk 'NR==1,NR==3' | wc -l
+printf 'x y z\n' | awk '{OFS="-"; $1=$1; print}'
+echo 10 | awk '{print $1/4}'
+printf 'aa\nbb\n' | uniq -c
+seq 5 | sort -n | head -2 | tail -1
 sh /tmp/dtreal2.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh
