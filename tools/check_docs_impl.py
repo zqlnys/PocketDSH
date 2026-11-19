@@ -349,6 +349,31 @@ def check_doc_index() -> int:
     return 0
 
 
+def check_e2_tool_mentions() -> int:
+    """Every tool under e2/tools/ should be mentioned somewhere in the documentation.
+
+    Four were not, including three trace helpers - the ones a person reaches for when a
+    comparison disagrees and they need to see what each side actually executed.
+    """
+    tools_dir = ROOT / "e2/tools"
+    if not tools_dir.exists():
+        print("  e2/tools not found, skipping")
+        return 0
+    docs_text = ""
+    for name in ("README.md", "docs/HANDOFF.md", "docs/E2-BACKEND.md"):
+        path = ROOT / name
+        if path.exists():
+            docs_text += path.read_text(errors="replace")
+    skip = {"__pycache__", "rune", "rune.c"}
+    missing = sorted(f.name for f in tools_dir.iterdir()
+                     if f.name not in skip and f.name not in docs_text)
+    if missing:
+        print("  not mentioned in the documentation: " + ", ".join(missing))
+        return 1
+    print("  every e2/tools entry is mentioned somewhere")
+    return 0
+
+
 def main() -> int:
     cache: dict[str, int | None] = {}
     problems = []
@@ -384,10 +409,11 @@ def main() -> int:
     readme_tools = check_readme_tool_list()
     readme_tests = check_readme_test_counts()
     doc_index = check_doc_index()
+    e2_tools = check_e2_tool_mentions()
     if problems:
         print(f"  ^ {len(problems)} of {checked} claims are out of date")
         return 1
-    if covered != 0 or headings != 0 or stray != 0 or stated != 0 or booleans != 0 or readme_tools != 0 or readme_tests != 0 or doc_index != 0:
+    if covered != 0 or headings != 0 or stray != 0 or stated != 0 or booleans != 0 or readme_tools != 0 or readme_tests != 0 or doc_index != 0 or e2_tools != 0:
         return 1
     print(f"  {checked} claim(s) match the suites")
     return 0

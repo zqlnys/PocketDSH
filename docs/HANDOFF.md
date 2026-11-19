@@ -594,6 +594,13 @@ examples/workspace-inspector.dshplugin/
 | `e2run.sh` | 跑 harness，**状态行加 `[status]` 前缀走 stderr**——防止 `grep -v` 把故障原因滤掉 |
 | `mutation-check.sh` | 验证「这条测试真的能抓到回归吗」：`CAUGHT` / `NOT CAUGHT` / `INVALID` |
 | `diff-test.sh` | 与参考实现逐字节对比（**这个文件定义了「一致」的含义，写临时脚本时复用它**）|
+| `check-decode-families.py` | 每条解码守卫是否只匹配它该匹配的助记符（70/70 覆盖）|
+| `check-rule-mnemonics.py` | 用 llvm-mc 交叉验证规则家族（29/70 覆盖，输出里会说明）|
+| `qemu-execdiff.py` | 对比两边执行过哪些 PC |
+| `qemu-exectrace.py` | 把 qemu 的 `-d exec` 日志变成 guest PC 序列 |
+| `qemu-steptrace.py` | 单步追踪（经 gdb RSP）|
+| `qemu-fultrace.py` | 完整寄存器状态追踪 |
+| `trace-align.py` / `trace-resync.py` | 对齐/重同步两份轨迹；`resync` 能跨过循环展开的噪声 |
 
 顶层还有 `tools/verify.sh`（两个技术栈一起跑）和 `tools/check-docs.sh`（文档数字与实际是否相符）。
 
