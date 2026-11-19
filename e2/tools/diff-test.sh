@@ -776,6 +776,12 @@ printf 'x y z\n' | awk '{OFS="-"; $1=$1; print}'
 echo 10 | awk '{print $1/4}'
 printf 'aa\nbb\n' | uniq -c
 seq 5 | sort -n | head -2 | tail -1
+printf 'a\nb\n' | sed '$!d'
+seq 3 | awk '{$0="x" $0}1'
+echo 'A,B' | tr ',' '\n' | sort
+printf '1\n2\n' | awk 'END{print NR}'
+echo abc | grep -o 'b'
+seq 4 | xargs -I{} echo 'v{}'
 sh /tmp/dtreal2.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh
