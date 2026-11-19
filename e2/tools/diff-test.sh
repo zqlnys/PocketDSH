@@ -782,6 +782,12 @@ echo 'A,B' | tr ',' '\n' | sort
 printf '1\n2\n' | awk 'END{print NR}'
 echo abc | grep -o 'b'
 seq 4 | xargs -I{} echo 'v{}'
+printf 'a b\nc d\n' | awk '{print $1}' FS=' '
+seq 5 | sed -e 's/^/x/' -e 's/$/y/'
+echo 'k=v' | cut -d= -f2
+printf 'A\nB\n' | tr 'AB' 'XY'
+seq 3 | awk '{s=s $0} END{print length(s)}'
+printf 'one two\n' | awk '{print toupper($2)}'
 sh /tmp/dtreal2.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh
