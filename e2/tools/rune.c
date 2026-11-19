@@ -105,15 +105,23 @@ static void trace_flush(void);
 // the default action terminates the writer. Without that, `yes | head -1` runs
 // forever: the writer never learns the reader left.
 static void note_write_error(int tab, int err);
-static struct { int used, host; } g_fds[32][256];
-static void *g_dirs[32][256];
-static unsigned char g_cloexec[32][256];
+// Two limits that were each written out in several places and had to be found by bisecting
+// when a program exceeded them: the descriptor table at three sites (the table, the
+// lowest-free search, and F_DUPFD) and the process table at four (procs and the three
+// per-process tables indexed by slot). Named once here so the next person changing one has
+// only one place to change.
+#define E2_MAX_PROCS 32
+#define E2_MAX_FDS 256
+
+static struct { int used, host; } g_fds[E2_MAX_PROCS][E2_MAX_FDS];
+static void *g_dirs[E2_MAX_PROCS][E2_MAX_FDS];
+static unsigned char g_cloexec[E2_MAX_PROCS][E2_MAX_FDS];
 #define TAB(c) (g_fds[((const procctx *)(c))->fdtab])
 #define DIRTAB(c) (g_dirs[((const procctx *)(c))->fdtab])
 static void fd_init_tab(int tab) {
-    for (int i = 0; i < 256; i++) { g_fds[tab][i].used = 0; g_fds[tab][i].host = -1; }
+    for (int i = 0; i < E2_MAX_FDS; i++) { g_fds[tab][i].used = 0; g_fds[tab][i].host = -1; }
     for (int i = 0; i < 3; i++) { g_fds[tab][i].used = 1; g_fds[tab][i].host = i; }
-    for (int i = 0; i < 256; i++) { g_dirs[tab][i] = NULL; g_cloexec[tab][i] = 0; }
+    for (int i = 0; i < E2_MAX_FDS; i++) { g_dirs[tab][i] = NULL; g_cloexec[tab][i] = 0; }
 }
 // fork shares the open file description, so a close in one process must not
 // close the descriptor for its siblings. Refcounting host descriptors models
@@ -144,7 +152,7 @@ static int fd_alloc_tab(int tab, int host) {
     // Starting at 3 looked safe but is not: a program that closes stdin and then
     // opens a file expects to get 0 back, and hard-coding 3 breaks every tool
     // built that way - uniq was the one that showed it.
-    for (int i = 0; i < 256; i++)
+    for (int i = 0; i < E2_MAX_FDS; i++)
         if (!g_fds[tab][i].used) {
             g_fds[tab][i].used = 1; g_fds[tab][i].host = host;
             return i;
@@ -249,7 +257,7 @@ static int fs_open(void *c, const char *path, int fl, int m) {
     {
         const int alias = device_fd_alias(path);
         if (alias >= 0) {
-            if (alias >= 256 || !TAB(c)[alias].used) return -EBADF;
+            if (alias >= E2_MAX_FDS || !TAB(c)[alias].used) return -EBADF;
             const int nfd = fd_alloc_tab(((procctx *)c)->fdtab, TAB(c)[alias].host);
             if (nfd < 0) return -EMFILE;
             if (DIRTAB(c)[nfd] != NULL) { closedir((DIR *)DIRTAB(c)[nfd]);
@@ -303,7 +311,7 @@ static int fs_open(void *c, const char *path, int fl, int m) {
     return guest;
 }
 static long fs_read(void *c, int fd, void *b, size_t n, long long o) {
-    if (fd < 0 || fd >= 256 || !TAB(c)[fd].used) return -EBADF;
+    if (fd < 0 || fd >= E2_MAX_FDS || !TAB(c)[fd].used) return -EBADF;
     for (;;) {
         ssize_t r = o < 0 ? read(TAB(c)[fd].host, b, n) : pread(TAB(c)[fd].host, b, n, o);
         if (r >= 0) {
@@ -341,7 +349,7 @@ static long fs_read(void *c, int fd, void *b, size_t n, long long o) {
 }
 static long fs_write(void *c, int fd, const void *b, size_t n, long long o) {
     (void)o;
-    if (fd < 0 || fd >= 256 || !TAB(c)[fd].used) return -EBADF;
+    if (fd < 0 || fd >= E2_MAX_FDS || !TAB(c)[fd].used) return -EBADF;
     if (getenv("E2_TRACE_WDATA")) {
         char wb[80];
         size_t wn = n < 60 ? n : 60;
@@ -353,7 +361,7 @@ static long fs_write(void *c, int fd, const void *b, size_t n, long long o) {
     ssize_t r = write(TAB(c)[fd].host, b, n);
     if (getenv("E2_TRACE_WLEN"))
         fprintf(stderr, "[wlen] tab=%d fd=%d host=%d want=%zu got=%zd\n",
-                ((const procctx *)c)->fdtab, fd, TAB(c)[fd >= 0 && fd < 256 ? fd : 0].host, n, r);
+                ((const procctx *)c)->fdtab, fd, TAB(c)[fd >= 0 && fd < E2_MAX_FDS ? fd : 0].host, n, r);
     if (r < 0) {
         note_write_error(((const procctx *)c)->fdtab, errno);
         return -errno;
@@ -361,7 +369,7 @@ static long fs_write(void *c, int fd, const void *b, size_t n, long long o) {
     return (long)r;
 }
 static int fs_close(void *c, int fd) {
-    if (fd < 0 || fd >= 256 || !TAB(c)[fd].used) return -EBADF;
+    if (fd < 0 || fd >= E2_MAX_FDS || !TAB(c)[fd].used) return -EBADF;
     // A directory descriptor has no host fd of its own; it owns a DIR stream.
     if (DIRTAB(c)[fd] != NULL) {
         closedir((DIR *)DIRTAB(c)[fd]);
@@ -375,7 +383,7 @@ static int fs_close(void *c, int fd) {
 }
 static int fs_stat(void *c, int fd, void *buf, size_t n) {
     (void)n; struct stat st;
-    if (fd < 0 || fd >= 256 || !TAB(c)[fd].used) return -EBADF;
+    if (fd < 0 || fd >= E2_MAX_FDS || !TAB(c)[fd].used) return -EBADF;
     if (fstat(TAB(c)[fd].host, &st)) return -EBADF;
     memset(buf, 0, 128);
     // aarch64 struct stat: 64-bit st_dev/st_ino, st_mode at 16, st_size at 48.
@@ -399,7 +407,7 @@ static int fs_stat(void *c, int fd, void *buf, size_t n) {
 // is no such directory under the guest root, so build one on demand and open that.
 static void build_proc_self_fd(void *c, const char *dir_host) {
     mkdir(dir_host, 0755);
-    for (int fd = 0; fd < 256; fd++) {
+    for (int fd = 0; fd < E2_MAX_FDS; fd++) {
         if (!TAB(c)[fd].used) continue;
         char name[2200];
         snprintf(name, sizeof(name), "%s/%d", dir_host, fd);
@@ -499,8 +507,8 @@ static int fs_pipe(void *c, int fds[2]) {
 }
 static int fs_dup3(void *c, int oldfd, int newfd, int flags) {
     (void)flags;
-    if (oldfd < 0 || oldfd >= 256 || !TAB(c)[oldfd].used) return -EBADF;
-    if (newfd < 0 || newfd >= 256) return -EBADF;
+    if (oldfd < 0 || oldfd >= E2_MAX_FDS || !TAB(c)[oldfd].used) return -EBADF;
+    if (newfd < 0 || newfd >= E2_MAX_FDS) return -EBADF;
     if (oldfd == newfd) return newfd;
     const int h = TAB(c)[oldfd].host;
     if (TAB(c)[newfd].used) {
@@ -513,14 +521,14 @@ static int fs_dup3(void *c, int oldfd, int newfd, int flags) {
 }
 static long fs_fcntl(void *c, int fd, int cmd, long arg) {
     const int tab = ((const procctx *)c)->fdtab;
-    if (fd < 0 || fd >= 256 || !TAB(c)[fd].used) return -EBADF;
+    if (fd < 0 || fd >= E2_MAX_FDS || !TAB(c)[fd].used) return -EBADF;
     switch (cmd) {
         case 0:      // F_DUPFD
         case 1030: { // F_DUPFD_CLOEXEC
             // Only the _CLOEXEC variant sets the flag; a plain F_DUPFD must
             // survive exec, which is how a shell restores a saved stdout.
             const int h = TAB(c)[fd].host;
-            for (int i = (int)arg; i < 256; i++) {
+            for (int i = (int)arg; i < E2_MAX_FDS; i++) {
                 if (!g_fds[tab][i].used) {
                     host_ref(h);
                     g_fds[tab][i].used = 1;
@@ -557,7 +565,7 @@ static long fs_readlink(void *ctx, const char *path, char *out, size_t outlen) {
 // approximation: a shell's `while read` loop simply never runs.
 static int fs_pollable(void *c, int fd, int events) {
     (void)c;
-    if (fd < 0 || fd >= 256) return 0;
+    if (fd < 0 || fd >= E2_MAX_FDS) return 0;
     return events;
 }
 
@@ -626,7 +634,7 @@ static int fs_pathop(void *c, int op, const char *a, const char *b, unsigned mod
 // truncate/ftruncate. Both arrive here; a negative fd means the path form.
 static int fs_truncate(void *c, int fd, const char *path, long long length) {
     if (fd >= 0) {
-        if (fd >= 256 || !TAB(c)[fd].used) return -EBADF;
+        if (fd >= E2_MAX_FDS || !TAB(c)[fd].used) return -EBADF;
         return ftruncate(TAB(c)[fd].host, (off_t)length) == 0 ? 0 : -errno;
     }
     char h[2048];
@@ -642,7 +650,7 @@ static int fs_statfs(void *c, int fd, const char *path, void *out, size_t outlen
     struct statvfs v;
     int rc;
     if (fd >= 0) {
-        if (fd >= 256 || !TAB(c)[fd].used) return -EBADF;
+        if (fd >= E2_MAX_FDS || !TAB(c)[fd].used) return -EBADF;
         rc = fstatvfs(TAB(c)[fd].host, &v);
     } else {
         char h[2048];
@@ -670,7 +678,7 @@ static int fs_statfs(void *c, int fd, const char *path, void *out, size_t outlen
 // Repositions a descriptor. Returns the resulting offset so the guest can tell
 // where it landed.
 static long fs_seek(void *c, int fd, long long offset, int whence) {
-    if (fd < 0 || fd >= 256 || !TAB(c)[fd].used) return -EBADF;
+    if (fd < 0 || fd >= E2_MAX_FDS || !TAB(c)[fd].used) return -EBADF;
     off_t r = lseek(TAB(c)[fd].host, (off_t)offset, whence);
     if (r < 0) return -errno;
     return (long)r;
@@ -1042,7 +1050,7 @@ typedef struct {
     /// problem because it stops reading early and so never needs the third level.
     int running;
 } proc_t;
-static proc_t procs[32];
+static proc_t procs[E2_MAX_PROCS];
 static int g_next_pid = 2;
 // Shared with debug builds of the memory layer that need the faulting pc.
 uint64_t g_dbg_pc;
@@ -1061,7 +1069,7 @@ uint64_t g_dbg_pc2;
 static const char *g_self_path = NULL;
 
 static int proc_slot(void) {
-    for (int i = 1; i < 32; i++) if (!procs[i].used) return i;
+    for (int i = 1; i < E2_MAX_PROCS; i++) if (!procs[i].used) return i;
     return -1;
 }
 // fork copies the descriptor table; dup() gives the child independent closes
@@ -1212,7 +1220,7 @@ static int p_execve(void *ctx, e2_machine *m, const char *path, uint64_t argv,
 /// being wrong about the rare handler case.
 static void note_write_error(int tab, int err) {
     if (err != EPIPE) return;
-    for (int i = 0; i < 32; i++) {
+    for (int i = 0; i < E2_MAX_PROCS; i++) {
         if (!procs[i].used || procs[i].pc.fdtab != tab) continue;
         if (!procs[i].alive) return;
         procs[i].alive = 0;
@@ -1230,7 +1238,7 @@ static void note_write_error(int tab, int err) {
 /// sibling is about to write to.
 static int pump_children_for_tab(int tab) {
     int ran = 0;
-    for (int i = 0; i < 32; i++) {
+    for (int i = 0; i < E2_MAX_PROCS; i++) {
         proc_t *c = &procs[i];
         if (!c->used || !c->alive) continue;
         if (c->pc.fdtab == tab) continue;   // that is us
@@ -1252,7 +1260,7 @@ static long p_wait4(void *ctx, int pid, uint64_t status_ptr, int options) {
     (void)options;
     g_wait_calls++;
     proc_t *self = ctx;
-    for (int i = 1; i < 32; i++) {
+    for (int i = 1; i < E2_MAX_PROCS; i++) {
         proc_t *c = &procs[i];
         if (!c->used || c->ppid != self->pid) continue;
         if (pid > 0 && c->pid != pid) continue;
