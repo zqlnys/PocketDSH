@@ -438,7 +438,20 @@ def main() -> int:
     if problems:
         print(f"  ^ {len(problems)} of {checked} claims are out of date")
         return 1
-    if covered != 0 or headings != 0 or stray != 0 or stated != 0 or booleans != 0 or readme_tools != 0 or readme_tests != 0 or doc_index != 0 or e2_tools != 0 or synthesis != 0:
+    # Name what failed. This used to return 1 without a summary, so the only trace was
+    # whichever check had printed a line - and a line phrased as a statement ("SESSION-SUMMARY
+    # says 182 differential") does not look like an error when you are grepping for "fail".
+    named = [
+        (name, value) for name, value in (
+            ("stale counts", stray), ("headings", headings), ("tool coverage", covered),
+            ("stated total", stated), ("boolean claims", booleans),
+            ("README tool list", readme_tools), ("README test counts", readme_tests),
+            ("document index", doc_index), ("e2/tools mentions", e2_tools),
+            ("synthesis link", synthesis),
+        ) if value != 0
+    ]
+    if named:
+        print("check-docs: " + ", ".join(name for name, _ in named) + " failed")
         return 1
     print(f"  {checked} claim(s) match the suites")
     return 0
