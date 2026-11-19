@@ -788,6 +788,11 @@ echo 'k=v' | cut -d= -f2
 printf 'A\nB\n' | tr 'AB' 'XY'
 seq 3 | awk '{s=s $0} END{print length(s)}'
 printf 'one two\n' | awk '{print toupper($2)}'
+# Two scripts that do a job rather than exercise a feature: a mini build that scans a
+# source list and reports, and a report that averages a column and finds the top scorer.
+srcs=$(printf 'main.c\nutil.c\nmain.h\n'); c_files=$(printf '%s\n' "$srcs" | grep '\.c$' | sort); count=$(printf '%s\n' "$c_files" | wc -l); echo "$count"; printf '%s\n' "$c_files" | while read -r f; do echo "  ${f%.c}.o"; done
+printf 'alice:90\nbob:75\ncarol:88\ndave:60\n' | awk -F: '{t+=$2;n++;if($2>=80)p++} END{printf "n=%d total=%d avg=%.1f pass=%d\n",n,t,t/n,p}'
+printf 'alice:90\nbob:75\ncarol:88\ndave:60\n' | sort -t: -k2 -n | tail -1 | cut -d: -f1
 sh /tmp/dtreal2.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh
