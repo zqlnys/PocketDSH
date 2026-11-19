@@ -757,10 +757,11 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
                 case 3:  cur = 8u * 1024u * 1024u; max = (uint64_t)-1; break;  // STACK
                 case 4:  cur = 0;  max = 0; break;                             // CORE
                 case 5:  cur = 0;  max = (uint64_t)-1; break;                  // RSS
-                // The harness descriptor table holds 64 entries, so that is the
+                // The harness descriptor table holds 256 entries, so that is the
                 // honest number. Reporting the host's 1048576 would let a caller
-                // size buffers for descriptors that cannot exist.
-                case 7:  cur = 64; max = 64; break;                           // NOFILE
+                // size buffers for descriptors that cannot exist. 64 was too low:
+                // a program opening a few dozen files ran out.
+                case 7:  cur = 256; max = 256; break;                          // NOFILE
                 case 6:  cur = 100; max = 100; break;                          // NPROC
                 case 12: cur = 8192; max = 8192; break;                        // NICE
                 default: cur = (uint64_t)-1; max = (uint64_t)-1; break;         // unlimited

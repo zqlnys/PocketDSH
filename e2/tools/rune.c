@@ -105,8 +105,8 @@ static void trace_flush(void);
 // the default action terminates the writer. Without that, `yes | head -1` runs
 // forever: the writer never learns the reader left.
 static void note_write_error(int tab, int err);
-static struct { int used, host; } g_fds[16][64];
-static void *g_dirs[16][64];
+static struct { int used, host; } g_fds[16][256];
+static void *g_dirs[16][256];
 static unsigned char g_cloexec[16][64];
 #define TAB(c) (g_fds[((const procctx *)(c))->fdtab])
 #define DIRTAB(c) (g_dirs[((const procctx *)(c))->fdtab])
