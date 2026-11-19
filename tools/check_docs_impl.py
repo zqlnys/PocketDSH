@@ -374,6 +374,28 @@ def check_e2_tool_mentions() -> int:
     return 0
 
 
+def check_synthesis_linked() -> int:
+    """The handoff should point at the failure-mode summary.
+
+    It is the highest-value section in a 8000-line document and the one a new session is least
+    likely to find on its own.
+    """
+    handoff = ROOT / "docs/HANDOFF.md"
+    backend = ROOT / "docs/E2-BACKEND.md"
+    if not handoff.exists() or not backend.exists():
+        print("  documents not found, skipping")
+        return 0
+    title = "经验总结"
+    if title not in backend.read_text(errors="replace"):
+        print(f"  E2-BACKEND no longer contains a {title} section")
+        return 1
+    if title not in handoff.read_text(errors="replace"):
+        print(f"  HANDOFF does not point at the {title} section")
+        return 1
+    print("  the handoff points at the failure-mode summary")
+    return 0
+
+
 def main() -> int:
     cache: dict[str, int | None] = {}
     problems = []
@@ -410,10 +432,11 @@ def main() -> int:
     readme_tests = check_readme_test_counts()
     doc_index = check_doc_index()
     e2_tools = check_e2_tool_mentions()
+    synthesis = check_synthesis_linked()
     if problems:
         print(f"  ^ {len(problems)} of {checked} claims are out of date")
         return 1
-    if covered != 0 or headings != 0 or stray != 0 or stated != 0 or booleans != 0 or readme_tools != 0 or readme_tests != 0 or doc_index != 0 or e2_tools != 0:
+    if covered != 0 or headings != 0 or stray != 0 or stated != 0 or booleans != 0 or readme_tools != 0 or readme_tests != 0 or doc_index != 0 or e2_tools != 0 or synthesis != 0:
         return 1
     print(f"  {checked} claim(s) match the suites")
     return 0
