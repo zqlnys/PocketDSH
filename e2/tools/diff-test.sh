@@ -723,6 +723,15 @@ seq 20 | awk 'NR%4==0' | wc -l
 printf 'a1b2\n' | tr -d '0-9'
 echo abc | sed 's/b/[&]/'
 printf '1\n2\n3\n' | awk '{a[NR]=$1} END{for(i=NR;i>0;i--) print a[i]}'
+# Edge cases: empty input, a lone newline, a single character, and the escapes that
+# separate a literal from a metacharacter.
+printf '' | wc -l | awk '{print $1}'
+printf '\n' | wc -l
+printf 'a' | od -An -c
+printf '\t\n' | cat -A
+echo 'a.b' | grep -c 'a\\.b'
+echo 'a*b' | grep -c 'a[*]b'
+echo 'axb' | grep -c 'a\\.b'
 sh /tmp/dtreal2.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh
