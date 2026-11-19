@@ -143,7 +143,9 @@ def check_any_stale_counts() -> int:
         # E2-BACKEND.md is a chronological record and says so at the top: the numbers in
         # its middle chapters are snapshots of what was true then. Scanning it here would
         # flag correct history as wrong. Its current-state table is covered by CLAIMS.
-        if path.name == "E2-BACKEND.md":
+        # SESSION-SUMMARY is the same kind of document: "182 cases did not notice this" is a
+        # statement about what was true then, not a claim about now.
+        if path.name in ("E2-BACKEND.md", "SESSION-SUMMARY.md"):
             continue
         text = path.read_text(errors="replace")
         for pattern, suite, label in patterns:
