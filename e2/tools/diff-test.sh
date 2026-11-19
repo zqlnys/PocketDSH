@@ -796,6 +796,10 @@ printf 'alice:90\nbob:75\ncarol:88\ndave:60\n' | sort -t: -k2 -n | tail -1 | cut
 # Holding more descriptors than the old table allowed. Three places capped at 64 - the
 # descriptor table, the lowest-free search and F_DUPFD - and only the third showed up.
 i=1; while [ $i -le 70 ]; do eval "exec $((i+2))>/tmp/dtf_$i"; i=$((i+1)); done; echo held; i=1; while [ $i -le 70 ]; do eval "exec $((i+2))>&-"; i=$((i+1)); done; echo released
+# Twenty concurrent subshells. The process table held 16, and NPROC claimed 100, so fork
+# failed with an out-of-memory message that had nothing to do with memory. Sorted to take
+# scheduling order out of it.
+sh -c 'i=0; while [ $i -lt 20 ]; do (echo p$i) & i=$((i+1)); done; wait' | sort | wc -l
 sh /tmp/dtreal2.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh

@@ -105,9 +105,9 @@ static void trace_flush(void);
 // the default action terminates the writer. Without that, `yes | head -1` runs
 // forever: the writer never learns the reader left.
 static void note_write_error(int tab, int err);
-static struct { int used, host; } g_fds[16][256];
-static void *g_dirs[16][256];
-static unsigned char g_cloexec[16][256];
+static struct { int used, host; } g_fds[32][256];
+static void *g_dirs[32][256];
+static unsigned char g_cloexec[32][256];
 #define TAB(c) (g_fds[((const procctx *)(c))->fdtab])
 #define DIRTAB(c) (g_dirs[((const procctx *)(c))->fdtab])
 static void fd_init_tab(int tab) {
@@ -1042,7 +1042,7 @@ typedef struct {
     /// problem because it stops reading early and so never needs the third level.
     int running;
 } proc_t;
-static proc_t procs[16];
+static proc_t procs[32];
 static int g_next_pid = 2;
 // Shared with debug builds of the memory layer that need the faulting pc.
 uint64_t g_dbg_pc;
@@ -1061,7 +1061,7 @@ uint64_t g_dbg_pc2;
 static const char *g_self_path = NULL;
 
 static int proc_slot(void) {
-    for (int i = 1; i < 16; i++) if (!procs[i].used) return i;
+    for (int i = 1; i < 32; i++) if (!procs[i].used) return i;
     return -1;
 }
 // fork copies the descriptor table; dup() gives the child independent closes
@@ -1212,7 +1212,7 @@ static int p_execve(void *ctx, e2_machine *m, const char *path, uint64_t argv,
 /// being wrong about the rare handler case.
 static void note_write_error(int tab, int err) {
     if (err != EPIPE) return;
-    for (int i = 0; i < 16; i++) {
+    for (int i = 0; i < 32; i++) {
         if (!procs[i].used || procs[i].pc.fdtab != tab) continue;
         if (!procs[i].alive) return;
         procs[i].alive = 0;
@@ -1230,7 +1230,7 @@ static void note_write_error(int tab, int err) {
 /// sibling is about to write to.
 static int pump_children_for_tab(int tab) {
     int ran = 0;
-    for (int i = 0; i < 16; i++) {
+    for (int i = 0; i < 32; i++) {
         proc_t *c = &procs[i];
         if (!c->used || !c->alive) continue;
         if (c->pc.fdtab == tab) continue;   // that is us
@@ -1252,7 +1252,7 @@ static long p_wait4(void *ctx, int pid, uint64_t status_ptr, int options) {
     (void)options;
     g_wait_calls++;
     proc_t *self = ctx;
-    for (int i = 1; i < 16; i++) {
+    for (int i = 1; i < 32; i++) {
         proc_t *c = &procs[i];
         if (!c->used || c->ppid != self->pid) continue;
         if (pid > 0 && c->pid != pid) continue;

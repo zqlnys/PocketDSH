@@ -762,7 +762,7 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
                 // size buffers for descriptors that cannot exist. 64 was too low:
                 // a program opening a few dozen files ran out.
                 case 7:  cur = 256; max = 256; break;                          // NOFILE
-                case 6:  cur = 100; max = 100; break;                          // NPROC
+                case 6:  cur = 32; max = 32; break;                           // NPROC
                 case 12: cur = 8192; max = 8192; break;                        // NICE
                 default: cur = (uint64_t)-1; max = (uint64_t)-1; break;         // unlimited
                 }
