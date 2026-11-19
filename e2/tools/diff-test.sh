@@ -765,6 +765,11 @@ fact() { if [ "$1" -le 1 ]; then echo 1; else echo $(( $1 * $(fact $(( $1 - 1 ))
 out=""; for i in 1 2 3; do case $i in 1) out="$out one" ;; 2) out="$out two" ;; *) out="$out many" ;; esac; done; echo "$out"
 fib() { if [ "$1" -lt 2 ]; then echo "$1"; else echo $(( $(fib $(( $1-1 ))) + $(fib $(( $1-2 ))) )); fi; }; echo "fib(7) = $(fib 7)"
 false || echo recovered
+printf 'a b\nc d\n' | awk '{print $2}'
+printf 'x\ny\n' | sed '1!G;h;$!d'
+seq 5 | awk 'BEGIN{s=0}{s+=$1}END{printf "%.2f\n", s/5}'
+printf 'AbC\n' | tr '[:upper:]' '[:lower:]'
+echo 'a b' | cut -d' ' -f1
 sh /tmp/dtreal2.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh
