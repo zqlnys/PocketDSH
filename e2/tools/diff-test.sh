@@ -403,6 +403,10 @@ while IFS= read -r cmd; do
     # difference past the eighth line - a test that cannot see past a point is worse
     # than a shorter one that can. The harness's own exit line and the blank line
     # before it are stripped; nothing else is.
+    # Cases share the guest root's /tmp, so anything one creates is visible to the next.
+    # Listing the directory before and removing what appears afterwards is cheap - one find,
+    # not a 9 MB copy - and lets each case start from the same state.
+    before=$(ls -A "$ROOT/tmp" 2>/dev/null | sort)
     mine=$(timeout 60 env PATH="$DT_PATH" "$RUNE" "$DT_STATIC" sh -c "$cmd" 2>&1 \
            | grep -v '^\[exit ' | sed -e :a -e '/^$/{$d;N;ba' -e '}')
     # Run qemu inside the guest root when that is possible. Without chroot it resolves
@@ -418,6 +422,11 @@ while IFS= read -r cmd; do
         theirs=$(env -i PATH="$DT_PATH" timeout 60 qemu-aarch64-static -L "$ROOT" "$DT_STATIC" sh -c "$cmd" 2>&1 \
                | sed -e :a -e '/^$/{$d;N;ba' -e '}')
     fi
+    after=$(ls -A "$ROOT/tmp" 2>/dev/null | sort)
+    for created in $(printf '%s\n' "$after" | grep -vxF "$before" 2>/dev/null); do
+        rm -rf "$ROOT/tmp/$created" 2>/dev/null
+    done
+
     if [ "$mine" = "$theirs" ]; then
         pass=$((pass + 1))
         # Both sides empty is a pass that proves very little: a case whose command was
