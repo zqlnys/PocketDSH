@@ -8,6 +8,7 @@
 set -u
 here=$(dirname "$0")/..
 fail=0
+failed=""
 
 echo "=== E2 backend ==="
 if [ -x "$here/e2/tools/rune" ]; then
@@ -16,7 +17,7 @@ if [ -x "$here/e2/tools/rune" ]; then
     e2out=$( cd "$here/e2" && ./tools/verify-all.sh 2>&1 )
     rc=$?
     printf '%s\n' "$e2out"
-    [ "$rc" -eq 0 ] || fail=1
+    [ "$rc" -eq 0 ] || { fail=1; failed="$failed e2"; }
     # The suites state their counts; read those rather than parsing the prose above them.
     # Prose changes shape, a key=value line does not.
     UNIT_COUNT=$(printf '%s\n' "$e2out" | sed -n 's/^\([0-9]\+\) checks.*/\1/p' | head -1)
@@ -25,7 +26,7 @@ if [ -x "$here/e2/tools/rune" ]; then
     DIFF_COUNT=$(printf '%s\n' "$e2out" | sed -n 's/^COUNT_static_DIFF=\([0-9]\+\).*/\1/p' | head -1)
 else
     echo "e2/tools/rune missing - build it first"
-    fail=1
+    fail=1; failed="$failed e2"
     UNIT_COUNT= M2_COUNT= M3_COUNT= DIFF_COUNT=
 fi
 
@@ -33,7 +34,7 @@ echo
 echo "=== iOS static checks ==="
 swiftout=$(sh "$here/tools/check-swift.sh" "$here" 2>&1)
 printf '%s\n' "$swiftout"
-printf '%s\n' "$swiftout" | grep -q "check-swift: clean" || fail=1
+printf '%s\n' "$swiftout" | grep -q "check-swift: clean" || { fail=1; failed="$failed ios-static"; }
 STATIC_COUNT=$(printf '%s\n' "$swiftout" | grep -c '^  ')
 
 echo
@@ -42,12 +43,12 @@ echo "=== documentation claims ==="
 # Standalone use of check-docs.sh still falls back to running them.
 DSH_COUNT_UNIT=$UNIT_COUNT DSH_COUNT_M2=$M2_COUNT DSH_COUNT_M3=$M3_COUNT \
 DSH_COUNT_DIFF=$DIFF_COUNT DSH_COUNT_STATIC=$STATIC_COUNT \
-    sh "$here/tools/check-docs.sh" || fail=1
+    sh "$here/tools/check-docs.sh" || { fail=1; failed="$failed docs"; }
 
 echo
 if [ "$fail" -eq 0 ]; then
     echo "verify: everything passed"
 else
-    echo "verify: FAILURES above"
+    echo "verify: FAILURES in:$failed"
 fi
 exit "$fail"
