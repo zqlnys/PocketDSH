@@ -4567,7 +4567,7 @@ LONGVAR=<100 个 a>; echo ${#LONGVAR}
 | 解码规则重叠 | **无** | `make overlaps` |
 | 规则越界 | **0 条**（100883 个唯一指令字） | `tools/check-rule-mnemonics.py` |
 | 解码守卫覆盖 | **70/70 条**，0 条越界 | `tools/check-decode-families.py` |
-| iOS 测试 | **26 项** | `PocketDSHTests.swift` |
+| iOS 测试 | **42 项**（26 应用层 + 8 Core + 8 Lua） | `PocketDSHTests.swift` + `Packages/PocketDSHKit/Tests/` |
 
 **没有豁免，没有 `|| true`，没有「已知失败」抵扣。** 每一条都是真的通过。
 

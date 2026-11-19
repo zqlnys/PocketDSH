@@ -326,6 +326,22 @@ def check_readme_test_counts() -> int:
         for item in problems:
             print("  " + item)
         return 1
+    # The status table quotes a single total; it must be the sum of all three suites.
+    backend = (ROOT / "docs/E2-BACKEND.md").read_text(errors="replace")
+    total_claimed = re.search(r"\| iOS 测试 \| \*\*(\d+) 项", backend)
+    if total_claimed:
+        grand = 0
+        for name in ("PocketDSHCore", "LuaRuntime", "PocketDSHTests"):
+            dirs = {"PocketDSHCore": [ROOT / "Packages/PocketDSHKit/Tests/PocketDSHCoreTests"],
+                    "LuaRuntime": [ROOT / "Packages/PocketDSHKit/Tests/LuaRuntimeTests"],
+                    "PocketDSHTests": [ROOT / "PocketDSHTests"]}[name]
+            for d in dirs:
+                if d.exists():
+                    for f in d.glob("*.swift"):
+                        grand += len(re.findall(r"func test\w+\s*\(", f.read_text(errors="replace")))
+        if int(total_claimed.group(1)) != grand:
+            print(f"  E2-BACKEND says {total_claimed.group(1)} iOS tests, files hold {grand}")
+            return 1
     print("  per-suite test counts match the files")
     return 0
 
