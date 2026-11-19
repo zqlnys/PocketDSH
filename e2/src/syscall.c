@@ -11,6 +11,7 @@
 #define E2_EFAULT 14
 #define E2_EEXIST 17
 #define E2_EINVAL 22
+#define E2_ENAMETOOLONG 36
 #define E2_ENOSYS 38
 #define E2_ENOTSUP 95
 
@@ -57,7 +58,11 @@ static int read_guest_string(e2_machine *m, uint64_t addr, char *out, size_t out
             return 0;
         }
     }
-    return -E2_EINVAL;  // no terminator within the limit
+    // The buffer holds a path in every caller that matters, and the kernel answers a path
+    // that does not fit with ENAMETOOLONG rather than EINVAL. The difference is visible:
+    // `stat` on a 1100-character path printed "Invalid argument" here and "Filename too
+    // long" from qemu.
+    return -E2_ENAMETOOLONG;  // no terminator within the limit
 }
 
 /// Copies an aarch64 Linux `struct iovec` array and writes each entry.

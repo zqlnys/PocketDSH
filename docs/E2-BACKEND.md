@@ -8639,3 +8639,38 @@ static proc_t procs[E2_MAX_PROCS];
 
 **常量替换没有改变行为——而这是这种改动唯一可接受的结果。**
 
+## 超长路径的 errno：EINVAL 改成 ENAMETOOLONG
+
+```sh
+$ stat /tmp/<1100 个 c>
+mine:  stat: can't stat '...': Invalid argument
+qemu:  stat: can't stat '...': Filename too long
+```
+
+**`read_guest_string` 在缓冲区里找不到结尾的 `\0` 时返回 `EINVAL`。**
+
+**而内核对这个情况返回 `ENAMETOOLONG`（36）——两者都会让调用失败，
+但程序会看 errno 分支。**
+
+**已改。**
+
+### 但这条没进差分套件
+
+**在 `sh -c` 里用命令替换生成 1100 字符的路径时，本实现静默无输出，而 qemu 正常报错。**
+
+**那是另一个问题（命令替换的长度限制），和 errno 无关。**
+
+**所以这条用例只能手工验证：**
+
+```sh
+./tools/rune busybox stat /tmp/$(python3 -c "print('c'*1100)")
+```
+
+**加进套件会让它因为一个不相关的原因红着。**
+
+### 一条判断
+
+**「能用一条命令复现」和「能写成一条用例」不是一回事。**
+
+**后者要求这条命令在两个实现下都走到同一个代码路径——而路径长度本身就会先撞上别的东西。**
+
