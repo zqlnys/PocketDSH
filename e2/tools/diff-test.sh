@@ -810,6 +810,11 @@ sh -c "trap 'echo a' EXIT; exit 3"
 # trap - TERM resets to the default action; the exit status must be 128 + 15, not a constant.
 sh -c "trap - TERM; kill -TERM \$\$" ; echo "rc=$?"
 sh -c "trap 'echo one' USR1; trap 'echo two' USR2; kill -USR1 \$\$; kill -USR2 \$\$; echo end"
+printf 'a\nb\nc\n' | sed -n '$!p'
+seq 5 | awk '{printf "%03d\n", $1}'
+echo a b c | tr ' ' '\n' | sort | uniq
+seq 3 | sed 's/1/one/;s/3/three/'
+printf 'A:B\n' | cut -d: -f2 | tr 'A-Z' 'a-z'
 sh /tmp/dtreal2.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh

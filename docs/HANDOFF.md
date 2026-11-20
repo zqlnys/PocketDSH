@@ -568,7 +568,7 @@ examples/workspace-inspector.dshplugin/
 | 单指令测试 | 246 | `make test` |
 | M2 扫描（不崩溃） | 163 | `tools/m2-sweep.sh` |
 | M3 扫描（不崩溃） | 93 | `tools/m3-sweep.sh` |
-| 差分对比（与参考实现逐字节一致） | 342 | `tools/diff-test.sh` |
+| 差分对比（与参考实现逐字节一致） | 347 | `tools/diff-test.sh` |
 | 静态检查（无 Swift 编译器时的替代） | 8 类 | `tools/check-swift.sh` |
 | 解码守卫覆盖 | 70/70 条，0 条越界 | `tools/check-decode-families.py` |
 
@@ -585,7 +585,7 @@ examples/workspace-inspector.dshplugin/
 | 命令替换作管道左段 | `echo $(echo hi) \| cat` 输出空；`x=$(...)` 形式正常 | **测试工具的调度模型边界，不是解释器缺陷** |
 | `wait4` 只等一个作业成员 | 已用 `PROC_QUANTUM=2000000` 规避 | 缺陷仍在，只是复现不到 |
 
-**这四项都不影响目标第 (1) 项**——`grep`、`sed`、`awk` 与参考实现逐字节一致（342 条差分用例）。
+**这四项都不影响目标第 (1) 项**——`grep`、`sed`、`awk` 与参考实现逐字节一致（347 条差分用例）。
 
 **调试与验证用的工具**（都在 `e2/tools/`）：
 
