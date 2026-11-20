@@ -431,3 +431,83 @@ tbz   w4, #31, skip
 
 **需要的输入**：`_PyCode_CheckLineNumber` 和 `advance()` 在 3.12.13 的源码。
 
+---
+
+# 2026-11-21 晚：根因确定 —— `MOVI` 的立即数展开错误
+
+## 一句话
+
+**`movi d0, #0x000000ffffffff`（编码 `0x2F00E5E0`）在本实现里得到
+`0x0f0f0f0f0f0f0f0f`，正确值是 `0x00000000ffffffff`。**
+
+## 这如何导致 CPython 崩溃
+
+**`PyCode_Addr2Line` 用这条指令初始化地址范围结构体：**
+
+```c
+_PyLineTable_InitAddressRange(...):
+    range->ar_start = -1;      // 和 ar_end 一起由 movi d0, #0x000000ffffffff 写入
+    range->ar_end = 0;
+```
+
+**`movi d0` 写入 8 字节：`ar_start`（+0）= 低 32 位，`ar_end`（+4）= 高 32 位。**
+
+**本实现给出 `0x0f0f0f0f0f0f0f0f`，于是：**
+
+```
+ar_start = 0x0F0F0F0F = 252645135    （应为 -1）
+ar_end   = 0x0F0F0F0F = 252645135    （应为 0）
+```
+
+**实测确认（`E2_AT=0x102fbbf0`）：**
+
+```
+[at] ar_start=252645135 ar_end=252645135 ar_line=252645135 lasti=2078
+[at] ar_start=252645119 ar_end=252645119 ar_line=-1          lasti=2078
+```
+
+## 为什么跑 1.5 亿条指令
+
+**`_PyCode_CheckLineNumber` 的循环（CPython 3.12 源码）：**
+
+```c
+while (bounds->ar_start > lasti) {
+    if (!_PyLineTable_PreviousAddressRange(bounds)) return -1;
+}
+```
+
+**`ar_start = 252645135 > 2078` 恒成立，每次减 16 或 1，
+要走约 1580 万次才降到 2078 —— 与实测的 1.5 亿条指令吻合。**
+
+## 现有实现的错误
+
+**`src/exec.c` 里 cmode 的注释表写的是：**
+
+```
+*  0xE    0   8        -
+*  0xE    1   64       -
+```
+
+**两行都不对。** 架构定义里 `cmode<3:1> = 111` 是「8 位，MSL #8」，
+`cmode<0>` 决定是否移位；64 位形式还取决于 `Q` 和 `op`。
+
+## 修复方向
+
+**按 ARM `AdvSIMDExpandImm` 的伪代码重写，用 llvm 生成对照表验证。**
+
+**已知的四条地面真值（llvm 汇编得到）：**
+
+| 编码 | 汇编 | 正确值 |
+| --- | --- | --- |
+| `0x2F00E5E0` | `movi d0, #0x000000ffffffff` | `0x00000000ffffffff` |
+| `0x2F00E420` | `movi d0, #0xff` | `0xffffffffffffffff` |
+| `0x2F02E6A0` | `movi d0, #0x00ff00ff00ff00ff` | `0x00ff00ff00ff00ff` |
+| `0x2F00E460` | `movi d0, #0x000000000000ffff` | `0x000000000000ffff` |
+
+## 为什么这条缺陷一直没被抓到
+
+**248 项单测里没有一条覆盖 SIMD 立即数展开**，而 351 条差分用例跑的 busybox
+也没用到 `movi` 的这些形式 —— 它用的是 16 位或 32 位立即数，恰好落在实现正确的分支上。
+
+**`movi d0, #0x000000ffffffff` 这种「32 位全 F 复制两次」的形式是 CPython 特有的用法。**
+

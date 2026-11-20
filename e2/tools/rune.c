@@ -1995,6 +1995,12 @@ static int run_proc(int idx) {
                     const uint64_t base = p->m.cpu.x[19];
                     const int ok18 = e2_memory_read(&p->m.mem, base + 0x18, &f18, 8);
                     const int ok20 = e2_memory_read(&p->m.mem, base + 0x20, &f20, 8);
+                    int32_t a_st = 0, a_en = 0, a_ln = 0;
+                    e2_memory_read(&p->m.mem, base + 0, &a_st, 4);
+                    e2_memory_read(&p->m.mem, base + 4, &a_en, 4);
+                    e2_memory_read(&p->m.mem, base + 8, &a_ln, 4);
+                    fprintf(stderr, "[at] ar_start=%d ar_end=%d ar_line=%d lasti=%d\n",
+                            a_st, a_en, a_ln, (int)p->m.cpu.x[20]);
                     fprintf(stderr, "[at] struct[0x18]=0x%llx(ok=%d) [0x20]=0x%llx(ok=%d)\n",
                             (unsigned long long)f18, ok18 == 0,
                             (unsigned long long)f20, ok20 == 0);
