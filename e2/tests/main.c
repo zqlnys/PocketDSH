@@ -414,6 +414,40 @@ static void test_xtn_narrows_lanes(void) {
     e2_machine_destroy(&m);
 }
 
+static void test_ldrsb_and_tbz_together(void) {
+    printf("LDRSB sign-extends a byte and TBZ tests bit 31 of the result\n");
+    // This pair is what CPython's backward line-table scan is built from, and a wrong
+    // sign-extension would make the scan run backwards through unmapped memory instead of
+    // stopping at the first leading byte. Verified separately because "the disassembly looks
+    // right" is not the same as "the simulation is right".
+    const uint32_t code[] = {0x39C00024u,   // ldrsb w4, [x1]
+                             0x36F80064u,   // tbz   w4, #31, +0x10
+                             0x52800020u,   // mov   w0, #1   (bit was set: fell through)
+                             0x14000002u,   // b     end
+                             0x52800040u,   // mov   w0, #2   (bit was clear: branched)
+                             0xD65F03C0u};  // ret
+    const uint64_t bytes = 0x30000000ULL;
+    for (int pass = 0; pass < 2; pass++) {
+        e2_machine m;
+        e2_machine_init(&m, 0, 65536);
+        e2_memory_map_at(&m.mem, 0x1000, 0x1000, E2_PROT_READ | E2_PROT_WRITE);
+        e2_memory_write(&m.mem, 0x1000, code, sizeof(code));
+        e2_memory_map_at(&m.mem, bytes, 0x1000, E2_PROT_READ | E2_PROT_WRITE);
+        const uint8_t byte = pass ? 0xFF : 0x7F;
+        e2_memory_write(&m.mem, bytes, &byte, 1);
+        m.cpu.pc = 0x1000;
+        m.cpu.x[1] = bytes;
+        for (int i = 0; i < 8; i++) {
+            if (m.cpu.pc < 0x1000 || m.cpu.pc >= 0x1000 + sizeof(code)) break;
+            if (e2_step(&m) != E2_OK) break;
+        }
+        CHECK((m.cpu.x[0] & 0xFF) == (pass ? 1 : 2),
+              "byte 0x%02x should give w0=%d, got %d", byte, pass ? 1 : 2,
+              (int)(m.cpu.x[0] & 0xFF));
+        e2_machine_destroy(&m);
+    }
+}
+
 static void test_ld1_lane_loads_one_lane(void) {
     printf("LD1 loads a single lane from memory and leaves the rest alone\n");
     // Neither unit-tested nor present in any binary this project runs, so before this it
@@ -1426,6 +1460,7 @@ int main(void) {
     test_load_store();
     test_svc();
     test_hint_space_is_noop();
+    test_ldrsb_and_tbz_together();
     test_ld1_lane_loads_one_lane();
     test_sysinfo_writes_the_struct();
     test_barriers_retire();

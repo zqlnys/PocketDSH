@@ -260,7 +260,7 @@ cd PocketDSH/e2
 e2/src/*.c             解释器、syscall、内存、加载器
 e2/include/e2/*.h
 e2/tools/*             rune.c 之外的调试工具 + trace-align.py + qemu-exectrace.py
-e2/tests/main.c        246 项单指令测试
+e2/tests/main.c        单指令测试（全部）
 e2/Makefile
 docs/M4-CPYTHON-BUG.md 问题报告
 docs/E2-BACKEND.md     完整记录
@@ -271,12 +271,12 @@ repro.sh
 
 ## 能跑什么、不能跑什么（重要）
 
-**`make test` 不需要 Alpine 根文件系统** —— 246 项测试用的 guest ELF 是现场用
+**`make test` 不需要 Alpine 根文件系统** —— 这些测试用的 guest ELF 是现场用
 `clang` + `ld.lld` 交叉编译出来的。
 
 ```bash
 cd e2
-make test        # → 246 checks, 0 failure(s)
+make test        # → 全部通过（无失败）
 ```
 
 **只依赖 `clang` 和 `ld.lld` 两个工具。**
@@ -402,4 +402,32 @@ x6 = 0x10000013
 E2_AT=0x102fbbf0 E2_CAP=200000000 ./tools/rune \
   /tmp/alpine-root/usr/bin/python3.12 -c pass
 ```
+
+## 排除项：`LDRSB` + `TBZ` 组合是对的
+
+**把 CPython 那个循环的两条核心指令单独跑了一遍：**
+
+```asm
+ldrsb w4, [x1]
+tbz   w4, #31, skip
+```
+
+**实测：**
+
+```
+输入 0x7f → w0 = 2（bit31 清零，TBZ 跳转）   ✓
+输入 0xff → w0 = 1（bit31 置位，TBZ 不跳）   ✓
+```
+
+**已固化为单测 `test_ldrsb_and_tbz_together`，并验证判别力：**
+- 变异「TBZ 跳转条件反了」→ **CAUGHT**
+- 变异「LDRSB 不符号扩展」→ **CAUGHT**
+
+**所以指令模拟不是原因。** 问题在别处：
+
+**「扫描只减不增，而循环条件要求它增大才能退出」——
+这个矛盾只能靠 CPython 源码里 `advance()` 的真实语义来解释，
+而这需要读 3.12 的 `Objects/codeobject.c`，我这边没有源码。**
+
+**需要的输入**：`_PyCode_CheckLineNumber` 和 `advance()` 在 3.12.13 的源码。
 

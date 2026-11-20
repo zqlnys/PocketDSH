@@ -565,7 +565,7 @@ examples/workspace-inspector.dshplugin/
 
 | 层 | 数量 | 命令 |
 | --- | --- | --- |
-| 单指令测试 | 246 | `make test` |
+| 单指令测试 | 248 | `make test` |
 | M2 扫描（不崩溃） | 163 | `tools/m2-sweep.sh` |
 | M3 扫描（不崩溃） | 93 | `tools/m3-sweep.sh` |
 | 差分对比（与参考实现逐字节一致） | 351 | `tools/diff-test.sh` |
