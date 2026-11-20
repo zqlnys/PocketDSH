@@ -1767,7 +1767,8 @@ static int run_proc(int idx) {
                                 "x19=0x%llx x22=0x%llx x23=0x%llx\n",
                         (unsigned long long)p->m.cpu.x[0], (unsigned long long)p->m.cpu.x[1],
                         (unsigned long long)p->m.cpu.x[2], (unsigned long long)p->m.cpu.x[3],
-                        (unsigned long long)p->m.cpu.x[19], (unsigned long long)p->m.cpu.x[22],
+                        (unsigned long long)p->m.cpu.x[5], (unsigned long long)p->m.cpu.x[6],
+                     (unsigned long long)p->m.cpu.x[19], (unsigned long long)p->m.cpu.x[22],
                         (unsigned long long)p->m.cpu.x[23]);
         }
         if (getenv("E2_TRACE_FIELD")) {
@@ -2195,7 +2196,7 @@ static int run_proc(int idx) {
         }
         if (st != E2_OK) {
             snprintf(g_reason, sizeof(g_reason),
-                     "%s addr=0x%llx pid=%d pc=0x%llx insn=0x%08x x0=0x%llx x1=0x%llx x2=0x%llx x19=0x%llx x21=0x%llx x30=0x%llx sp=0x%llx",
+                     "%s addr=0x%llx pid=%d pc=0x%llx insn=0x%08x x0=0x%llx x1=0x%llx x2=0x%llx x5=0x%llx x6=0x%llx x19=0x%llx x21=0x%llx x30=0x%llx sp=0x%llx",
                      p->m.ctx.reason ? p->m.ctx.reason : "?",
                      (unsigned long long)p->m.ctx.fault_addr, p->pid,
                      (unsigned long long)p->m.cpu.pc, p->m.ctx.instruction,
