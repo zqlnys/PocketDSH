@@ -82,6 +82,17 @@ typedef struct {
 // process it waits for exits, so a surviving sibling can still be left behind.
 // The window is now wide enough that the case does not arise in practice.
 // Tracked in docs/E2-BACKEND.md.
+// One-time lookups for the switches consulted inside the instruction loop. getenv walks
+// environ comparing strings, and the loop runs millions of times: measuring this file showed
+// five thousand cycles per instruction, which is not what interpreting an instruction costs.
+// The same fault was fixed in syscall.c and missed here.
+static int env_once(const char *name, int *slot) {
+    if (*slot < 0) *slot = getenv(name) != NULL;
+    return *slot;
+}
+static int g_sw_calls = -1, g_sw_ring = -1, g_sw_after = -1, g_sw_pipe = -1;
+static int g_sw_map = -1, g_sw_pcs = -1, g_sw_exc = -1, g_sw_nul = -1;
+
 // E2_WATCH: report the first few changes to one 8-byte word, with the pc that made them.
 static uint64_t g_watch_addr = 0;
 static uint64_t g_watch_prev = 0;
@@ -1946,7 +1957,7 @@ static int run_proc(int idx) {
                 }
             }
         }
-        if (getenv("E2_TRACE_EXC") && p->m.cpu.pc == 0x10203524) {
+        if (env_once("E2_TRACE_EXC", &g_sw_exc) && p->m.cpu.pc == 0x10203524) {
             static int ne = 0;
             if (++ne <= 2) {
                 const uint64_t obj = p->m.cpu.x[20];
@@ -1973,7 +1984,7 @@ static int run_proc(int idx) {
                 }
             }
         }
-        if (getenv("E2_TRACE_NUL") && p->m.cpu.pc == 0x1012e358) {
+        if (env_once("E2_TRACE_NUL", &g_sw_nul) && p->m.cpu.pc == 0x1012e358) {
             // Right before PyErr_SetString(ValueError, "embedded null
             // character"): x19 is the UTF-8 path buffer and [sp] the length the
             // caller believes it has, so the mismatch is visible here.
@@ -1990,10 +2001,15 @@ static int run_proc(int idx) {
                 fprintf(stderr, "\"\n");
             }
         }
-        if (getenv("E2_TRACE_PCS") && g_trace_recording != 2) {
+        if (env_once("E2_TRACE_PCS", &g_sw_pcs) && g_trace_recording != 2) {
             // Record the instruction path from a chosen address so it can be
             // compared with the same window taken from qemu.
-            const uint64_t from = strtoull(getenv("E2_TRACE_PCS"), NULL, 0);
+            static uint64_t from_cached = 0;
+            if (from_cached == 0) {
+                from_cached = strtoull(getenv("E2_TRACE_PCS") ? getenv("E2_TRACE_PCS") : "0", NULL, 0);
+                if (from_cached == 0) from_cached = 1;
+            }
+            const uint64_t from = from_cached;
             if (g_trace_recording == 0 && p->m.cpu.pc == from) {
                 g_trace_recording = 1;
             }
@@ -2034,7 +2050,7 @@ static int run_proc(int idx) {
                 }
             }
         }
-        if (getenv("E2_TRACE_CALLS")) {
+        if (env_once("E2_TRACE_CALLS", &g_sw_calls)) {
             // Log every taken bl with caller and target. A call trace answers
             // "which functions actually run", which a PC trace only implies.
             const uint32_t w = 0;
@@ -2049,7 +2065,7 @@ static int run_proc(int idx) {
                         (unsigned long long)(p->m.cpu.pc + (int64_t)imm * 4));
             }
         }
-        if (getenv("E2_TRACE_RING")) {
+        if (env_once("E2_TRACE_RING", &g_sw_ring)) {
             // Ring of the last few (pc, d0) pairs. Chasing a value that changes
             // inside a call is hopeless by watching a fixed window, because the
             // change happens in code the window does not cover.
@@ -2132,7 +2148,7 @@ static int run_proc(int idx) {
                 g_shadow_n--;
             }
         }
-        if (getenv("E2_TRACE_AFTER") && pre_pc == 0x50013e94) {
+        if (env_once("E2_TRACE_AFTER", &g_sw_after) && pre_pc == 0x50013e94) {
             unsigned char k[8] = {0};
             e2_memory_read(&p->m.mem, 0x1065c050ULL, k, 8);
             fprintf(stderr, "[after-memset]:");
@@ -2141,12 +2157,12 @@ static int run_proc(int idx) {
         }
         if (st == E2_SYSCALL) {
             const uint64_t pn = p->m.cpu.x[8];
-            if (getenv("E2_TRACE_PIPE") && (pn == 23 || pn == 24 || pn == 59 || pn == 220 || pn == 260 || pn == 221))
+            if (env_once("E2_TRACE_PIPE", &g_sw_pipe) && (pn == 23 || pn == 24 || pn == 59 || pn == 220 || pn == 260 || pn == 221))
                 fprintf(stderr, "[p%d] sys %llu a0=%llu a1=%llu a2=%llu\n", p->pid,
                         (unsigned long long)pn, (unsigned long long)p->m.cpu.x[0],
                         (unsigned long long)p->m.cpu.x[1], (unsigned long long)p->m.cpu.x[2]);
             syscalls_seen++;
-            if (getenv("E2_TRACE_MAP") && (p->m.cpu.x[8] == 215 || p->m.cpu.x[8] == 222)) {
+            if (env_once("E2_TRACE_MAP", &g_sw_map) && (p->m.cpu.x[8] == 215 || p->m.cpu.x[8] == 222)) {
                 const uint64_t a0 = p->m.cpu.x[0], a1 = p->m.cpu.x[1];
                 if (p->m.cpu.x[8] == 215) {
                     fprintf(stderr, "[munmap] 0x%llx len=0x%llx\n",
