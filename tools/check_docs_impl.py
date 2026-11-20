@@ -414,6 +414,32 @@ def check_synthesis_linked() -> int:
     return 0
 
 
+def check_capability_card() -> int:
+    """The settings card's "mapped now" list must name tools that exist.
+
+    It used to be a sentence, and it said "Not yet: subagents" long after subagent worked -
+    the app told the user a capability was missing while the model could call it. As data it
+    can be compared against the declarations.
+    """
+    models = ROOT / "Packages/PocketDSHKit/Sources/PocketDSHCore/AgentModels.swift"
+    if not models.exists():
+        print("  models not found, skipping")
+        return 0
+    text = models.read_text(errors="replace")
+    declared = set(re.findall(r'static let \w+ = "([a-z_]+)"', text))
+    block = re.search(r"mappedNow = \[(.*?)\]", text, re.S)
+    if block is None:
+        print("  no mappedNow list found")
+        return 1
+    claimed = set(re.findall(r'"([a-z_]+)"', block.group(1)))
+    phantom = sorted(claimed - declared)
+    if phantom:
+        print("  the card claims tools that do not exist: " + ", ".join(phantom))
+        return 1
+    print(f"  the settings card names {len(claimed)} real tools")
+    return 0
+
+
 def main() -> int:
     cache: dict[str, int | None] = {}
     problems = []
@@ -451,6 +477,7 @@ def main() -> int:
     doc_index = check_doc_index()
     e2_tools = check_e2_tool_mentions()
     synthesis = check_synthesis_linked()
+    card = check_capability_card()
     if problems:
         print(f"  ^ {len(problems)} of {checked} claims are out of date")
         return 1

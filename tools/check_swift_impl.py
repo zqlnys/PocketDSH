@@ -86,7 +86,9 @@ def check_tool_names(root: pathlib.Path) -> bool:
     if not models.exists():
         print("  AgentModels.swift not found, skipping")
         return True
-    declared = set(re.findall(r'static let (\w+) = "', models.read_text()))
+    # Not every declaration is a string: the capability lists are arrays. Requiring = " here
+    # made a legitimate declaration look undeclared.
+    declared = set(re.findall(r'static let (\w+)', models.read_text()))
     used = set()
     for path in root.rglob("*.swift"):
         if ".build" in str(path):

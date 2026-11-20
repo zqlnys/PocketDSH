@@ -409,6 +409,13 @@ struct SettingsView: View {
         .pocketCard()
     }
 
+    /// The tool line shown in the compatibility card. Kept beside the card rather than
+    /// inline so a test or a check can compare it against the declared tools.
+    static var capabilitySummary: String {
+        "Mapped now: " + ToolNames.mappedNow.joined(separator: ", ") +
+            ".\nNot yet: " + ToolNames.notYet.joined(separator: ", ") + "."
+    }
+
     private var compatibilityCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             SectionLabel(title: "DSH compatibility")
@@ -417,7 +424,11 @@ struct SettingsView: View {
                 .font(.caption)
                 .foregroundStyle(PocketTheme.secondaryText)
 
-            Text("Mapped now: list_files, read_file, write_file, search_files, apply_patch, run_lua.\nNot yet: Cordis plugins, subagents, persistent Bash/PowerShell, remote MCP servers.")
+            // This line said "Not yet: subagents" long after subagent was implemented in
+            // AgentRunner, so the app told the user a capability was missing while the
+            // model could already call it. Generated from the same list the catalogue uses
+            // so it cannot drift again.
+            Text(Self.capabilitySummary)
                 .font(.caption2.monospaced())
                 .foregroundStyle(PocketTheme.primaryText.opacity(0.85))
         }

@@ -240,6 +240,19 @@ public struct ToolExecutionResult: Sendable, Equatable {
 }
 
 public enum ToolNames {
+    /// What the settings card claims is available, expressed as data rather than as a
+    /// sentence. The card used to say "Not yet: subagents" long after subagent worked,
+    /// because the sentence and the implementation had no way to disagree visibly.
+    public static let mappedNow = [
+        "list_files", "read_file", "write_file", "search_files", "apply_patch",
+        "run_lua", "run_linux", "fetch_url", "web_search", "subagent",
+    ]
+    /// Capabilities this build genuinely lacks, and why.
+    public static let notYet = [
+        "Cordis plugins (needs the Node runtime)",
+        "remote MCP servers",
+        "persistent Bash/PowerShell",
+    ]
     public static let listFiles = "list_files"
     public static let readFile = "read_file"
     public static let writeFile = "write_file"
