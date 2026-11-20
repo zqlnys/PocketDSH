@@ -577,3 +577,56 @@ Python runtime state: core initialized
 **要查 `real_executable` 是怎么算出来的：它在 `getpath` 的 C 部分（`Modules/getpath.c`），
 依赖 `readlink("/proc/self/exe")` 或 `AT_EXECFN`。**
 
+## 下一层：argv[0] 与宽字符
+
+### 发现 1：`ValueError: embedded null character` 的成因
+
+**`readlines` 在 C 侧是 `getpath_readlines`，它调用 `PyUnicode_AsWideCharString(pathobj)`——
+对含内嵌 NUL 的字符串会抛 `ValueError: embedded null character`。**
+
+**那条路径来自 `joinpath(real_executable_dir, 'pybuilddir.txt')`，
+`real_executable_dir` 之所以是空的（于是 `abspath('.')` = `/`），
+是因为 CPython 判定 `executable` 为空。**
+
+**根因：`argv[0]` 传的是 `"python3.12"`（basename），里面没有 `/`。**
+
+**CPython 的 getpath.py：**
+
+```python
+if not executable and SEP in program_name:
+    executable = abspath(program_name)
+...
+if not executable:
+    executable = ''
+    executable_dir = abspath('.')     # ← 落到这里
+```
+
+**用 `E2_ARGV0=/usr/bin/python3.12` 传完整路径后，NUL 错误消失。**
+
+### 发现 2：新错误 —— 宽字符解码
+
+```
+ValueError: character U+7275732f is not in range [U+0000; U+10ffff]
+```
+
+**`0x7275732f` 按小端拆开是字节 `2f 73 75 72` = `"/sur"`。**
+
+**四个 ASCII 字节被当成一个 `wchar_t` 读了出来。**
+
+**aarch64 Linux 上 `wchar_t` 是 4 字节 UTF-32。所以某处把字节写进了宽字符缓冲区。**
+
+**下一步查 `Py_DecodeLocale` / `PyUnicode_AsWideCharString` 用到的
+`mbrtowc` / `mbstate_t` 语义是否与 musl 一致。**
+
+### 当前调用序列
+
+```
+[open] "/etc/ld-musl-aarch64.path"
+[open] "/lib/libpython3.12.so.1.0"
+[open] "/usr/local/lib/libpython3.12.so.1.0"
+[open] "/usr/lib/libpython3.12.so.1.0"
+→ ValueError: character U+7275732f ...
+```
+
+**`open` 的路径现在全是绝对路径——说明 `executable_dir` 已正确推导。**
+

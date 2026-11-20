@@ -269,6 +269,8 @@ static bool proc_self_body(const char *path, char *out, size_t outlen, size_t *l
 }
 
 static int fs_open(void *c, const char *path, int fl, int m) {
+    if (getenv("E2_TRACE_OPENPATH"))
+        fprintf(stderr, "[open] \"%s\"\n", path);
     (void)m;
     // An alias names a descriptor already open; duplicate it rather than looking
     // for a file.
@@ -1232,18 +1234,29 @@ static int p_execve(void *ctx, e2_machine *m, const char *path, uint64_t argv,
     // Prefer the image we are already running: it is the one whose behaviour the
     // backend has been verified against, and mixing in a dynamically linked
     // applet makes child failures harder to attribute.
+    // argv[0] decides how a program finds itself: busybox dispatches on the basename, but
+    // CPython derives sys.path from the path in argv[0], and given a bare name it searches
+    // PATH and may conclude the executable is unknown. So busybox gets the basename and
+    // everything else gets the path it was started with.
+    const char *arg0_base = strrchr(path, '/');
+    const bool is_busybox = arg0_base != NULL && strncmp(arg0_base + 1, "busybox", 7) == 0;
+    char arg0[2048];
+    snprintf(arg0, sizeof(arg0), "%s", (is_busybox && arg0_base) ? arg0_base + 1 : path);
     if (g_self_path != NULL && strcmp(g_self_path, host) != 0) {
         if (nargs == 0) {
-            const char *base = strrchr(path, '/');
-            snprintf(args[0], sizeof(args[0]), "%s", base ? base + 1 : path);
+            snprintf(args[0], sizeof(args[0]), "%s", arg0);
             nargs = 1;
         }
         snprintf(host, sizeof(host), "%s", g_self_path);
     }
     if (nargs == 0) {
-        const char *base = strrchr(path, '/');
-        snprintf(args[0], sizeof(args[0]), "%s", base ? base + 1 : path);
+        snprintf(args[0], sizeof(args[0]), "%s", arg0);
         nargs = 1;
+    } else if (!is_busybox) {
+        // The caller filled argv[0] with the basename, which busybox needs but CPython
+        // does not: it derives sys.path from this string, and a bare name makes it fall
+        // back to searching PATH and to treating the executable directory as unknown.
+        snprintf(args[0], sizeof(args[0]), "%s", arg0);
     }
 
     // execve closes FD_CLOEXEC descriptors before the new image starts.
@@ -2484,6 +2497,10 @@ env_done:
         return 1;
     }
 
+    if (getenv("E2_TRACE_ARGV")) {
+        for (int i = 0; i < nargs && i < 4; i++)
+            fprintf(stderr, "[argv] %d = \"%s\"\n", i, args[i]);
+    }
     // Hand the loaded image to the process table and run it as pid 1.
     procs[1].used = 1;
     fd_table_copy(1, 0);
