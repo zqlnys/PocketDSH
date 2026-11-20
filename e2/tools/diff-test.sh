@@ -815,6 +815,10 @@ seq 5 | awk '{printf "%03d\n", $1}'
 echo a b c | tr ' ' '\n' | sort | uniq
 seq 3 | sed 's/1/one/;s/3/three/'
 printf 'A:B\n' | cut -d: -f2 | tr 'A-Z' 'a-z'
+printf 'a\tb\n' | awk -F'\t' '{print $2}'
+seq 4 | sed 'N;s/\n/+/'
+echo 'x' | tr 'a-z' 'n-za-m'
+printf '1\n2\n3\n' | awk 'NR>1{print prev}{prev=$0}'
 sh /tmp/dtreal2.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh

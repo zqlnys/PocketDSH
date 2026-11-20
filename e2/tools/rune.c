@@ -1979,6 +1979,26 @@ static int run_proc(int idx) {
                         (unsigned long long)p->m.cpu.x[4], (unsigned long long)p->m.cpu.x[6],
                         (unsigned long long)p->m.cpu.x[19],
                         (unsigned long long)p->m.cpu.sp);
+                {
+                    uint8_t dmp[24]; uint64_t a0 = p->m.cpu.x[6] - 16;
+                    if (e2_memory_read(&p->m.mem, a0, dmp, sizeof dmp) == 0) {
+                        fprintf(stderr, "[at] bytes@0x%llx:", (unsigned long long)a0);
+                        for (int q = 0; q < 24; q++) fprintf(stderr, " %02x", dmp[q]);
+                        fprintf(stderr, "\n");
+                    } else fprintf(stderr, "[at] bytes@0x%llx unreadable\n",
+                                   (unsigned long long)a0);
+                }
+                {
+                    // The struct _PyCode_CheckLineNumber walks: [x19+0x18] and [x19+0x20]
+                    // are the two pointers its loop compares.
+                    uint64_t f18 = 0, f20 = 0;
+                    const uint64_t base = p->m.cpu.x[19];
+                    const int ok18 = e2_memory_read(&p->m.mem, base + 0x18, &f18, 8);
+                    const int ok20 = e2_memory_read(&p->m.mem, base + 0x20, &f20, 8);
+                    fprintf(stderr, "[at] struct[0x18]=0x%llx(ok=%d) [0x20]=0x%llx(ok=%d)\n",
+                            (unsigned long long)f18, ok18 == 0,
+                            (unsigned long long)f20, ok20 == 0);
+                }
             }
         }
         if (env_once("E2_TRACE_EXC", &g_sw_exc) && p->m.cpu.pc == 0x10203524) {
