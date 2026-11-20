@@ -212,6 +212,7 @@ Agent 只会拿到相对路径。绝对路径、`..`、symlink 逃逸都会被 `
 
 - [E2 后端：设计、进度与踩坑记录](docs/E2-BACKEND.md) —— 849 项验证背后的每一次修复
 - [交接文档](docs/HANDOFF.md) —— 换新会话时先读这个
+- [M4/CPython 崩溃报告](docs/M4-CPYTHON-BUG.md) —— M4 的精确故障点，可直接交给外部审查
 - [本次会话总结](docs/SESSION-SUMMARY.md) —— 2026-11-16 至 11-19 做了什么、现状如何、哪些试过没成
 
 **调试工具**（都在 `e2/tools/`）：
