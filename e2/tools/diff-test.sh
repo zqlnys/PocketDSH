@@ -800,6 +800,12 @@ i=1; while [ $i -le 70 ]; do eval "exec $((i+2))>/tmp/dtf_$i"; i=$((i+1)); done;
 # failed with an out-of-memory message that had nothing to do with memory. Sorted to take
 # scheduling order out of it.
 sh -c 'i=0; while [ $i -lt 20 ]; do (echo p$i) & i=$((i+1)); done; wait' | sort | wc -l
+# Signal delivery. rt_sigaction used to record nothing and kill used to raise nothing, so
+# `trap ... ; kill -INT $$` printed neither the trap nor an error - the interface answered
+# and the implementation was a constant.
+sh -c "trap 'echo caught' INT; kill -INT \$\$; echo after"
+sh -c "trap 'echo u' USR1; kill -USR1 \$\$; echo done"
+kill -0 $$ && echo alive
 sh /tmp/dtreal2.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh

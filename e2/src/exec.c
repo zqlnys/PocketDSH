@@ -43,6 +43,17 @@ void e2_machine_init(e2_machine *machine, uint64_t entry, size_t stack_size) {
     machine->cycle_clock = 1000000;
     e2_memory_init(&machine->mem);
     e2_cpu_reset_impl(&machine->cpu, entry);
+    // The trampoline the kernel places in a signal frame's return address. Kept in its own
+    // page below the stack so nothing the program does to its stack can overwrite it.
+    {
+        const uint64_t where = 0x7EFFF000ULL;
+        if (e2_memory_map_at(&machine->mem, where, E2_PAGE_SIZE,
+                             E2_PROT_READ | E2_PROT_WRITE | 4 /* exec */) == 0) {
+            const uint32_t code[2] = {0xD2801168u /* mov x8, #139 */, 0xD4000001u /* svc #0 */};
+            e2_memory_write(&machine->mem, where, code, sizeof(code));
+            machine->sig_trampoline = where;
+        }
+    }
 
     if (stack_size > 0) {
         const size_t rounded = (stack_size + E2_PAGE_SIZE - 1) & ~(size_t)(E2_PAGE_SIZE - 1);
@@ -200,6 +211,66 @@ int e2_machine_clone(const e2_machine *src, e2_machine *dst) {
         return -1;
     }
     dst->ctx.reason = NULL;
+    return 0;
+}
+
+int e2_machine_raise_signal(e2_machine *machine, unsigned signum) {
+    if (signum == 0 || signum >= 64) return -22;         // EINVAL
+    if (machine->sig_handler[signum] == 1) return 0;     // SIG_IGN
+    machine->sig_pending |= (1ULL << signum);
+    return 0;
+}
+
+int e2_machine_pop_sigframe(e2_machine *machine, e2_sigframe *out) {
+    e2_sigframe frame;
+    if (e2_memory_read(&machine->mem, machine->cpu.sp, &frame, sizeof(frame)) != 0) {
+        return -14;                                      // EFAULT
+    }
+    if (frame.magic != E2_SIGFRAME_MAGIC) {
+        // rt_sigreturn with no frame means the program called it directly. Restoring
+        // whatever happened to be on the stack would be worse than failing.
+        return -22;
+    }
+    for (unsigned i = 0; i < 31; i++) machine->cpu.x[i] = frame.x[i];
+    machine->cpu.sp = frame.sp;
+    machine->cpu.pc = frame.pc;
+    if (out != NULL) *out = frame;
+    return 0;
+}
+
+int e2_deliver_pending_signal(e2_machine *machine) {
+    if (machine->sig_pending == 0) return 0;
+    for (unsigned sig = 1; sig < 64; sig++) {
+        const uint64_t bit = 1ULL << sig;
+        if ((machine->sig_pending & bit) == 0) continue;
+        machine->sig_pending &= ~bit;
+        const uint64_t handler = machine->sig_handler[sig];
+        if (handler == 1) continue;                      // ignored
+        if (handler == 0) {
+            // The default action. Reporting it rather than pretending the signal was
+            // handled is what makes a missing handler visible instead of silent.
+            machine->ctx.reason = "signal with no handler";
+            return -1;
+        }
+        if (machine->sig_trampoline == 0) return -1;
+
+        e2_sigframe frame;
+        memset(&frame, 0, sizeof(frame));
+        for (unsigned i = 0; i < 31; i++) frame.x[i] = machine->cpu.x[i];
+        frame.sp = machine->cpu.sp;
+        frame.pc = machine->cpu.pc;
+        frame.magic = E2_SIGFRAME_MAGIC;
+
+        const uint64_t sp = (machine->cpu.sp - sizeof(frame)) & ~(uint64_t)15;
+        if (e2_memory_write(&machine->mem, sp, &frame, sizeof(frame)) != 0) return -1;
+        machine->cpu.sp = sp;
+        machine->cpu.x[0] = sig;        // the handler takes the signal number
+        machine->cpu.x[1] = 0;          // no siginfo
+        machine->cpu.x[2] = 0;          // no ucontext
+        machine->cpu.x[30] = machine->sig_trampoline;
+        machine->cpu.pc = handler;
+        return 1;
+    }
     return 0;
 }
 
@@ -2742,6 +2813,8 @@ not_a_shift:;
 }
 
 e2_status e2_run(e2_machine *machine, uint64_t max_instructions) {
+    // Deliberately unchanged: delivery is driven by the caller, which knows whether a
+    // pending signal belongs to the process about to run.
     uint64_t executed = 0;
     for (;;) {
         if (max_instructions != 0 && executed >= max_instructions) {

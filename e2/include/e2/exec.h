@@ -33,12 +33,51 @@ typedef struct {
     uint64_t brk_base;
     uint64_t brk_current;
     uint64_t brk_limit;
+    /// Signal handlers installed through rt_sigaction. 0 means "no handler" and 1 means
+    /// "ignore", matching the kernel's SIG_DFL and SIG_IGN. Until this existed both
+    /// rt_sigaction and kill returned 0 without doing anything, so `trap ... ; kill -INT $$`
+    /// silently did nothing - the interface answered and the implementation was a constant.
+    uint64_t sig_handler[64];
+    /// Signals raised but not yet delivered, as a bitmask over signal numbers.
+    uint64_t sig_pending;
+    /// Where the trampoline lives: two instructions, `mov x8, #139; svc #0`, which is what
+    /// the kernel puts in the return address of a signal frame so the handler's `ret` lands
+    /// on rt_sigreturn.
+    uint64_t sig_trampoline;
 } e2_machine;
 
 /// Prepares a machine with a stack of `stack_size` bytes. The stack top is
 /// page aligned and stored in SP.
 void e2_machine_init(e2_machine *machine, uint64_t entry, size_t stack_size);
 void e2_machine_destroy(e2_machine *machine);
+
+/// The context saved on the guest stack when a signal is delivered, restored by
+/// rt_sigreturn. The kernel's own frame carries siginfo and a ucontext; only the registers
+/// and the interrupted pc are needed to resume correctly, and busybox's trap handlers read
+/// neither of the others.
+typedef struct {
+    uint64_t x[31];   ///< x0..x30 as they were when the signal was taken.
+    uint64_t sp;
+    uint64_t pc;
+    uint64_t magic;   ///< Guards against an rt_sigreturn with no frame on the stack.
+} e2_sigframe;
+
+#define E2_SIGFRAME_MAGIC 0x4532736967467261ULL
+
+/// Raises `signum` for the next instruction boundary, unless it is ignored.
+///
+/// Returns 0 when the signal was recorded or dropped, negative errno otherwise. Delivery
+/// itself happens in e2_deliver_pending_signal.
+int e2_machine_raise_signal(e2_machine *machine, unsigned signum);
+
+/// If a signal is pending and has a handler, builds its frame and points the machine at the
+/// handler. Returns 1 when it delivered one, 0 when nothing was pending, and -1 when a
+/// pending signal has no handler (the default action, which this layer reports rather than
+/// simulates).
+int e2_deliver_pending_signal(e2_machine *machine);
+
+/// Restores the context saved by e2_deliver_pending_signal. Used by rt_sigreturn.
+int e2_machine_pop_sigframe(e2_machine *machine, e2_sigframe *out);
 
 /// Executes exactly one instruction.
 ///

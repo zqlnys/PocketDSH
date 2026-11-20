@@ -717,17 +717,70 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             E2_RETURN(0);
         case 178:  // gettid
             E2_RETURN(1);
-        case 135:  // rt_sigaction: report success, do not install anything.
-            // libc only checks the return value during start-up; the guest runs
-            // single-threaded and nothing can deliver a signal to it.
+        case 134: {  // rt_sigaction(sig, act, oldact, sigsetsize)
+            // Earlier this returned 0 and installed nothing, so a program that registered
+            // a handler believed it had one. Record the address; delivery happens in
+            // e2_deliver_pending_signal. sigaction is {handler, flags, restorer, mask} and
+            // only the handler is needed here.
+            const unsigned sig = (unsigned)a0;
+            if (sig == 0 || sig >= 64) {
+                E2_RETURN(-E2_EINVAL);
+            }
+            if (a2 != 0) {
+                // Asking for the previous handler: report what was recorded.
+                uint8_t *old_act = e2_memory_host_ptr(&m->mem, a2, 32, E2_PROT_WRITE);
+                if (old_act == NULL) {
+                    E2_RETURN(-E2_EFAULT);
+                }
+                memset(old_act, 0, 32);
+                memcpy(old_act, &m->sig_handler[sig], 8);
+            }
+            if (a1 != 0) {
+                uint8_t act[32];
+                if (e2_memory_read(&m->mem, a1, act, sizeof(act)) != 0) {
+                    E2_RETURN(-E2_EFAULT);
+                }
+                uint64_t handler = 0;
+                memcpy(&handler, act, 8);
+                m->sig_handler[sig] = handler;
+            }
             E2_RETURN(0);
-        case 134:  // rt_sigprocmask
+        }
+        case 139: {  // rt_sigreturn: restore the context saved when the signal was taken
+            e2_sigframe frame;
+            if (e2_machine_pop_sigframe(m, &frame) != 0) {
+                E2_RETURN(-E2_EFAULT);
+            }
+            E2_RETURN(0);
+        }
+        case 135:  // rt_sigprocmask
+            // The mask is not modelled: delivery happens between instructions and the
+            // guest is single-threaded, so there is no window a mask would protect.
             E2_RETURN(0);
         case 132:  // sigaltstack
             E2_RETURN(0);
-        case 129:  // rt_sigqueueinfo / kill family: nothing to deliver
-        case 130:
+        case 129:   // kill(pid, sig)
+        case 130: { // rt_sigqueueinfo / tgkill
+            // Only the "signal this process" case is modelled, which is what `kill -INT $$`
+            // and `kill -USR1 $$` do. A signal aimed at another process is recorded but not
+            // delivered, because the target may not be the one running.
+            const unsigned sig = (unsigned)a1;   // kill: sig is arg1; tgkill: also arg1
+            if (sig == 0) {
+                // Signal 0 is the existence check: it must not deliver anything, and
+                // rejecting it broke `kill -0 $$`, which is how a script asks whether a
+                // process is still there.
+                E2_RETURN(0);
+            }
+            if (sig >= 64) {
+                E2_RETURN(-E2_EINVAL);
+            }
+            const long target = (long)a0;
+            const bool self = (target == 0 || target == (long)env->pid);
+            if (self || number == 130) {
+                m->sig_pending |= (1ULL << sig);
+            }
             E2_RETURN(0);
+        }
         case 97:  // uname
         case 160:  // uname (aarch64 uses 160)
             if (a0 != 0) {

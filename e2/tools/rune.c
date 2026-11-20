@@ -2067,6 +2067,18 @@ static int run_proc(int idx) {
             if (e2_memory_read(&p->m.mem, pre_pc, &pre_insn, 4) != 0) pre_insn = 0;
         }
         g_global_step++;
+        // Between instructions, before this process runs again. A handler installed with
+        // rt_sigaction and raised by kill gets its frame built here, so `trap ... ; kill -INT
+        // $$` runs the trap instead of returning 0 and doing nothing.
+        if (p->m.sig_pending != 0) {
+            const int delivered = e2_deliver_pending_signal(&p->m);
+            if (delivered < 0) {
+                p->m.ctx.reason = "signal with no handler";
+                p->exit_status = 128 + 9;
+                return 0;   // the default action for an unhandled signal
+            }
+            if (delivered > 0) continue;
+        }
         e2_status st = e2_step(&p->m);
         // A chdir inside the step changed env.cwd; keep the process copy in step so
         // the change survives to the next scheduling turn.
