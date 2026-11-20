@@ -237,3 +237,82 @@ E2_AT=0x1028012c E2_CAP=200000000 ./tools/rune \
   /tmp/alpine-root/usr/bin/python3.12 -c pass
 ```
 
+---
+
+# 怎么拿到代码
+
+## 首选：从 GitHub 直接 clone
+
+**仓库是公开的，可以匿名克隆：**
+
+```bash
+git clone https://github.com/zqlnys/PocketDSH.git
+cd PocketDSH/e2
+```
+
+**最新提交 `dcb3743`。这个仓库不需要 SSH，走 HTTPS。**
+
+## 备选：离线 ZIP
+
+**`e2-for-codex.zip`（313 KB，58 个文件）包含：**
+
+```
+e2/src/*.c             解释器、syscall、内存、加载器
+e2/include/e2/*.h
+e2/tools/*             rune.c 之外的调试工具 + trace-align.py + qemu-exectrace.py
+e2/tests/main.c        246 项单指令测试
+e2/Makefile
+docs/M4-CPYTHON-BUG.md 问题报告
+docs/E2-BACKEND.md     完整记录
+docs/HANDOFF.md
+docs/SSH-ACCESS.md
+repro.sh
+```
+
+## 能跑什么、不能跑什么（重要）
+
+**`make test` 不需要 Alpine 根文件系统** —— 246 项测试用的 guest ELF 是现场用
+`clang` + `ld.lld` 交叉编译出来的。
+
+```bash
+cd e2
+make test        # → 246 checks, 0 failure(s)
+```
+
+**只依赖 `clang` 和 `ld.lld` 两个工具。**
+
+**不能直接复现 CPython 崩溃** —— 那需要 `/tmp/alpine-root`（49 MB 的 Alpine aarch64
+根文件系统，含 python3.12 和 musl）。**这个没有打包。**
+
+**所以：改解释器 → `make test` 验证 → 我在这边用真实的 Alpine 根跑 CPython 确认。**
+
+## 建议的改动顺序
+
+1. **`E2_TRACE_PCS` 缓冲区改成环形**（`g_trace_buf[65536]` → 故障时导出最后 N 条）。
+   **这条不依赖 Alpine，改完 `make test` 就能验证。**
+2. **修 `x6` 从 `0x10791970` 变成 `0x10000013` 的问题**——需要真实运行才能观察，
+   但代码改动可以用 `make test` 兜底。
+3. 环回后我这边跑 CPython，把新轨迹给你。
+
+## 当前最具体的问题（复述）
+
+**`PyCode_Addr2Line` 只被调用一次。在 `0x1028012c`（刚 load 完 `co_linetable`）处：**
+
+```
+x3 = 0x1081d150     x6 = 0x10791970
+```
+
+**崩溃时（`0x102fbbf4`）：**
+
+```
+x6 = 0x10000013
+```
+
+**同一个调用、同一个寄存器，值变了。中间只有 `0x1028012c → 0x10280148 → 被调函数`
+这一段。**
+
+**已经排除**：`LDRSB` 符号扩展是对的（实测 `0x80 → 0xffffff80`，bit31 = 1）；
+`co_linetable` 指向 libpython 这件事本身不能证明有错（冻结对象合法）。
+
+**所以要么 `x6` 在这段被改写，要么我抓到的转储不属于同一次调用（但计数器显示只有一次）。**
+
