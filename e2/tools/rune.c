@@ -1959,6 +1959,28 @@ static int run_proc(int idx) {
                 }
             }
         }
+        {
+            static uint64_t at_pc = 0;
+            static int at_done = 0;
+            static int at_init = 0;
+            if (!at_init) {
+                const char *a = getenv("E2_AT");
+                at_pc = a ? strtoull(a, NULL, 0) : 0;
+                at_init = 1;
+            }
+            if (at_pc != 0 && at_done < 400 && p->m.cpu.pc == at_pc) {
+                at_done++;
+                fprintf(stderr,
+                        "[at] pc=0x%llx x0=0x%llx x1=0x%llx x2=0x%llx x3=0x%llx "
+                        "x4=0x%llx x6=0x%llx x19=0x%llx sp=0x%llx\n",
+                        (unsigned long long)at_pc,
+                        (unsigned long long)p->m.cpu.x[0], (unsigned long long)p->m.cpu.x[1],
+                        (unsigned long long)p->m.cpu.x[2], (unsigned long long)p->m.cpu.x[3],
+                        (unsigned long long)p->m.cpu.x[4], (unsigned long long)p->m.cpu.x[6],
+                        (unsigned long long)p->m.cpu.x[19],
+                        (unsigned long long)p->m.cpu.sp);
+            }
+        }
         if (env_once("E2_TRACE_EXC", &g_sw_exc) && p->m.cpu.pc == 0x10203524) {
             static int ne = 0;
             if (++ne <= 2) {
