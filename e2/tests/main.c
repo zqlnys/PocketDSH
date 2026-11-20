@@ -414,6 +414,33 @@ static void test_xtn_narrows_lanes(void) {
     e2_machine_destroy(&m);
 }
 
+static void test_movi_64bit_immediate(void) {
+    printf("MOVI's 64-bit form fills one byte per set bit of imm8\n");
+    // `movi d0, #0x000000ffffffff` must give 0x00000000ffffffff. The old expansion
+    // replicated the whole byte and produced 0x0f0f0f0f0f0f0f0f - the register that
+    // PyCode_Addr2Line writes over its address-range struct, which is why CPython's
+    // start-up spent 150 million instructions walking backwards before faulting.
+    struct { uint32_t insn; uint64_t want; } cases[] = {
+        {0x2F00E5E0u, 0x00000000FFFFFFFFULL},
+        {0x2F00E420u, 0x00000000000000FFULL},
+        {0x2F00E460u, 0x000000000000FFFFULL},
+        {0x2F02E6A0u, 0x00FF00FF00FF00FFULL},
+    };
+    for (unsigned i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        const uint32_t code[] = {cases[i].insn, RET()};
+        e2_machine m;
+        e2_machine_init(&m, 0, 8192);
+        e2_memory_map_at(&m.mem, 0x1000, 0x1000, E2_PROT_READ | E2_PROT_WRITE);
+        e2_memory_write(&m.mem, 0x1000, code, sizeof(code));
+        m.cpu.pc = 0x1000;
+        e2_step(&m);
+        CHECK(m.cpu.v[0][0] == cases[i].want,
+              "0x%08x should give 0x%016llx, got 0x%016llx", cases[i].insn,
+              (unsigned long long)cases[i].want, (unsigned long long)m.cpu.v[0][0]);
+        e2_machine_destroy(&m);
+    }
+}
+
 static void test_ldrsb_and_tbz_together(void) {
     printf("LDRSB sign-extends a byte and TBZ tests bit 31 of the result\n");
     // This pair is what CPython's backward line-table scan is built from, and a wrong
@@ -1460,6 +1487,7 @@ int main(void) {
     test_load_store();
     test_svc();
     test_hint_space_is_noop();
+    test_movi_64bit_immediate();
     test_ldrsb_and_tbz_together();
     test_ld1_lane_loads_one_lane();
     test_sysinfo_writes_the_struct();

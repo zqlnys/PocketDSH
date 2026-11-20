@@ -1828,10 +1828,17 @@ not_a_shift:;
                 e2_v_set(cpu, rd_v, 8, i, imm8);
             }
         } else if (cmode == 0xE && op) {
-            // movi Vd.2d, #imm8 - replicate the byte across the whole register.
+            // The 64-bit form: each bit of imm8 fills one byte of the register with 0xff,
+            // so imm8=0x01 gives 0x00000000000000ff and imm8=0x0f gives 0x00000000ffffffff.
+            // Checked against all 255 encodings with llvm. The previous version replicated
+            // the whole byte, which made `movi d0, #0x000000ffffffff` come out as
+            // 0x0f0f0f0f0f0f0f0f - the register PyCode_Addr2Line stores over its
+            // address-range struct, and where CPython's start-up went wrong.
             uint64_t pattern = 0;
             for (unsigned i = 0; i < 8; i++) {
-                pattern = (pattern << 8) | imm8;
+                if ((imm8 >> i) & 1u) {
+                    pattern |= 0xFFULL << (8 * i);
+                }
             }
             cpu->v[rd_v][0] = pattern;
             cpu->v[rd_v][1] = pattern;

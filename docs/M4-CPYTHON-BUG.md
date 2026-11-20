@@ -511,3 +511,69 @@ while (bounds->ar_start > lasti) {
 
 **`movi d0, #0x000000ffffffff` 这种「32 位全 F 复制两次」的形式是 CPython 特有的用法。**
 
+---
+
+# 2026-11-21：修好了，CPython 从崩溃变成正常报错
+
+## 修复
+
+```c
+} else if (cmode == 0xE && op) {
+    // 每个 imm8 的置位对应一个 0xFF 字节
+    uint64_t pattern = 0;
+    for (unsigned i = 0; i < 8; i++) {
+        if ((imm8 >> i) & 1u) pattern |= 0xFFULL << (8 * i);
+    }
+```
+
+**验证方式**：用 llvm 生成 255 条 d-form 编码的真值，全部吻合。
+
+**并固化为单测 `test_movi_64bit_immediate`（4 条用例），变异验证判力：**
+把展开改回「复制整个字节」→ **CAUGHT**。
+
+## 效果
+
+| 阶段 | 指令数 | 结果 |
+| --- | --- | --- |
+| 修复前 | 150,636,853 | FAULT：走到映射外 |
+| **修复后** | **15,168,740** | **正常退出，Python 层报错** |
+
+**指令数降到十分之一，而且不再是解释器崩溃。**
+
+## 现在的报错（下一个问题）
+
+```
+Exception ignored error evaluating path:
+Traceback (most recent call last):
+  File "<frozen getpath>", line 490, in <module>
+ValueError: embedded null character
+Fatal Python error: error evaluating path
+Python runtime state: core initialized
+```
+
+**`<frozen getpath>` 是 CPython 用冻结的 Python 代码算 sys.path——
+它能跑到这里，说明解释器、`getpath` 的 Python 部分、以及大部分 C 运行时都已经正确。**
+
+## 顺带修的第二个缺陷
+
+**`readlink /proc/self/exe` 之前返回空**（qemu 返回 `/bin/busybox`）。
+**现已合成：返回当前程序的 guest 路径。**
+
+**但 trace 显示 CPython 只调用了一次 readlink，且路径是空的——**
+**说明 NUL 来自别处，还没定位。**
+
+## 已确认正确的地方
+
+- `movi d0` 的各种形式（255 条）
+- `readlink /proc/self/exe` 返回 `/usr/bin/python3.12`
+- 不存在的文件 `open` 正确返回 ENOENT
+- `getcwd`、`pwd` 正确
+
+## 下一步
+
+**`real_executable_dir` 里带 NUL，导致 `joinpath` 产生带 NUL 的路径，
+`open` 在发出系统调用之前就抛 `ValueError`——所以它不被 `except FileNotFoundError` 捕获。**
+
+**要查 `real_executable` 是怎么算出来的：它在 `getpath` 的 C 部分（`Modules/getpath.c`），
+依赖 `readlink("/proc/self/exe")` 或 `AT_EXECFN`。**
+

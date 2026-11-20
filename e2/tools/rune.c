@@ -565,9 +565,24 @@ static long fs_fcntl(void *c, int fd, int cmd, long arg) {
     }
 }
 
+// The guest path of the program that was started, for /proc/self/exe.
+static char g_exe_path[1024];
+
 // readlinkat backs os.readlink, which Python uses while normalising sys.path.
 static long fs_readlink(void *ctx, const char *path, char *out, size_t outlen) {
     (void)ctx;
+    // /proc/self/exe is answered from the running program rather than from the guest root,
+    // where no such symlink exists. Returning nothing here made `readlink /proc/self/exe`
+    // empty while qemu answers /bin/busybox, and CPython's getpath reads exactly that to
+    // locate the executable and derive sys.path from it.
+    if (getenv("E2_TRACE_READLINK"))
+        fprintf(stderr, "[readlink] %s -> exe_path='%s'\n", path, g_exe_path);
+    if (strcmp(path, "/proc/self/exe") == 0 && g_exe_path[0] != '\0') {
+        const size_t n = strlen(g_exe_path);
+        const size_t copy = n < outlen ? n : outlen;
+        memcpy(out, g_exe_path, copy);
+        return (long)copy;
+    }
     char h[2048];
     host_path(h, sizeof(h), path);
     const ssize_t n = readlink(h, out, outlen);
@@ -944,6 +959,17 @@ static int start_image(e2_machine *m, const char *path, char args[][ARG_MAX], in
     e2_memory_destroy(&m->mem);
     e2_machine_init(m, 0, E2_GUEST_RAM);
 
+    // Strip the guest root: /proc/self/exe must report the path the guest sees, not the
+    // host path the harness loaded from.
+    {
+        const size_t rl = strlen(ROOT);
+        const char *gp = path;
+        if (rl > 0 && strncmp(path, ROOT, rl) == 0) {
+            gp = path + rl;
+            if (*gp == '\0') gp = "/";
+        }
+        snprintf(g_exe_path, sizeof(g_exe_path), "%s", gp);
+    }
     const char *interp_path = elf_interp(img, size);
     e2_loaded_image app = {0}, ld = {0};
     e2_load_result r;
