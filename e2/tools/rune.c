@@ -82,7 +82,8 @@ typedef struct {
 // process it waits for exits, so a surviving sibling can still be left behind.
 // The window is now wide enough that the case does not arise in practice.
 // Tracked in docs/E2-BACKEND.md.
-static int g_sw_calls, g_sw_ring, g_sw_after, g_sw_pipe, g_sw_map, g_sw_pcs, g_sw_exc, g_sw_nul;
+static int g_sw_calls = -1, g_sw_ring = -1, g_sw_after = -1, g_sw_pipe = -1;
+static int g_sw_map = -1, g_sw_pcs = -1, g_sw_exc = -1, g_sw_nul = -1;
 // One-time lookups for the switches consulted inside the instruction loop. getenv walks
 // environ comparing strings, and the loop runs millions of times: measuring this file showed
 // five thousand cycles per instruction, which is not what interpreting an instruction costs.
@@ -958,7 +959,7 @@ static int start_image(e2_machine *m, const char *path, char args[][ARG_MAX], in
         if (getenv("E2_TRACE_LOAD"))
             fprintf(stderr, "[load] app ok bias=0x%llx entry=0x%llx ld_size=%zu\n",
                     (unsigned long long)app.load_bias, (unsigned long long)app.entry, ld_size);
-        r = e2_load_elf_at(m, ld_img, ld_size, 0x4000000000ULL, &ld);
+        r = e2_load_elf_at(m, ld_img, ld_size, 0x400000810000ULL, &ld);
         free(ld_img);
         if (getenv("E2_TRACE_LOAD"))
             fprintf(stderr, "[load] ld result=%s bias=0x%llx entry=0x%llx\n",
