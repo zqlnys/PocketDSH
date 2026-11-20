@@ -953,12 +953,12 @@ static int start_image(e2_machine *m, const char *path, char args[][ARG_MAX], in
         size_t ld_size = 0;
         uint8_t *ld_img = load_file(host, &ld_size);
         if (ld_img == NULL) { free(img); return -2; }
-        r = e2_load_elf_at(m, img, size, 0x40000000ULL, &app);
+        r = e2_load_elf_at(m, img, size, 0x400000ULL, &app);
         if (r != E2_LOAD_OK) { free(img); free(ld_img); return -8; }
         if (getenv("E2_TRACE_LOAD"))
             fprintf(stderr, "[load] app ok bias=0x%llx entry=0x%llx ld_size=%zu\n",
                     (unsigned long long)app.load_bias, (unsigned long long)app.entry, ld_size);
-        r = e2_load_elf_at(m, ld_img, ld_size, 0x50000000ULL, &ld);
+        r = e2_load_elf_at(m, ld_img, ld_size, 0x4000000000ULL, &ld);
         free(ld_img);
         if (getenv("E2_TRACE_LOAD"))
             fprintf(stderr, "[load] ld result=%s bias=0x%llx entry=0x%llx\n",
