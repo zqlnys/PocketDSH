@@ -120,3 +120,85 @@ E2_CAP=200000000 ./tools/rune \
 - `e2/src/syscall.c` — 系统调用层
 - `e2/tools/rune.c` — harness（进程表、管道、信号、调试开关）
 - `docs/E2-BACKEND.md` — 完整记录，最后一节是「五种反复出现的错误」
+
+---
+
+# 补充：对三条建议的核查（2026-11-21）
+
+## ① 环形缓冲 / 不要按 1.5 亿窗口追踪 —— 同意
+
+`E2_TRACE_PCS` 现在是 `static uint64_t g_trace_buf[65536]`，满了就 flush 并停止。
+**改成故障时导出最后 N 条，是正确做法**，也避免 1.2 GB 的分配。
+
+## ② `LDRSB` 的符号扩展 —— 已实测，实现是对的
+
+**用独立小程序复现 `apply_load_opc(opc=3, bytes=1)` 的路径：**
+
+```
+读到: 0x80
+w4   : 0xffffff80   bit31=1
+结论 : TBZ 不跳转，循环退出 ✓
+```
+
+**`src/exec.c:98-105` 对 opc=3 的处理：**
+
+```c
+const unsigned bits = bytes * 8;          // 8
+uint64_t extended = value;                 // 0x80
+if (bits < 32) {
+    const uint64_t sign = 1ULL << (bits - 1);   // 0x80
+    extended = (value ^ sign) - sign;           // 0xFFFFFFFFFFFFFF80
+}
+value = (uint64_t)(int64_t)(int32_t)extended & 0xFFFFFFFFu;  // 0xFFFFFF80
+```
+
+**所以 `LDRSB` 不是原因。循环继续前进，是因为那段内存里每个字节的 bit31 确实都是 0
+（ELF 头的零字节），不是因为它读错了符号。**
+
+## ③ 「libpython 映射内」不能证明指针错 —— 同意，但这里不在映射内
+
+**这条提醒是对的：3.11+ 的 deepfreeze 把代码对象放进静态数据，`co_linetable` 会指向
+libpython 的 `.data`/`.rodata`，那是合法的。**
+
+**但这次算下来，`co_linetable` 在基址**下方**：**
+
+```
+x6（数据终点）        = 0x10000013
+x4 = co_linetable + 0x20
+反汇编 280130: ldr x3, [x3, #0x10]   ; 长度
+反汇编 28013c: add x3, x4, x3        ; 终点
+
+若长度 = 0x00 → co_linetable = 0x0FFFFFF3   （基址 -0x0d）
+若长度 = 0x13 → co_linetable = 0x0FFFFFE0   （基址 -0x20）
+若长度 = 0x20 → co_linetable = 0x0FFFFFD3   （基址 -0x2d）
+```
+
+**三种可能都落在 `0x10000000` 之下 —— 那是未映射区，不是 `.data` 也不是 `.rodata`。**
+
+**而 `0x0FFFFFE0` 恰好是「基址 - 0x20」= 「bytes 数据指针 - 头部大小」的形状，
+很像某处把 `data_ptr` 当成了对象指针。**
+
+**所以：坏指针的结论不变，但理由要改成「在映射之外」，而不是「在 libpython 里」。**
+
+### 需要确认的一步
+
+**上面三种可能取决于 `ob_size` 的实际值。因为 `[co_linetable + 0x10]` 读的是未映射地址，
+本实现返回了什么需要查。若它返回 0（而不是 fault），长度就是 0。**
+
+**这正是要查的点：`e2_memory_read` 对未映射地址应当返回非 0，`exec.c` 应当据此 fault。
+但这次它没有在 `280130` 处 fault，而是在 `2fbbf4` 才 fault —— 说明那次读被当成了成功。**
+
+**这可能是第二个缺陷：某条加载路径没有检查 `e2_memory_read` 的返回值。**
+
+## 关于打包
+
+已生成 `e2-for-codex.zip`（305 KB，51 个文件），包含：
+
+```
+e2/src/*.c  e2/include/e2/*.h  e2/tools/*.c *.py *.sh  e2/tests/  e2/Makefile
+docs/M4-CPYTHON-BUG.md  docs/E2-BACKEND.md  docs/HANDOFF.md
+repro.sh
+```
+
+**不含**：`/tmp/alpine-root`（49 MB 的 Alpine 根文件系统，需自行准备）。
+
