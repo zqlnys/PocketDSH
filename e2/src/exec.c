@@ -1702,8 +1702,14 @@ not_a_shift:;
                 v |= ~emask;   // sign-extend to 64 bits before shifting
             }
             const uint64_t wide = v << shift;   // v is already 64-bit signed here
-            const int half = (src_idx * dsize) / 64;
-            const unsigned off = (src_idx * dsize) % 64;
+            // The destination index is the lane number, not the source index: with Q set
+            // the sources come from the upper half but the results always start at lane 0.
+            // Using src_idx made the first lane land at half=2, past the end of the
+            // register, so the widened values were never written and callers read whatever
+            // had been there - which is how CPython's ASCII-to-wchar widening produced the
+            // four bytes "/sur" in a single wchar_t.
+            const int half = (i * dsize) / 64;
+            const unsigned off = (i * dsize) % 64;
             const uint64_t keep = (dsize >= 64) ? 0 : ~(((1ULL << dsize) - 1) << off);
             cpu->v[rd][half] = (cpu->v[rd][half] & keep) |
                                ((wide & ((dsize >= 64) ? ~0ULL : ((1ULL << dsize) - 1))) << off);

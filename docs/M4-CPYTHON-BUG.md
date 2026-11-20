@@ -630,3 +630,57 @@ ValueError: character U+7275732f is not in range [U+0000; U+10ffff]
 
 **`open` 的路径现在全是绝对路径——说明 `executable_dir` 已正确推导。**
 
+---
+
+# 2026-11-21：`USHLL2` 的目标索引错误 —— 宽字符问题的根因
+
+## 缺陷
+
+```c
+// 错：目标索引用了源 lane
+const int half = (src_idx * dsize) / 64;
+
+// 对：用目标 lane
+const int half = (i * dsize) / 64;
+```
+
+**`USHLL2` 带 Q 时从源的**上半**取元素，但结果始终从 lane 0 开始写。
+用 `src_idx` 当目标索引，`i=0` 时 `half = 2` —— **越过 `cpu->v[rd][0..1]` 的边界，
+什么也没写，调用方读到的是那里原有的数据。**
+
+## 这如何毁掉 CPython
+
+**CPython 的 `PyUnicode_AsWideCharString` 用向量化循环把 ASCII 串拓宽成 `wchar_t`：**
+
+```asm
+233cd8: ushll2 v1.4s, v1.8h, #0x0
+233cdc: ushll2 v0.4s, v0.8h, #0x0
+233ce0: stp q3, q1, [x0]
+```
+
+**拓宽失效后，目标缓冲区里留着调用前的内容——而那是源字符串本身按字节排布的结果，
+于是 `"/sur"` 四个字节被当成一个 `wchar_t` 读出来：**
+
+```
+ValueError: character U+7275732f is not in range [U+0000; U+10ffff]
+```
+
+## 效果
+
+| 阶段 | 结果 |
+| --- | --- |
+| 修 `movi` 之前 | 1.5 亿条指令后 FAULT |
+| 修 `movi` 之后 | 1.5 千万条后 `ValueError: embedded null character` |
+| 修 `argv[0]` 之后 | 同上错误消失，变成宽字符错误 |
+| **修 `ushll2` 之后** | **宽字符错误消失，新的 FAULT 在 `0x1017a884`** |
+
+**每一层都更靠后、更接近 Python 真正跑起来。**
+
+## 为什么之前没抓到
+
+**`USHLL`/`SSHLL` 的注释说「先读整个源再写，否则会破坏源」——
+这个考虑是对的，但目标索引那一步错了，而错的后果是「静默不写」，
+差分用例和单测都没有覆盖带 Q 的形式。**
+
+**已加单测 `test_ushll2_widens_from_the_upper_half`，变异改回 `src_idx` → CAUGHT。**
+

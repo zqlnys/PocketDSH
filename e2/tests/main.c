@@ -414,6 +414,32 @@ static void test_xtn_narrows_lanes(void) {
     e2_machine_destroy(&m);
 }
 
+static void test_ushll2_widens_from_the_upper_half(void) {
+    printf("USHLL2 takes the upper half of the source and widens it to lane 0 onwards\n");
+    // The destination index used to be computed from the source lane, so with Q set the
+    // first result landed at half=2, past the end of the register. Nothing was written and
+    // callers read whatever had been there. CPython widens its ASCII strings to wchar_t
+    // with exactly this instruction, so the four bytes "/sur" ended up in one wchar_t.
+    const uint32_t code[] = {0x6F10A421u, RET()};   // ushll2 v1.4s, v1.8h, #0
+    e2_machine m;
+    e2_machine_init(&m, 0, 8192);
+    e2_memory_map_at(&m.mem, 0x1000, 0x1000, E2_PROT_READ | E2_PROT_WRITE);
+    e2_memory_write(&m.mem, 0x1000, code, sizeof(code));
+    // v1.8h: halfwords 0..7 = 0,1,2,3 in the low 64 bits and 4,5,6,7 in the high.
+    m.cpu.v[1][0] = ((uint64_t)3 << 48) | ((uint64_t)2 << 32) | ((uint64_t)1 << 16);
+    m.cpu.v[1][1] = ((uint64_t)7 << 48) | ((uint64_t)6 << 32) | ((uint64_t)5 << 16) | 4ULL;
+    m.cpu.pc = 0x1000;
+    e2_step(&m);
+    // Four 32-bit lanes: 4, 5, 6, 7 across the 128-bit register.
+    CHECK(m.cpu.v[1][0] == 0x0000000500000004ULL,
+          "low half should be lanes 4 and 5, got 0x%016llx",
+          (unsigned long long)m.cpu.v[1][0]);
+    CHECK(m.cpu.v[1][1] == 0x0000000700000006ULL,
+          "high half should be lanes 6 and 7, got 0x%016llx",
+          (unsigned long long)m.cpu.v[1][1]);
+    e2_machine_destroy(&m);
+}
+
 static void test_movi_64bit_immediate(void) {
     printf("MOVI's 64-bit form fills one byte per set bit of imm8\n");
     // `movi d0, #0x000000ffffffff` must give 0x00000000ffffffff. The old expansion
@@ -1487,6 +1513,7 @@ int main(void) {
     test_load_store();
     test_svc();
     test_hint_space_is_noop();
+    test_ushll2_widens_from_the_upper_half();
     test_movi_64bit_immediate();
     test_ldrsb_and_tbz_together();
     test_ld1_lane_loads_one_lane();
