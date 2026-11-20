@@ -82,6 +82,7 @@ typedef struct {
 // process it waits for exits, so a surviving sibling can still be left behind.
 // The window is now wide enough that the case does not arise in practice.
 // Tracked in docs/E2-BACKEND.md.
+static int g_sw_calls, g_sw_ring, g_sw_after, g_sw_pipe, g_sw_map, g_sw_pcs, g_sw_exc, g_sw_nul;
 // One-time lookups for the switches consulted inside the instruction loop. getenv walks
 // environ comparing strings, and the loop runs millions of times: measuring this file showed
 // five thousand cycles per instruction, which is not what interpreting an instruction costs.
@@ -90,8 +91,8 @@ static int env_once(const char *name, int *slot) {
     if (*slot < 0) *slot = getenv(name) != NULL;
     return *slot;
 }
-static int g_sw_calls = -1, g_sw_ring = -1, g_sw_after = -1, g_sw_pipe = -1;
-static int g_sw_map = -1, g_sw_pcs = -1, g_sw_exc = -1, g_sw_nul = -1;
+
+
 
 // E2_WATCH: report the first few changes to one 8-byte word, with the pc that made them.
 static uint64_t g_watch_addr = 0;
