@@ -82,11 +82,16 @@ typedef struct {
 // process it waits for exits, so a surviving sibling can still be left behind.
 // The window is now wide enough that the case does not arise in practice.
 // Tracked in docs/E2-BACKEND.md.
+// E2_WATCH: report the first few changes to one 8-byte word, with the pc that made them.
+static uint64_t g_watch_addr = 0;
+static uint64_t g_watch_prev = 0;
+static int g_watch_hits = 0;
+
 #define PROC_QUANTUM_DEFAULT 2000000
 static long proc_quantum(void) {
     static long q = -1;
     if (q < 0) {
-        const char *e = getenv("E2_QUANTUM");
+    const char *e = getenv("E2_QUANTUM");
         q = e ? atol(e) : PROC_QUANTUM_DEFAULT;
     }
     return q;
@@ -1764,11 +1769,11 @@ static int run_proc(int idx) {
             static int na = 0;
             if (++na < 6)
                 fprintf(stderr, "[args] x0=0x%llx x1=0x%llx x2=0x%llx x3=0x%llx "
-                                "x19=0x%llx x22=0x%llx x23=0x%llx\n",
+                                "x5=0x%llx x6=0x%llx x19=0x%llx x22=0x%llx x23=0x%llx\n",
                         (unsigned long long)p->m.cpu.x[0], (unsigned long long)p->m.cpu.x[1],
                         (unsigned long long)p->m.cpu.x[2], (unsigned long long)p->m.cpu.x[3],
                         (unsigned long long)p->m.cpu.x[5], (unsigned long long)p->m.cpu.x[6],
-                     (unsigned long long)p->m.cpu.x[19], (unsigned long long)p->m.cpu.x[22],
+                        (unsigned long long)p->m.cpu.x[19], (unsigned long long)p->m.cpu.x[22],
                         (unsigned long long)p->m.cpu.x[23]);
         }
         if (getenv("E2_TRACE_FIELD")) {
@@ -2068,6 +2073,21 @@ static int run_proc(int idx) {
             if (e2_memory_read(&p->m.mem, pre_pc, &pre_insn, 4) != 0) pre_insn = 0;
         }
         g_global_step++;
+        // Watch one address for a change and report the instruction and registers that made
+        // it. E2_TRACE_FIELD answers "did this change"; this answers "what changed it", which
+        // is the next question and the slow part of finding a bad pointer.
+        if (g_watch_addr != 0) {
+            uint64_t now = 0;
+            if (e2_memory_read(&p->m.mem, g_watch_addr, &now, 8) == 0 && now != g_watch_prev) {
+                fprintf(stderr, "[watch] 0x%llx: 0x%llx -> 0x%llx at pc=0x%llx insn=0x%08x\n",
+                        (unsigned long long)g_watch_addr,
+                        (unsigned long long)g_watch_prev, (unsigned long long)now,
+                        (unsigned long long)pre_pc,
+                        (unsigned)p->m.ctx.instruction);
+                g_watch_prev = now;
+                if (++g_watch_hits >= 8) g_watch_addr = 0;
+            }
+        }
         // Between instructions, before this process runs again. A handler installed with
         // rt_sigaction and raised by kill gets its frame built here, so `trap ... ; kill -INT
         // $$` runs the trap instead of returning 0 and doing nothing.
@@ -2202,10 +2222,18 @@ static int run_proc(int idx) {
                      (unsigned long long)p->m.cpu.pc, p->m.ctx.instruction,
                      (unsigned long long)p->m.cpu.x[0], (unsigned long long)p->m.cpu.x[1],
                      (unsigned long long)p->m.cpu.x[2],
+                     (unsigned long long)p->m.cpu.x[5], (unsigned long long)p->m.cpu.x[6],
                      (unsigned long long)p->m.cpu.x[19],
                      (unsigned long long)p->m.cpu.x[21],
                      (unsigned long long)p->m.cpu.x[30],
                      (unsigned long long)p->m.cpu.sp);
+                if (getenv("E2_DUMP_REGIONS")) {
+                    for (size_t ri = 0; ri < p->m.mem.count; ri++) {
+                        const e2_region *r = &p->m.mem.regions[ri];
+                        fprintf(stderr, "  region %zu: 0x%llx + 0x%zx prot=%d\n", ri,
+                                (unsigned long long)r->base, r->size, r->prot);
+                    }
+                }
             g_fault = 1;
             if (getenv("E2_TRACE_STACK")) dump_shadow("fault");
             if (getenv("E2_TRACE_OBJFAULT")) {
@@ -2366,6 +2394,13 @@ env_done:
     procs[1].alive = 1;
     procs[1].m = m;
     g_shadow_on = getenv("E2_TRACE_STACK") != NULL;
+    {
+        const char *w = getenv("E2_WATCH");
+        if (w != NULL) {
+            g_watch_addr = strtoull(w, NULL, 0);
+            e2_memory_read(&procs[1].m.mem, g_watch_addr, &g_watch_prev, 8);
+        }
+    }
     const int status = run_proc(1);
     (void)status;
     if (getenv("E2_TRACE_WAITSUM"))

@@ -8728,3 +8728,55 @@ x1=0xfffffff x0=0x5a01932b sp=0x7fffe940
 
 **已记录，下一次可以从 `0x102fbbbc` 的 `x0` 入手。**
 
+## M4 定位：`co_linetable` 指向了 libpython 的基址
+
+**继续追下去，反汇编把整条链路看清了。**
+
+### 出错函数是 `PyCode_Addr2Line`
+
+```asm
+28011c: ldr  x3, [x3, #0x88]   ; x3 = co_linetable（应该是一个堆上的 bytes 对象）
+280128: mov  x1, sp            ; 第二个参数是调用者的局部结构
+28012c: add  x4, x3, #0x20     ; 数据起点 = linetable + 0x20
+280130: ldr  x3, [x3, #0x10]   ; 长度 = ob_size
+28013c: add  x3, x4, x3        ; 数据终点
+280148: bl   _PyCode_CheckLineNumber
+```
+
+**`_PyCode_CheckLineNumber` 从「终点 - 2」开始向后扫。**
+
+### 扫描循环本身是对的
+
+```asm
+2fbbf4: ldrsb w4, [x1]
+2fbc00: tbz   w4, #31, 0x2fbbf4   ; bit31 为 0 就继续
+```
+
+**`tbz` 是「该位为 0 则跳转」——所以它在字节的 bit31 **为 0** 时继续，
+遇到 **0x80 以上**的字节才停。**
+
+**而 `0x10000013` 附近是 ELF 头的零字节——bit31 全是 0，于是它一路向后走到映射边界。**
+
+**这解释了 `addr=0xfffffff`：刚好在 libpython 映射（`0x10000000`）下面一格。**
+
+### 所以根因
+
+**`co_linetable` 这个字段里存的不是堆指针，而是 `0x10000000` 附近的值。**
+
+**也就是说：某个代码对象在构造时，`co_linetable` 被写成了 libpython 的基址。**
+
+**而 qemu 下同一个二进制正常，所以这是本实现在更早某处算错了一个值。**
+
+### 下一步（留给下一轮）
+
+**从 `PyCode_Addr2Line` 的调用者往回找：谁构造了这个代码对象，
+`co_linetable` 是从哪里来的。**
+
+**工具已经就绪**：
+
+```
+E2_WATCH=0x<addr>   # 监视一个 8 字节字的变化，报告改它的 pc
+E2_TRACE_CALLS=1    # 调用链
+E2_DUMP_REGIONS=1   # fault 时的内存区域
+```
+
