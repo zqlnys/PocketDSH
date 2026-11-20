@@ -2455,10 +2455,23 @@ int main(int argc, char **argv) {
     // argv[0] must be the program's own name: busybox picks an applet from it and
     // python prints it in usage text, so a hardcoded name lies to both.
     {
+        // busybox dispatches an applet from argv[0], so it needs the bare name. Everything
+        // else needs the path it was started with: CPython derives sys.path from this
+        // string and, given a bare "python3.12", concludes the executable is unknown and
+        // falls back to the working directory. That was worth two separate failures.
         const char *base = strrchr(path, '/');
+        const bool busybox_name = base != NULL && strncmp(base + 1, "busybox", 7) == 0;
         const char *override = getenv("E2_ARGV0");
-        snprintf(args[nargs++], sizeof(args[0]), "%s",
-                 override ? override : (base ? base + 1 : path));
+        // The guest's view of its own path, not the host path the harness loaded from.
+        const char *gp = path;
+        const size_t rl = strlen(ROOT);
+        if (rl > 0 && strncmp(path, ROOT, rl) == 0) {
+            gp = path + rl;
+            if (*gp == '\0') gp = "/";
+        }
+        const char *want = override ? override
+                                    : (busybox_name && base ? base + 1 : gp);
+        snprintf(args[nargs++], sizeof(args[0]), "%s", want);
     }
     for (int i = 2; i < argc && nargs < ARG_COUNT; i++)
         snprintf(args[nargs++], sizeof(args[0]), "%s", argv[i]);
@@ -2498,6 +2511,7 @@ env_done:
     }
 
     if (getenv("E2_TRACE_ARGV")) {
+        fprintf(stderr, "[argv] path=\"%s\" nargs=%d\n", path, nargs);
         for (int i = 0; i < nargs && i < 4; i++)
             fprintf(stderr, "[argv] %d = \"%s\"\n", i, args[i]);
     }
