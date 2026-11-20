@@ -806,6 +806,10 @@ sh -c 'i=0; while [ $i -lt 20 ]; do (echo p$i) & i=$((i+1)); done; wait' | sort 
 sh -c "trap 'echo caught' INT; kill -INT \$\$; echo after"
 sh -c "trap 'echo u' USR1; kill -USR1 \$\$; echo done"
 kill -0 $$ && echo alive
+sh -c "trap 'echo a' EXIT; exit 3"
+# trap - TERM resets to the default action; the exit status must be 128 + 15, not a constant.
+sh -c "trap - TERM; kill -TERM \$\$" ; echo "rc=$?"
+sh -c "trap 'echo one' USR1; trap 'echo two' USR2; kill -USR1 \$\$; kill -USR2 \$\$; echo end"
 sh /tmp/dtreal2.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh

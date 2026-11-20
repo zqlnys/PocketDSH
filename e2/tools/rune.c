@@ -1046,6 +1046,10 @@ typedef struct {
     int pid, ppid;
     int alive;
     int exit_status;
+    /// Signal that killed this process, or 0 when it exited normally. A child killed by a
+    /// signal must report WIFSIGNALED - the number in the low seven bits - rather than
+    /// (128+sig)<<8, because a shell reads that to print "Terminated" and to set $? to 143.
+    int killed_by;
     int stopped;
     int used;
     /// Set while this process is on the run_proc call stack. pump_children_for_tab
@@ -1290,7 +1294,9 @@ static long p_wait4(void *ctx, int pid, uint64_t status_ptr, int options) {
             }
         }
         const int code = c->exit_status & 0xFF;
-        const uint32_t status = (uint32_t)(code << 8);
+        const uint32_t status = (c->killed_by != 0)
+                                    ? (uint32_t)(c->killed_by & 0x7F)
+                                    : (uint32_t)(code << 8);
         uint8_t *dst = e2_memory_host_ptr(&self->m.mem, status_ptr, 4, E2_PROT_WRITE);
         if (dst) memcpy(dst, &status, 4);
         if (getenv("E2_TRACE_WAIT"))
@@ -2095,7 +2101,8 @@ static int run_proc(int idx) {
             const int delivered = e2_deliver_pending_signal(&p->m);
             if (delivered < 0) {
                 p->m.ctx.reason = "signal with no handler";
-                p->exit_status = 128 + 9;
+                p->killed_by = (int)p->m.ctx.svc_number;
+                p->exit_status = 128 + (int)p->m.ctx.svc_number;
                 return 0;   // the default action for an unhandled signal
             }
             if (delivered > 0) continue;

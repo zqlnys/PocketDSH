@@ -248,8 +248,11 @@ int e2_deliver_pending_signal(e2_machine *machine) {
         if (handler == 1) continue;                      // ignored
         if (handler == 0) {
             // The default action. Reporting it rather than pretending the signal was
-            // handled is what makes a missing handler visible instead of silent.
+            // handled is what makes a missing handler visible instead of silent. The number
+            // is kept so the caller can report 128 + sig, which is what a shell expects -
+            // a constant 137 said SIGKILL for every signal.
             machine->ctx.reason = "signal with no handler";
+            machine->ctx.svc_number = (uint16_t)sig;
             return -1;
         }
         if (machine->sig_trampoline == 0) return -1;
