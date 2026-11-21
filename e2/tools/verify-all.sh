@@ -31,6 +31,13 @@ run_one() {
         *static*) label="static" ;;
         *)        label="dynamic" ;;
     esac
+    # E2_VERIFY_FAST=1 stops after the static binary. The dynamic pass re-runs the same
+    # suites against a second image and roughly doubles the wall time, which is the wrong
+    # trade while iterating on something else.
+    if [ "$label" = "dynamic" ] && [ "${E2_VERIFY_FAST:-0}" = "1" ]; then
+        echo "== dynamic: skipped (E2_VERIFY_FAST=1) =="
+        continue
+    fi
     if [ ! -x "$bb" ]; then
         printf '%s\n' "$bb: MISSING - cannot run the suites against it"
         return 1
@@ -61,7 +68,14 @@ run_one() {
 # cases create files there, so one run could read what the other had just written. A
 # verification that fails intermittently is worth less than a slow one that does not.
 run_one "$STATIC"  || fail=1
-run_one "$DYNAMIC" || fail=1
+# E2_VERIFY_FAST=1 stops after the static binary: the dynamic pass runs the same suites
+# against a second image and is most of the wall time, which is the wrong trade while
+# iterating on something else. A missing dynamic image still fails in full mode.
+if [ "${E2_VERIFY_FAST:-0}" = "1" ]; then
+    echo "== dynamic: skipped (E2_VERIFY_FAST=1) =="
+else
+    run_one "$DYNAMIC" || fail=1
+fi
 
 if false; then
 for bb in "$STATIC" "$DYNAMIC"; do

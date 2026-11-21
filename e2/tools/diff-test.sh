@@ -411,7 +411,7 @@ while IFS= read -r cmd; do
     # Listing the directory before and removing what appears afterwards is cheap - one find,
     # not a 9 MB copy - and lets each case start from the same state.
     before=$(ls -A "$ROOT/tmp" 2>/dev/null | sort)
-    mine=$(timeout 60 env PATH="$DT_PATH" "$RUNE" "$DT_STATIC" sh -c "$cmd" 2>&1 \
+    mine=$(timeout 15 env PATH="$DT_PATH" "$RUNE" "$DT_STATIC" sh -c "$cmd" 2>&1 \
            | grep -v '^\[exit ' | sed -e :a -e '/^$/{$d;N;ba' -e '}')
     # Run qemu inside the guest root when that is possible. Without chroot it resolves
     # PATH, /proc, /etc and absolute symlinks against the host, which produced five
@@ -420,10 +420,10 @@ while IFS= read -r cmd; do
         # The same binary on both sides, addressed by its path inside the chroot. Using
         # /bin/busybox here would compare the static build against the dynamic one and
         # lose the property that makes this a fidelity test.
-        theirs=$(env -i PATH="$DT_PATH" timeout 60 chroot "$ROOT" /tmp/qemu "$DT_STATIC_IN" sh -c "$cmd" 2>&1 \
+        theirs=$(env -i PATH="$DT_PATH" timeout 15 chroot "$ROOT" /tmp/qemu "$DT_STATIC_IN" sh -c "$cmd" 2>&1 \
                | sed -e :a -e '/^$/{$d;N;ba' -e '}')
     else
-        theirs=$(env -i PATH="$DT_PATH" timeout 60 qemu-aarch64-static -L "$ROOT" "$DT_STATIC" sh -c "$cmd" 2>&1 \
+        theirs=$(env -i PATH="$DT_PATH" timeout 15 qemu-aarch64-static -L "$ROOT" "$DT_STATIC" sh -c "$cmd" 2>&1 \
                | sed -e :a -e '/^$/{$d;N;ba' -e '}')
     fi
     after=$(ls -A "$ROOT/tmp" 2>/dev/null | sort)
