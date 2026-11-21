@@ -675,40 +675,24 @@ final class ToolExecutor {
               date > Date() else {
             return .failure("schedule_alert requires a future due_iso8601 timestamp.")
         }
+        let body = arguments["body"]?.stringValue ?? ""
 
-        let center = UNUserNotificationCenter.current()
-        let granted: Bool
-        do {
-            granted = try await center.requestAuthorization(options: [.alert, .sound])
-        } catch {
-            return .failure("Notification permission failed: \(error.localizedDescription)")
-        }
-        guard granted else {
-            return .failure("Notification permission was not granted.")
-        }
+        // Staged, not scheduled. Asking the system for notification permission says nothing
+        // about whether this particular alert should exist, and a tool that fires one on the
+        // model's word alone is exactly the kind of thing a person cannot undo.
+        systemActions.prepareNotification(title: title, body: body, fireAt: date)
+        let when = date.formatted(date: .abbreviated, time: .shortened)
+        return .success("""
+        Asked the user to confirm a notification.
 
-        let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = arguments["body"]?.stringValue ?? ""
-        content.sound = .default
-        let components = Calendar.current.dateComponents(
-            [.year, .month, .day, .hour, .minute],
-            from: date
-        )
-        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
-        let request = UNNotificationRequest(
-            identifier: UUID().uuidString,
-            content: content,
-            trigger: trigger
-        )
+        Title: \(title)
+        Fires: \(when)
 
-        do {
-            try await center.add(request)
-        } catch {
-            return .failure("Could not schedule notification: \(error.localizedDescription)")
-        }
-        return .success("Scheduled a local notification for \(date.formatted()). This is an app notification, not a Clock app alarm.")
+        Nothing has been scheduled yet. The confirmation sheet is on screen; once the user taps
+        "Schedule it", the notification is created. If they cancel, nothing is.
+        """)
     }
+
     private func scheduleReminder(_ arguments: [String: JSONValue]) async throws -> ToolExecutionResult {
         guard let title = arguments["title"]?.stringValue else {
             return .failure("schedule_reminder requires title.")

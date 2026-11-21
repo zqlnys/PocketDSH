@@ -1,4 +1,5 @@
 import MessageUI
+import UserNotifications
 import SwiftUI
 import UIKit
 
@@ -47,6 +48,22 @@ struct SystemActionSheet: View {
                         dismiss()
                     }
                     .frame(maxWidth: .infinity, maxHeight: 420)
+
+                case .notification(let title, let body, let fireAt):
+                    Button {
+                        Task { await scheduleNotification(title: title, body: body, fireAt: fireAt) }
+                    } label: {
+                        Label(action.confirmTitle, systemImage: "bell.badge.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+
+                    Button("Cancel") {
+                        systemActions.clear()
+                        dismiss()
+                    }
+                    .buttonStyle(SecondaryButtonStyle())
+                    .frame(maxWidth: .infinity)
                 }
             }
             .padding(PocketSpacing.xl)
@@ -63,6 +80,51 @@ struct SystemActionSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    /// Schedules the notification the user just approved.
+    ///
+    /// Permission is requested here rather than when the tool was called: the prompt should
+    /// arrive attached to a specific, already-approved action, not to the model's idea for one.
+    /// A refusal is reported rather than swallowed, because "nothing happened" is the one
+    /// outcome a person cannot diagnose.
+    private func scheduleNotification(title: String, body: String, fireAt: Date) async {
+        let center = UNUserNotificationCenter.current()
+        let granted: Bool
+        do {
+            granted = try await center.requestAuthorization(options: [.alert, .sound])
+        } catch {
+            systemActions.lastOutcome = "Notification permission failed: \(error.localizedDescription)"
+            systemActions.clear()
+            dismiss()
+            return
+        }
+        guard granted else {
+            systemActions.lastOutcome = "Notification permission was not granted, so nothing was scheduled."
+            systemActions.clear()
+            dismiss()
+            return
+        }
+
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+
+        let interval = max(1, fireAt.timeIntervalSinceNow)
+        let request = UNNotificationRequest(
+            identifier: UUID().uuidString,
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)
+        )
+        do {
+            try await center.add(request)
+            systemActions.lastOutcome = "Scheduled \"\(title)\" for \(fireAt.formatted(date: .abbreviated, time: .shortened))."
+        } catch {
+            systemActions.lastOutcome = "Could not schedule the notification: \(error.localizedDescription)"
+        }
+        systemActions.clear()
+        dismiss()
     }
 
     private func openDialer(_ number: String) {

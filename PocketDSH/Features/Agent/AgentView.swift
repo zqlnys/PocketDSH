@@ -61,6 +61,31 @@ struct AgentView: View {
             .sheet(item: $systemActions.pending) { action in
                 SystemActionSheet(action: action)
             }
+            // A confirmed system action reports what actually happened. Silently closing the
+            // sheet leaves the person unable to tell success from a missing permission.
+            .overlay(alignment: .top) {
+                if let outcome = systemActions.lastOutcome {
+                    Text(outcome)
+                        .font(.caption)
+                        .foregroundStyle(PocketTheme.primaryText)
+                        .padding(.horizontal, PocketSpacing.md)
+                        .padding(.vertical, PocketSpacing.sm)
+                        .background {
+                            Capsule().fill(PocketTheme.surface)
+                        }
+                        .overlay {
+                            Capsule().strokeBorder(PocketTheme.stroke.opacity(0.6), lineWidth: 1)
+                        }
+                        .padding(.horizontal, PocketSpacing.lg)
+                        .padding(.top, PocketSpacing.sm)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .onTapGesture { systemActions.lastOutcome = nil }
+                        .task {
+                            try? await Task.sleep(nanoseconds: 5_000_000_000)
+                            withAnimation { systemActions.lastOutcome = nil }
+                        }
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
