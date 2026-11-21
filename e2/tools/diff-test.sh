@@ -858,6 +858,18 @@ sh -c 'for v in abc abd xbc; do case $v in a*c|x?c) echo "hit $v";; *) echo "mis
 printf 'one\n' | sed 'N;s/\n/+/'
 # awk: assigning to NF truncates the record
 printf 'a b c d\n' | awk '{NF=2; print; print NF}'
+# awk: uninitialised variables compare equal to zero and the empty string
+awk 'BEGIN{if (u == 0 && u == "") print "unset-is-zero-and-empty"}'
+# awk: changing FS mid-stream only affects the next record
+printf 'a:b\nc:d\n' | awk 'NR==1{FS=":"} {print $1}'
+# sed: the b command jumping to a label, and t only on a successful substitution
+printf 'x\ny\n' | sed ':a;s/^x$/X/;ta'
+# sh: ${#var} and ${var%%pattern} / ${var##pattern}
+sh -c 'v=a/b/c; echo ${#v} ${v%%/*} ${v##*/}'
+# printf: negative and zero-padded widths
+printf '[%05d][%-5d][%+d]\n' 42 42 42
+# awk: sprintf and string repetition through a loop
+awk 'BEGIN{s=""; for(i=0;i<3;i++) s = s "ab"; printf "%s|%s\n", s, sprintf("%03d", 7)}'
 echo 'hello' | sed 'y/el/ip/'
 # printf: escaped percent and field width reuse
 printf '%s|%5.2f|%%\n' ab 3.14159
