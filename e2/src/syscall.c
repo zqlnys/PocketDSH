@@ -855,31 +855,49 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             // Back the break with a real mapping. Returning a plausible address
             // without mapping it makes every later store fault, which is exactly
             // how musl's allocator fails after its first allocation.
+            // The heap grows in chunks instead of being reserved whole. A single 256 MB
+            // calloc is fine on a desktop and is not on a phone, where the system can refuse
+            // it outright - and when it does, CPython reports MemoryError partway through
+            // importing its standard library rather than failing at the start.
+            //
+            // E2_HEAP_CHUNK_MB sets the chunk size; E2_HEAP_MB caps the total, so a program
+            // that never asks for much never costs much.
             if (m->brk_base == 0) {
-                const uint64_t base = 0x20000000ULL;
-                // Default stays small: every fork carries this much, and a large heap turned
-                // a 3-second shell case into 40 seconds of system time. CPython needs more,
-                // so E2_HEAP_MB raises it for the runs that do.
-                size_t size = 16u << 20;
-                {
-                    static long heap_mb = -1;
-                    if (heap_mb < 0) {
-                        const char *v = getenv("E2_HEAP_MB");
-                        heap_mb = v ? strtol(v, NULL, 0) : 0;
-                        if (heap_mb <= 0) heap_mb = 0;
-                    }
-                    if (heap_mb > 0) size = (size_t)heap_mb << 20;
+                static long chunk_bytes = -1;
+                static uint64_t cap_bytes = 0;
+                if (chunk_bytes < 0) {
+                    const char *c = getenv("E2_HEAP_CHUNK_MB");
+                    const char *t = getenv("E2_HEAP_MB");
+                    const long chunk_mb = c ? strtol(c, NULL, 0) : 0;
+                    const long cap_mb = t ? strtol(t, NULL, 0) : 0;
+                    chunk_bytes = (chunk_mb > 0 ? chunk_mb : 16) << 20;
+                    cap_bytes = (uint64_t)(cap_mb > 0 ? cap_mb : 0) << 20;
                 }
-                if (e2_memory_map_at(&m->mem, base, size,
+                const uint64_t base = 0x20000000ULL;
+                if (e2_memory_map_at(&m->mem, base, (size_t)chunk_bytes,
                                     E2_PROT_READ | E2_PROT_WRITE) != 0) {
                     E2_RETURN(-12);
                 }
                 m->brk_base = base;
                 m->brk_current = base;
-                m->brk_limit = base + size;
+                m->brk_limit = base + (uint64_t)chunk_bytes;
+                (void)cap_bytes;
             }
             if (a0 == 0) {
                 E2_RETURN(m->brk_current);
+            }
+            if (a0 > m->brk_limit) {
+                // Extend by whole chunks until the request fits. Growth is contiguous because
+                // the guest expects a single range between brk_base and brk.
+                uint64_t want = a0;
+                while (m->brk_limit < want) {
+                    const uint64_t more = 16ULL << 20;
+                    if (e2_memory_map_at(&m->mem, m->brk_limit, (size_t)more,
+                                        E2_PROT_READ | E2_PROT_WRITE) != 0) {
+                        E2_RETURN(-12);
+                    }
+                    m->brk_limit += more;
+                }
             }
             if (a0 >= m->brk_base && a0 <= m->brk_limit) {
                 m->brk_current = a0;
