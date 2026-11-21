@@ -21,7 +21,7 @@ done:
     and x12, x12, #0xF
     cmp x12, #10
     b.lo 3f
-    add w12, w12, #39
+    add w12, w12, #87
     b 4f
 3:
     add w12, w12, #48

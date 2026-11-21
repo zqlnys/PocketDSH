@@ -441,8 +441,9 @@ static void test_jump_table_matches_a_real_run(void) {
         e2_syscall_env env = {.exit = capture_exit, .files = &test_files, .ctx = &cap};
         e2_status st = run_program(&m, &env, 2000000);
         CHECK(st == E2_HALTED, "expected halt, got %s", e2_status_name(st));
-        // qemu prints 0x21 here; the point is that the branch reached targ, not wrong.
-        CHECK(strstr(cap.out, "0000000000000021") != NULL,
+        // qemu prints 0x2a here, the value targ stores; an earlier expectation of 0x21 was the
+        // print routine mis-rendering the digit a as 1.
+        CHECK(strstr(cap.out, "000000000000002a") != NULL,
               "output was \"%.40s\"", cap.out);
     }
     free(image);

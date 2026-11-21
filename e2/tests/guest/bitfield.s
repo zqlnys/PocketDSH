@@ -314,7 +314,7 @@ print:
     and x12, x12, #0xF
     cmp x12, #10
     b.lo 2f
-    add w12, w12, #39
+    add w12, w12, #87
     b 3f
 2:
     add w12, w12, #48

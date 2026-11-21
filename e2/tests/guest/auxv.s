@@ -40,7 +40,7 @@ hex:
     and x12, x12, #0xF
     cmp x12, #10
     b.lo 5f
-    add w12, w12, #39
+    add w12, w12, #87
     b 6f
 5:
     add w12, w12, #48
