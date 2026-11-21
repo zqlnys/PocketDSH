@@ -56,7 +56,8 @@ final class PocketDSHTests: XCTestCase {
         XCTAssertTrue(rejected.isError)
 
         let empty = "{\"todos\":[{\"content\":\"  \",\"status\":\"pending\"}]}"
-        XCTAssertTrue(await executor.execute(name: ToolNames.todoWrite, argumentsJSON: empty).isError)
+        let emptyRejected = await executor.execute(name: ToolNames.todoWrite, argumentsJSON: empty)
+        XCTAssertTrue(emptyRejected.isError)
 
         let good = "{\"todos\":[{\"content\":\"a\",\"status\":\"completed\"},{\"content\":\"b\",\"status\":\"in_progress\"}]}"
         let accepted = await executor.execute(name: ToolNames.todoWrite, argumentsJSON: good)
@@ -299,8 +300,8 @@ final class PocketDSHTests: XCTestCase {
         )
 
         let missing = #"{"path":"nope.md","summary":"x"}"#
-        XCTAssertTrue(await executor.execute(name: ToolNames.present,
-                                             argumentsJSON: missing).isError)
+        let missingRejected = await executor.execute(name: ToolNames.present, argumentsJSON: missing)
+        XCTAssertTrue(missingRejected.isError)
         XCTAssertTrue(executor.deliverables.isEmpty)
 
         _ = try workspace.write(path: "README.md", content: "# hi\n", overwrite: true)
