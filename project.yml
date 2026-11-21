@@ -47,7 +47,6 @@ targets:
       # JIT - guest system calls arrive through a table of callbacks the app supplies.
       - path: e2/src
       - path: e2/include
-      - path: PocketDSH/Core/Services/E2TraceGlobals.c
       # The host layer: filesystem, pipes, process table and the run loop, unchanged from the
       # command-line harness. It creates no host processes - guest fork is a copy of an E2
       # machine - so it runs inside the app sandbox as-is.
