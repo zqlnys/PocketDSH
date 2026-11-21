@@ -390,7 +390,7 @@ static long fs_read(void *c, int fd, void *b, size_t n, long long o) {
         if (errno != EAGAIN && errno != EWOULDBLOCK) {
             if (getenv("E2_TRACE_RZERO"))
                 fprintf(stderr, "[rerr] pid=%d tab=%d fd=%d host=%d errno=%d\n",
-                        g_dbg_pid, ((const procctx *)c)->fdtab, fd, TAB(c)[fd].host, errno);
+                        ((const procctx *)c)->pid, ((const procctx *)c)->fdtab, fd, TAB(c)[fd].host, errno);
             return -errno;
         }
         // Nothing to read yet. A child can only make progress if we run it, so
@@ -423,7 +423,7 @@ static long fs_write(void *c, int fd, const void *b, size_t n, long long o) {
         for (size_t z = 0; z < wn; z++)
             wb[z] = (((const char *)b)[z] == 0x0a) ? '|' : ((const char *)b)[z];
         wb[wn] = 0;
-        fprintf(stderr, "[wr] p%d fd=%d len=%zu \"%s\"\n", g_dbg_pid, fd, n, wb);
+        fprintf(stderr, "[wr] p%d fd=%d len=%zu \"%s\"\n", ((const procctx *)c)->pid, fd, n, wb);
     }
     ssize_t r = write(TAB(c)[fd].host, b, n);
     if (getenv("E2_TRACE_WLEN"))
@@ -510,7 +510,7 @@ static int fs_opendir(void *c, const char *path) {
     if (fd < 0) { closedir(d); return -24; }
     if (getenv("E2_TRACE_DIROPEN"))
         fprintf(stderr, "[diropen] pid=%d tab=%d fd=%d path=%s\n",
-                g_dbg_pid, ((const procctx *)c)->fdtab, fd, path);
+                ((const procctx *)c)->pid, ((const procctx *)c)->fdtab, fd, path);
     DIRTAB(c)[fd] = d;
     return fd;
 }
@@ -1591,6 +1591,9 @@ static int run_proc(int idx) {
     // keeps reporting the inner one's pid and pc, and any diagnosis built on them is
     // describing the wrong process.
     const int saved_pid = g_dbg_pid;
+    // Set once per turn, not once per instruction: the syscall layer prints it in its traces,
+    // and those run a handful of times a turn.
+    g_dbg_pid = p->pid;
     // The history ring is read only by E2_TRACE_HIST, and maintaining it costs seven stores
     // per instruction. Resolved once, before the run.
     {
@@ -2585,7 +2588,6 @@ static int run_proc(int idx) {
             }
             if (delivered > 0) continue;
         }
-        g_dbg_pid = p->pid;
         e2_status st = e2_step(&p->m);
         // A chdir inside the step changed env.cwd; keep the process copy in step so
         // the change survives to the next scheduling turn.
