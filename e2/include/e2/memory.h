@@ -20,7 +20,11 @@
  * symptom appears much later as a wild pointer, which is why this looked like a
  * decoder problem for so long.
  */
-#define E2_MAX_REGIONS 1024
+// A fixed table, so the ceiling is a hard failure rather than a slowdown: reaching it makes
+// the guest's mmap return ENOMEM, which CPython reports as MemoryError somewhere unrelated to
+// memory being short. 1024 left CPython a factor of five of headroom on a desktop; a device
+// loading more shared objects may not be so lucky, and the extra entries cost 128 KB.
+#define E2_MAX_REGIONS 4096
 
 /// Where position-independent images are placed. Fixed so a failing layout
 /// reproduces exactly instead of moving with each run.

@@ -3047,8 +3047,10 @@ env_done:
         fprintf(stderr, "\n[fault] %s\n", g_reason);
     }
 #else
-    printf("\n[exit %d] instructions=%ld%s%s\n", procs[1].exit_status,
-           (long)procs[1].m.instructions,
+    // The region table is a fixed array; a run that approaches its size is one allocation away
+    // from failing for a reason that has nothing to do with memory being available.
+    printf("\n[exit %d] instructions=%ld regions=%u/%u%s%s\n", procs[1].exit_status,
+           (long)procs[1].m.instructions, procs[1].m.mem.count, E2_MAX_REGIONS,
            g_fault ? " FAULT reason=" : "", g_fault ? g_reason : "");
 #endif
     return 0;
