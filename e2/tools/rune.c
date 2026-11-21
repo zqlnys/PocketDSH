@@ -2136,6 +2136,18 @@ static int run_proc(int idx) {
                         fprintf(stderr, "[decref]   [%+d]=0x%llx type=%s%c", q,
                                 (unsigned long long)v, (ok && t[0]) ? t : "?", 10);
                     }
+                    {
+                        // x21 is next_instr; a code unit is two bytes, so the instruction
+                        // being executed starts two bytes back.
+                        uint8_t op = 0, arg = 0;
+                        const uint64_t instr = p->m.cpu.x[21] - 2;
+                        e2_memory_read(&p->m.mem, instr, &op, 1);
+                        e2_memory_read(&p->m.mem, instr + 1, &arg, 1);
+                        fprintf(stderr,
+                                "[decref] instr@0x%llx opcode=%u oparg=%u (next_instr=0x%llx)%c",
+                                (unsigned long long)instr, op, arg,
+                                (unsigned long long)p->m.cpu.x[21], 10);
+                    }
                     fprintf(stderr, "[decref] words around x24:");
                     for (int q = -5; q <= 0; q++) {
                         uint64_t w = 0;

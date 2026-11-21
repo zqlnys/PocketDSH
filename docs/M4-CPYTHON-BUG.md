@@ -1225,3 +1225,44 @@ DECREF 把「槽位的地址」当成了「对象」，于是把槽里的函数�
 **三次尝试（逐指令轨迹、第 N 次执行、按地址配对）都因为「指针身份比较依赖堆布局」
 而无法跨运行对齐。这条限制已经写进文档，避免再走回头路。**
 
+## 对照 CPython 源码：`CALL` 的栈约定
+
+**从 `Python/generated_cases.c.h` 的 `TARGET(CALL)` 抄下来：**
+
+```c
+PyObject **args    = (stack_pointer - oparg);
+PyObject *callable = stack_pointer[-(1 + oparg)];
+PyObject *method   = stack_pointer[-(2 + oparg)];   // 纯调用时为 NULL
+int is_meth = method != NULL;
+int total_args = oparg;
+if (is_meth) { callable = method; args--; total_args++; }
+```
+
+**所以 `oparg = 2` 时：**
+
+| 位置 | 含义 | 实测 |
+| --- | --- | --- |
+| `[x24-4]` | `method`（纯调用须为 NULL）| **tuple** |
+| `[x24-3]` | `callable` | code |
+| `[x24-2]` | `args[0]` | `0x4000806068`（槽地址）|
+| `[x24-1]` | `args[1]` | generator |
+
+## 矛盾就在这里
+
+**`method` 非 NULL（是个 tuple），所以 `is_meth = 1`，
+`total_args` 应为 `oparg + 1 = 3`，清理应当减 3 个。**
+
+**但实际清理用的是 2（`w20 = 2`）。**
+
+**说明 `CALL` 执行时的 `stack_pointer` 与清理时的 `x24` **不是同一个值**——
+两者之间栈指针移动过，而清理仍按旧值算。**
+
+**这解释了为什么 `args[0]` 会读到「槽地址」：它读的根本不是参数区，
+而是紧邻的 `_PyCFrame.current_frame` 字段。**
+
+## 下一步
+
+**要查的是：`CALL` 到清理之间，栈指针为什么移动了。
+源码里紧跟着的是 `STACK_SHRINK(oparg + 2)`，
+本实现很可能在这条路径上把「收缩」做成了「不收缩」或「收缩了两次」。**
+
