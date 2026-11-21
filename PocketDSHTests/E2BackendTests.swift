@@ -198,6 +198,37 @@ final class E2BackendTests: XCTestCase {
         XCTAssertTrue(output.contains("status 0"), output)
     }
 
+    /// subprocess without pipes.
+    ///
+    /// fork, exec and wait each pass on the device, so the syscalls are not the problem. What is
+    /// left in subprocess is its own plumbing - pipes for the captured streams, and the two
+    /// threads it starts to drain them. This case asks for no capture, so if it passes and the
+    /// capturing one does not, the pipes are the part that does not work.
+    func testPythonSubprocessUncaptured() throws {
+        let root = try guestRoot()
+        let python = root.appendingPathComponent("usr/bin/python3.12").path
+        try XCTSkipUnless(FileManager.default.fileExists(atPath: python),
+                          "this build's guest root has no CPython")
+
+        let script = root.appendingPathComponent("tmp/e2-sub-nocap.py")
+        try? FileManager.default.createDirectory(at: script.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: script) }
+        try """
+        import subprocess
+        rc = subprocess.call(["/bin/busybox", "echo", "nocap-ran"])
+        print("rc", rc)
+        """.write(to: script, atomically: true, encoding: .utf8)
+
+        let (status, output) = try runGuest(python, ["/tmp/e2-sub-nocap.py"])
+        if output.contains("MemoryError") || output.contains("instruction cap") {
+            throw XCTSkip("subprocess does not complete on this device: \(output.suffix(160))")
+        }
+        XCTAssertEqual(status, 0, "python exited \(status); output was <<<\(output)>>>")
+        XCTAssertTrue(output.contains("nocap-ran"), output)
+        XCTAssertTrue(output.contains("rc 0"), output)
+    }
+
     /// A file the guest writes has to show up on disk, because the workspace mount depends on
     /// it.
     func testGuestWritesAFile() throws {
