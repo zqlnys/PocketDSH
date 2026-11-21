@@ -1187,8 +1187,10 @@ e2_status e2_step(e2_machine *machine) {
     // the architecture itself uses.
     // Bit 30 is set in every form of this family and clear in the FMADD
     // encodings that share the mask; immh == 0000 is movi/mvni.
-    if ((insn & 0x8F000400u) == 0x0F000400u && BIT(insn, 30) != 0 &&
-        BITS(insn, 22, 19) != 0) {
+    // Q selects 16 bytes versus 8, and both are ordinary forms of this family -
+    // `sshr v1.2s, v8.2s, #8` has Q clear. Requiring Q had excluded the 64-bit forms
+    // entirely, which surfaced only when a workload used one.
+    if ((insn & 0x8F000400u) == 0x0F000400u && BITS(insn, 22, 19) != 0) {
         const bool u = BIT(insn, 29) != 0;
         const bool scalar = BIT(insn, 28) != 0;
         const unsigned opcode = BITS(insn, 15, 11);
