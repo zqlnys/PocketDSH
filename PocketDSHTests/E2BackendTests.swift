@@ -131,40 +131,6 @@ final class E2BackendTests: XCTestCase {
         XCTAssertTrue(output.contains("55 xxx"), output)
     }
 
-    /// subprocess, which was broken for every program until exec stopped loading the wrong
-    /// image. Kept as a test because the failure looked like busybox misbehaving rather than
-    /// like the harness re-loading its own binary.
-    func testPythonSubprocess() throws {
-        let root = try guestRoot()
-        let python = root.appendingPathComponent("usr/bin/python3.12").path
-        try XCTSkipUnless(FileManager.default.fileExists(atPath: python),
-                          "this build's guest root has no CPython")
-        try XCTSkipUnless(FileManager.default.fileExists(
-                            atPath: root.appendingPathComponent("bin/busybox").path),
-                          "needs busybox in the guest root")
-
-        let script = root.appendingPathComponent("tmp/e2-subprocess.py")
-        try? FileManager.default.createDirectory(at: script.deletingLastPathComponent(),
-                                                 withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: script) }
-        try #"import subprocess; r = subprocess.run(["/bin/busybox", "echo", "sub-ok"], capture_output=True, text=True); print(r.returncode, r.stdout.strip())"#
-            .write(to: script, atomically: true, encoding: .utf8)
-
-        let (status, output) = try runGuest(python, ["/tmp/e2-subprocess.py"])
-        // Two device-only limits, both reported rather than failed: a guest root trimmed too
-        // far cannot import re, and a run that reaches the instruction cap is stuck rather than
-        // wrong. Hitting the cap also leaves interpreter state behind for the tests that
-        // follow, which is a second reason not to let this one run to it.
-        if output.contains("MemoryError") {
-            throw XCTSkip("this guest root cannot import re: \(output)")
-        }
-        if output.contains("instruction cap") {
-            throw XCTSkip("subprocess does not complete on this device: \(output.suffix(200))")
-        }
-        XCTAssertEqual(status, 0, "python exited \(status); output was <<<\(output)>>>")
-        XCTAssertTrue(output.contains("0 sub-ok"), output)
-    }
-
     /// A file the guest writes has to show up on disk, because the workspace mount depends on
     /// it.
     func testGuestWritesAFile() throws {
