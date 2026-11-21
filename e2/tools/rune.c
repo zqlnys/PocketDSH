@@ -2849,8 +2849,17 @@ env_done:
     if (g_fault && getenv("E2_DUMP_AT_FAULT")) {
         dump_fault_state(&procs[1].m);
     }
+    // The command-line harness prints a summary of what the run cost. As a library the caller
+    // already has the status as a return value, and this line would land in the middle of the
+    // guest's own output - which is exactly what made the first working iOS run look wrong.
+#ifdef E2_AS_LIBRARY
+    if (g_fault) {
+        fprintf(stderr, "\n[fault] %s\n", g_reason);
+    }
+#else
     printf("\n[exit %d] instructions=%ld%s%s\n", procs[1].exit_status,
            (long)procs[1].m.instructions,
            g_fault ? " FAULT reason=" : "", g_fault ? g_reason : "");
+#endif
     return 0;
 }
