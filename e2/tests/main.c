@@ -414,6 +414,42 @@ static void test_xtn_narrows_lanes(void) {
     e2_machine_destroy(&m);
 }
 
+static void test_ldp_stp_match_a_real_run(void) {
+    printf("LDP/STP with pre- and post-index match what the hardware produced\n");
+    // Expected values came from running the same ELF under qemu-aarch64. The CALL path in
+    // CPython's evaluator shuffles arguments with exactly these addressing modes, and a
+    // wrong writeback there puts a frame address where an object belongs.
+    e2_machine m;
+    e2_machine_init(&m, 0, 1 << 20);
+    FILE *f = fopen("tests/guest/ldp.elf", "rb");
+    CHECK(f != NULL, "ldp.elf missing - run make first");
+    if (f == NULL) { e2_machine_destroy(&m); return; }
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    uint8_t *image = (uint8_t *)malloc((size_t)size);
+    CHECK(image != NULL, "out of memory");
+    if (image == NULL) { fclose(f); e2_machine_destroy(&m); return; }
+    if (fread(image, 1, (size_t)size, f) != (size_t)size) { /* short read still usable */ }
+    fclose(f);
+
+    e2_loaded_image info = {0};
+    e2_load_result lr = e2_load_elf_full(&m, image, (size_t)size, true, &info);
+    CHECK(lr == E2_LOAD_OK, "load: %s", e2_load_result_name(lr));
+    if (lr == E2_LOAD_OK) {
+        capture cap = {0};
+        e2_syscall_env env = {.exit = capture_exit, .files = &test_files, .ctx = &cap};
+        e2_status st = run_program(&m, &env, 2000000);
+        CHECK(st == E2_HALTED, "expected halt, got %s", e2_status_name(st));
+        CHECK(strstr(cap.out, "0000000000000011") != NULL,
+              "the reloaded first word was not 0x11: \"%.40s\"", cap.out);
+        CHECK(strstr(cap.out, "0000000000000033") != NULL,
+              "the pre-index store did not read back as 0x33: \"%.40s\"", cap.out);
+    }
+    free(image);
+    e2_machine_destroy(&m);
+}
+
 static void test_bitfield_matches_a_real_run(void) {
     printf("bitfield instructions match what the hardware produced\n");
     // The expected lines below were produced by running the same ELF under qemu-aarch64,
@@ -1551,6 +1587,7 @@ int main(void) {
     test_load_store();
     test_svc();
     test_hint_space_is_noop();
+    test_ldp_stp_match_a_real_run();
     test_bitfield_matches_a_real_run();
     test_ushll2_widens_from_the_upper_half();
     test_movi_64bit_immediate();

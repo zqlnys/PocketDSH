@@ -11,7 +11,7 @@ BUILD := build
 SRC := src/memory.c src/exec.c src/syscall.c src/loader.c
 TEST_SRC := tests/main.c
 TEST_BIN := $(BUILD)/e2-tests
-GUEST_ELF := tests/guest/bitfield.elf tests/guest/hello.elf tests/guest/fib.elf tests/guest/memset.elf tests/guest/cprog.elf tests/guest/calls.elf tests/guest/mul.elf tests/guest/shll.elf
+GUEST_ELF := tests/guest/ldp.elf tests/guest/bitfield.elf tests/guest/hello.elf tests/guest/fib.elf tests/guest/memset.elf tests/guest/cprog.elf tests/guest/calls.elf tests/guest/mul.elf tests/guest/shll.elf
 
 # Cross-toolchain pieces for building the guest test binary. clang handles the
 # aarch64 target and lld links it statically, so no libc is needed.
@@ -31,6 +31,10 @@ $(BUILD):
 
 $(TEST_BIN): $(SRC) $(TEST_SRC) | $(BUILD)
 	$(CC) $(CFLAGS) $(SRC) $(TEST_SRC) -o $@ $(LDLIBS)
+
+tests/guest/ldp.elf: tests/guest/ldp.s | $(BUILD)
+	$(CLANG) --target=aarch64-linux-gnu -c $< -o $(BUILD)/ldp-guest.o
+	$(LLD) -static -o $@ $(BUILD)/ldp-guest.o
 
 tests/guest/bitfield.elf: tests/guest/bitfield.s | $(BUILD)
 	$(CLANG) --target=aarch64-linux-gnu -c $< -o $(BUILD)/bitfield-guest.o
