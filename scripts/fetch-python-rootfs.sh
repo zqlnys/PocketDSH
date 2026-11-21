@@ -97,7 +97,32 @@ if [ "$MINIMAL" = "--minimal" ]; then
     done
 fi
 
-ln -sf /usr/bin/python3 "$DEST/usr/bin/python" 2>/dev/null || true
+# An iOS app bundle may not contain symlinks that point outside it, and the installer refuses
+# the whole app when one does - "validateSymlinksInURLDoNotEscapeURL". Alpine's packages are
+# full of absolute links (/usr/bin/python3 -> /usr/bin/python3.12), which read as escaping from
+# inside the bundle. They are rewritten relative where the target is inside the root, and
+# dropped when it is not.
+echo "rewriting absolute symlinks"
+find "$DEST" -type l 2>/dev/null | while read -r link; do
+    target=$(readlink "$link")
+    case "$target" in
+        /*)
+            resolved="$DEST$target"
+            if [ -e "$resolved" ]; then
+                rel=$(python3 -c '
+import os, sys
+link, resolved = sys.argv[1], sys.argv[2]
+print(os.path.relpath(resolved, os.path.dirname(link)))
+' "$link" "$resolved")
+                ln -sfn "$rel" "$link"
+            else
+                rm -f "$link"
+            fi
+            ;;
+    esac
+done
+find "$DEST" -type l -xtype l -delete 2>/dev/null || true
+
 mkdir -p "$DEST/tmp"
 
 echo "root is $(du -sh "$DEST" | cut -f1)"
