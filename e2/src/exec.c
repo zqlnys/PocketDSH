@@ -690,9 +690,10 @@ e2_status e2_step(e2_machine *machine) {
             machine->ctx.reason = "invalid UMOV imm5";
             return E2_UNIMPL;
         }
-        const unsigned bit = index * esize;
-        const uint64_t mask = (esize >= 64) ? ~0ULL : ((1ULL << esize) - 1);
-        const uint64_t elem = (cpu->v[rn2][0] >> bit) & mask;
+        // Read through the lane accessor: indexing v[rn][0] directly only ever sees the low
+        // 64 bits, so `mov x2, v1.d[1]` returned lane 0 and any element above the first half
+        // came back wrong. musl's memset and memcpy reach this path.
+        const uint64_t elem = e2_v_get(cpu, rn2, esize, index);
         write_reg(cpu, rd, elem, true);
         cpu->pc = next_pc;
         machine->instructions++;
@@ -1761,11 +1762,81 @@ not_a_shift:;
         return E2_OK;
     }
 
+    // --- SIMD: TBL / TBX (table lookup on bytes) ---
+    // `tbl v1.16b, {v0.16b}, v0.16b` gathers bytes through an index vector; TBX keeps the
+    // destination byte where the index is out of range instead of zeroing it. Together with
+    // UZP, ZIP, REV and EXT this is the byte-shuffling set, and every member of it that was
+    // missing showed up as a corrupted string rather than as a failed instruction.
+    if ((insn & 0xBFE08800u) == 0x0E000000u) {
+        const bool q = BIT(insn, 30) != 0;
+        const unsigned len = BITS(insn, 14, 13);        // one fewer than the register count
+        const bool tbx = BIT(insn, 12) != 0;
+        const unsigned rm = BITS(insn, 20, 16);
+        const unsigned rn = BITS(insn, 9, 5);
+        const unsigned rd = BITS(insn, 4, 0);
+        const unsigned per = q ? 16u : 8u;
+        const unsigned table_bytes = per * (len + 1);
+        uint8_t table[64];
+        for (unsigned r = 0; r <= len && r < 4; r++) {
+            for (unsigned i = 0; i < per; i++) {
+                table[r * per + i] = (uint8_t)(cpu->v[(rn + r) % 32][i / 8] >> ((i % 8) * 8));
+            }
+        }
+        uint64_t lo = 0, hi = 0;
+        for (unsigned i = 0; i < per; i++) {
+            const unsigned idx = (unsigned)((cpu->v[rm][i / 8] >> ((i % 8) * 8)) & 0xFF);
+            uint8_t out;
+            if (idx < table_bytes) {
+                out = table[idx];
+            } else if (tbx) {
+                out = (uint8_t)(cpu->v[rd][i / 8] >> ((i % 8) * 8));
+            } else {
+                out = 0;
+            }
+            if (i < 8) lo |= (uint64_t)out << (i * 8);
+            else hi |= (uint64_t)out << ((i - 8) * 8);
+        }
+        cpu->v[rd][0] = lo;
+        cpu->v[rd][1] = q ? hi : 0;
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
+    // --- SIMD: EXT (extract from the concatenation of two vectors) ---
+    // `ext v1.16b, v0.16b, v0.16b, #1` takes 16 bytes starting one byte into vn:vm. It is the
+    // other half of the byte-shuffling family that path handling leans on, and like them a
+    // wrong offset moves bytes without failing loudly.
+    if ((insn & 0xBFE08400u) == 0x2E000000u) {
+        const bool q = BIT(insn, 30) != 0;
+        const unsigned bytes = q ? 16u : 8u;
+        const unsigned imm4 = BITS(insn, 14, 11);
+        const unsigned rm = BITS(insn, 20, 16);
+        const unsigned rn = BITS(insn, 9, 5);
+        const unsigned rd = BITS(insn, 4, 0);
+        uint8_t joined[32];
+        for (unsigned i = 0; i < bytes; i++) {
+            joined[i] = (uint8_t)(cpu->v[rn][i / 8] >> ((i % 8) * 8));
+            joined[bytes + i] = (uint8_t)(cpu->v[rm][i / 8] >> ((i % 8) * 8));
+        }
+        uint64_t lo = 0, hi = 0;
+        for (unsigned i = 0; i < bytes; i++) {
+            const uint8_t b = joined[(imm4 + i) % (bytes * 2)];
+            if (i < 8) lo |= (uint64_t)b << (i * 8);
+            else hi |= (uint64_t)b << ((i - 8) * 8);
+        }
+        cpu->v[rd][0] = lo;
+        cpu->v[rd][1] = q ? hi : 0;
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     // --- SIMD: REV64 / REV32 / REV16 (reverse bytes inside each element) ---
     // `rev64 v1.16b, v0.16b` reverses the bytes of each 64-bit half. Absent, it stopped the
     // interpreter outright; present-but-wrong it would scramble byte buffers silently, which
     // is the shape of the corrupted path strings CPython was printing.
-    if ((insn & 0xBFFFF800u) == 0x0E200800u || (insn & 0xBFFFF800u) == 0x0E201800u) {
+    if ((insn & 0x9FFFF800u) == 0x0E200800u || (insn & 0x9FFFF800u) == 0x0E201800u) {
         const bool q = BIT(insn, 30) != 0;
         const bool is_rev32 = BIT(insn, 29) != 0;
         const bool is_rev16 = (insn & 0x00001000u) != 0;
