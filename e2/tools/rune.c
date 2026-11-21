@@ -30,7 +30,7 @@
 #include <sys/statvfs.h>
 #include <ctype.h>
 #include <dirent.h>
-#include <elf.h>
+#include "e2/elf-compat.h"   // <elf.h> does not exist in the iOS SDK
 #include <time.h>
 #include <unistd.h>
 #include "e2/exec.h"
