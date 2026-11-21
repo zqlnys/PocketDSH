@@ -48,6 +48,27 @@ typedef struct {
 #define E2_PROT_WRITE 2
 #define E2_PROT_EXEC 4
 
+/// Fast path for the interpreter's own accesses: a fetch and most loads and stores land in
+/// the region the previous one did, so this is one containment test and a memcpy.
+///
+/// Returns 0 on success and fills `dst`; returns non-zero when the access is not a simple
+/// in-region one, and the caller must fall back to e2_memory_read. Profiling put a fifth of a
+/// real run inside the two nested calls this replaces.
+static inline int e2_memory_read_fast(const e2_memory *mem, uint64_t addr, void *dst, size_t len) {
+    const unsigned cached = ((const e2_memory *)mem)->cache_index;
+    if (cached < mem->count) {
+        const e2_region *r = &mem->regions[cached];
+        if ((r->prot & E2_PROT_READ) != 0 && addr >= r->base && addr - r->base < r->size) {
+            const size_t offset = (size_t)(addr - r->base);
+            if (len <= r->size - offset) {
+                __builtin_memcpy(dst, r->host + offset, len);
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
+
 void e2_memory_init(e2_memory *mem);
 void e2_memory_destroy(e2_memory *mem);
 

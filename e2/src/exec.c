@@ -282,7 +282,9 @@ e2_status e2_step(e2_machine *machine) {
     machine->ctx.pc = cpu->pc;
 
     uint32_t insn = 0;
-    if (e2_memory_read(&machine->mem, cpu->pc, &insn, sizeof(insn)) != 0) {
+    // Fast path first: a fetch almost always lands in the region the previous one did.
+    if (e2_memory_read_fast(&machine->mem, cpu->pc, &insn, sizeof(insn)) != 0 &&
+        e2_memory_read(&machine->mem, cpu->pc, &insn, sizeof(insn)) != 0) {
         machine->ctx.instruction = 0;
         machine->ctx.reason = "instruction fetch outside mapped memory";
         return E2_FAULT;
