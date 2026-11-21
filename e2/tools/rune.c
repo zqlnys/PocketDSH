@@ -42,11 +42,9 @@ static const char *ROOT = "/tmp/alpine-root";
 // a single global table let a child's dup3 rewrite the parent's descriptors.
 // Per-process facts /proc/self has to report. The harness runs one guest process at a
 // time, so these track whichever is currently scheduled.
-static int g_cur_ppid;
 static char g_cur_cmdline[512];
 // Length of the NUL-separated argv image, including the trailing NUL.
 static size_t g_cur_cmdline_len;
-static int g_proc_self_pid;
 extern int g_dbg_pid;
 
 typedef struct {
@@ -55,6 +53,11 @@ typedef struct {
     // syscall env because that struct is rebuilt on every scheduling turn, so a
     // chdir recorded there was forgotten before the next file was opened.
     char cwd[1024];
+    // The ids live here because this struct is what every file callback receives as ctx, and
+    // the /proc synthesiser needs them. They used to be globals written on every instruction
+    // so that a handler running a few times a run could read them.
+    int pid;
+    int ppid;
 } procctx;
 
 // Children only run when someone calls run_proc for them. That used to happen
@@ -277,7 +280,8 @@ static int device_fd_alias(const char *path) {
 // three are what programs actually read: cmdline, stat and status. A real /proc also
 // has a directory per pid; ps needs that, and it stays unsupported rather than
 // half-implemented.
-static bool proc_self_body(const char *path, char *out, size_t outlen, size_t *len_out) {
+static bool proc_self_body(const char *path, char *out, size_t outlen, size_t *len_out,
+                           int self_pid, int parent_pid) {
     const char *tail = NULL;
     if (strncmp(path, "/proc/self/", 11) == 0) tail = path + 11;
     else if (strncmp(path, "/proc/thread-self/", 18) == 0) tail = path + 18;
@@ -294,7 +298,7 @@ static bool proc_self_body(const char *path, char *out, size_t outlen, size_t *l
     if (strcmp(tail, "stat") == 0) {
         const int n = snprintf(out, outlen,
                  "%d (%s) R %d 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0",
-                 g_proc_self_pid, name, g_cur_ppid);
+                 self_pid, name, parent_pid);
         *len_out = (n > 0) ? ((size_t)n < outlen ? (size_t)n : outlen) : 0;
         return true;
     }
@@ -302,7 +306,7 @@ static bool proc_self_body(const char *path, char *out, size_t outlen, size_t *l
         const int n = snprintf(out, outlen,
                  "Name:\t%s\nPid:\t%d\nPPid:\t%d\nUid:\t0\t0\t0\t0\n"
                  "Gid:\t0\t0\t0\t0\nThreads:\t1\n",
-                 name, g_proc_self_pid, g_cur_ppid);
+                 name, self_pid, parent_pid);
         *len_out = (n > 0) ? ((size_t)n < outlen ? (size_t)n : outlen) : 0;
         return true;
     }
@@ -333,7 +337,9 @@ static int fs_open(void *c, const char *path, int fl, int m) {
     {
         char body[1024];
         size_t body_len = 0;
-        if (proc_self_body(path, body, sizeof(body), &body_len)) {
+        const procctx *self_ctx = (const procctx *)c;
+        if (proc_self_body(path, body, sizeof(body), &body_len,
+                           self_ctx->pid, self_ctx->ppid)) {
             // One scratch file, reused: only the process being scheduled can be reading it,
             // and a per-pid name left one file behind for every pid ever used.
             snprintf(self_tmp, sizeof(self_tmp), "/tmp/.e2-proc-self");
@@ -1594,7 +1600,9 @@ static int run_proc(int idx) {
             g_hist_on = getenv("E2_TRACE_HIST") != NULL;
         }
     }
-    const int saved_self_pid = g_proc_self_pid;
+    // The callbacks read the ids from ctx, so they have to be current for this turn.
+    p->pc.pid = p->pid;
+    p->pc.ppid = p->ppid;
     long spent = 0;
     e2_syscall_env env = {.exit = p_exit, .files = &FS, .ctx = p,
                           .fork = p_fork,
@@ -2577,13 +2585,7 @@ static int run_proc(int idx) {
             }
             if (delivered > 0) continue;
         }
-        // Only the two the syscall handlers read are published here; they run inside the
-        // step and have no other way to learn the caller. g_dbg_pc, g_dbg_sp and g_dbg_pc2
-        // were stored on every instruction and never read by anything at all - three stores
-        // per step for nothing.
         g_dbg_pid = p->pid;
-        g_proc_self_pid = p->pid;
-        g_cur_ppid = p->ppid;
         e2_status st = e2_step(&p->m);
         // A chdir inside the step changed env.cwd; keep the process copy in step so
         // the change survives to the next scheduling turn.
@@ -2806,7 +2808,6 @@ static int run_proc(int idx) {
     trace_flush();
     p->running = was_running;
     g_dbg_pid = saved_pid;
-    g_proc_self_pid = saved_self_pid;
     return p->exit_status;
 }
 
