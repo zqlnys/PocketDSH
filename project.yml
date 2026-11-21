@@ -39,6 +39,11 @@ targets:
       - path: PocketDSH
         excludes:
           - Resources/Info.plist
+          # Excluded here and added below as a folder reference. Without this the walk of
+          # PocketDSH picks up every file underneath it individually, so a guest root with a
+          # standard library produced dozens of "__init__.py is produced by multiple commands"
+          # errors - the files were being copied flat into the app bundle.
+          - Resources/alpine-root
       - path: TierCProbe/RuntimeExecProbe.c
       - path: TierCProbe/RuntimeExecProbe.h
       # Tier D: the E2 aarch64 interpreter. It is compiled straight into the app rather than
