@@ -670,6 +670,76 @@ e2_status e2_step(e2_machine *machine) {
     }
 
 
+    // --- SIMD: DUP (broadcast one vector element across a vector) ---
+    // `dup v1.8b, v0.b[5]` copies lane 5 into all eight bytes. It shares the imm5 element
+    // encoding with UMOV and SMOV, and was missing entirely - a broadcast that silently
+    // produced zeros rather than failing.
+    if ((insn & 0x9FE0FC00u) == 0x0E000400u) {
+        const bool q = BIT(insn, 30) != 0;
+        const unsigned imm5 = BITS(insn, 20, 16);
+        const unsigned rn2 = BITS(insn, 9, 5);
+        const unsigned rd = BITS(insn, 4, 0);
+        if (imm5 != 0) {
+            unsigned esize, index;
+            if (imm5 & 1) {
+                esize = 8;  index = (imm5 >> 1) & 0xF;
+            } else if (imm5 & 2) {
+                esize = 16; index = (imm5 >> 2) & 0x7;
+            } else if (imm5 & 4) {
+                esize = 32; index = (imm5 >> 3) & 0x3;
+            } else {
+                esize = 64; index = (imm5 >> 4) & 0x1;
+            }
+            const uint64_t elem = e2_v_get(cpu, rn2, esize, index);
+            const unsigned lanes = (q ? 128u : 64u) / esize;
+            uint64_t lo = 0, hi = 0;
+            for (unsigned lane = 0; lane < lanes; lane++) {
+                const unsigned bit = (lane * esize) % 64;
+                if (lane * esize < 64) {
+                    lo |= elem << bit;
+                } else {
+                    hi |= elem << bit;
+                }
+            }
+            cpu->v[rd][0] = lo;
+            cpu->v[rd][1] = q ? hi : 0;
+            cpu->pc = next_pc;
+            machine->instructions++;
+            return E2_OK;
+        }
+    }
+
+    // --- SIMD: SMOV (vector element to general register, sign extended) ---
+    // The same family as UMOV with bit 12 clear. A byte holds -1 as 0xFF; UMOV moves it as
+    // 0x000000FF and SMOV as 0xFFFFFFFF, so a program that extracts a signed byte with the
+    // wrong one gets a plausible but wrong number rather than a failure.
+    if ((insn & 0x9FE0FC00u) == 0x0E002C00u) {
+        const unsigned imm5 = BITS(insn, 20, 16);
+        const unsigned rn2 = BITS(insn, 9, 5);
+        const unsigned rd = BITS(insn, 4, 0);
+        unsigned esize, index;
+        if (imm5 & 1) {
+            esize = 8;  index = (imm5 >> 1) & 0xF;
+        } else if (imm5 & 2) {
+            esize = 16; index = (imm5 >> 2) & 0x7;
+        } else if (imm5 & 4) {
+            esize = 32; index = (imm5 >> 3) & 0x3;
+        } else {
+            machine->ctx.reason = "invalid SMOV imm5";
+            return E2_UNIMPL;
+        }
+        const uint64_t raw = e2_v_get(cpu, rn2, esize, index);
+        // Sign-extend from esize to the destination width, which Q selects: 0 for a 32-bit
+        // destination, 1 for a 64-bit one.
+        int64_t value = (int64_t)raw;
+        const int shift = 64 - (int)esize;
+        value = (value << shift) >> shift;
+        write_reg(cpu, rd, (uint64_t)value, true);
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     // --- SIMD: UMOV (vector element to general register) ---
     // musl's memset does `mov x1, v0.d[0]` to materialise the replicated byte
     // pattern, so without this every memset wrote zeros. It used to be decoded
