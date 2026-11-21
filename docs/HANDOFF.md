@@ -601,6 +601,8 @@ examples/workspace-inspector.dshplugin/
 | `qemu-steptrace.py` | 单步追踪（经 gdb RSP）|
 | `qemu-fultrace.py` | 完整寄存器状态追踪 |
 | `trace-align.py` / `trace-resync.py` | 对齐/重同步两份轨迹；`resync` 能跨过循环展开的噪声 |
+| `qprobe.py` | 最小 GDB RSP 客户端：`--at` 断点、`--until reg=value`、读寄存器与内存。系统没装 gdb，但 qemu 支持 `-g` |
+| `trace-diverge.py` | 两边 libpython 基址不同（qemu 在 `guest_base+0x8e5000`，本实现在 `guest_base`），减掉各自基址后定位第一处分歧 |
 
 顶层还有 `tools/verify.sh`（两个技术栈一起跑）和 `tools/check-docs.sh`（文档数字与实际是否相符）。
 

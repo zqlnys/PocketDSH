@@ -1431,16 +1431,33 @@ static void dump_shadow(const char *why) {
 // Trace capture state lives at file scope so the exit path can flush a
 // partial recording. Making it depend on reaching an exact length meant a
 // run shorter than the requested limit printed nothing at all.
-static uint64_t g_trace_buf[65536];
-static int g_trace_n = 0;
+// The trace is sized from E2_TRACE_PCS_MAX (default 65536). Fixed at 64K it could only cover
+// the first sixty-five thousand instructions after the chosen start address, and a divergence
+// that shows up later than that is invisible - which is exactly where this one lives.
+static uint64_t *g_trace_buf = NULL;
+static long g_trace_cap = 0;
+static long g_trace_n = 0;
 static int g_trace_recording = 0;
+
+static void trace_ensure(void) {
+    if (g_trace_buf != NULL) return;
+    long cap = 65536;
+    const char *env = getenv("E2_TRACE_PCS_MAX");
+    if (env != NULL) {
+        const long want = strtol(env, NULL, 0);
+        if (want > 0) cap = want;
+    }
+    g_trace_buf = (uint64_t *)calloc((size_t)cap, sizeof(uint64_t));
+    if (g_trace_buf == NULL) cap = 0;
+    g_trace_cap = cap;
+}
 
 static void trace_flush(void) {
     if (g_trace_recording != 1) {
         return;
     }
     g_trace_recording = 2;
-    for (int q = 0; q < g_trace_n; q++) {
+    for (long q = 0; q < g_trace_n; q++) {
         fprintf(stdout, "%llx\n", (unsigned long long)g_trace_buf[q]);
     }
     fflush(stdout);
@@ -2151,13 +2168,12 @@ static int run_proc(int idx) {
                 g_trace_recording = 1;
             }
             if (g_trace_recording == 1) {
-                static int limit = -1;
+                static long limit = -1;
                 if (limit < 0) {
+                    trace_ensure();
                     const char *ls = getenv("E2_TRACE_PCS_LIMIT");
-                    limit = ls ? atoi(ls) : 512;
-                    if (limit <= 0 || limit > (int)(sizeof(g_trace_buf) / sizeof(g_trace_buf[0]))) {
-                        limit = (int)(sizeof(g_trace_buf) / sizeof(g_trace_buf[0]));
-                    }
+                    limit = ls ? strtol(ls, NULL, 0) : 512;
+                    if (limit <= 0 || limit > g_trace_cap) limit = g_trace_cap;
                 }
                 const char *watch = getenv("E2_TRACE_AT2");
                 if (watch && p->m.cpu.pc == strtoull(watch, NULL, 0)) {
@@ -2169,7 +2185,7 @@ static int run_proc(int idx) {
                         if (tb[q] && (tb[q] < 0x20 || tb[q] > 0x7e)) tb[q] = '.';
                     }
                     fprintf(stderr,
-                            "[at2] idx=%d x0=\"%s\" x1=\"%s\" x2=0x%llx x3=0x%llx "
+                            "[at2] idx=%ld x0=\"%s\" x1=\"%s\" x2=0x%llx x3=0x%llx "
                             "x4=0x%llx x5=0x%llx x6=0x%llx x7=0x%llx\n",
                             g_trace_n, ta, tb,
                             (unsigned long long)p->m.cpu.x[2],
@@ -2182,7 +2198,7 @@ static int run_proc(int idx) {
                 if (g_trace_n < limit) {
                     g_trace_buf[g_trace_n++] = p->m.cpu.pc;
                 }
-                if (g_trace_n == limit) {
+                if (g_trace_n >= limit) {
                     trace_flush();
                 }
             }

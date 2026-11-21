@@ -131,8 +131,12 @@ int e2_memory_map_any(e2_memory *mem, size_t size, int prot, uint64_t *base_out)
         return -1;
     }
     const size_t rounded = page_round(size);
-    // Walk upward from just above the lowest mapped region, skipping collisions.
-    uint64_t candidate = 0x10000000ULL;
+    // qemu-user keeps every guest address inside the region it reserves at guest_base, and
+    // the loader it maps already sits at 0x400000810000. Allocating anonymous mappings from
+    // 0x10000000 instead put libpython and the heap in a different part of the address space
+    // from everything else, which makes a trace taken here incomparable with qemu's and can
+    // change behaviour wherever a pointer is narrowed or compared against a limit.
+    uint64_t candidate = 0x4000000000ULL;
     for (int attempt = 0; attempt < E2_MAX_REGIONS * 4; attempt++) {
         bool clash = false;
         uint64_t next = candidate;
