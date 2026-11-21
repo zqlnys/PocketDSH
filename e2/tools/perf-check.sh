@@ -16,9 +16,9 @@ ms=$(( (end - start) / 1000000 ))
 # 1000005 instructions per run.
 per=$(echo "$ms $n" | awk '{ printf "%.0f", ($1 * 1000000) / $2 }')
 echo "perf-check: $n instructions in ${ms}ms = ${per} ns/instruction"
-# The floor for this interpreter is about 600 ns/instruction on this host. Anything
-# past 1200 means per-instruction work crept back into the harness.
-if [ "$per" -gt 1200 ]; then
-    echo "perf-check: slower than 1200 ns/instruction" >&2
+# About 90 ns/instruction on this host. Anything past 200 means per-instruction work
+# has crept back into the harness.
+if [ "$per" -gt 200 ]; then
+    echo "perf-check: slower than 200 ns/instruction" >&2
     exit 1
 fi

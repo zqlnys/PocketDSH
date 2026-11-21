@@ -91,6 +91,37 @@ static int g_sw_map = -1, g_sw_pcs = -1, g_sw_exc = -1, g_sw_nul = -1;
 // environ comparing strings, and the loop runs millions of times: measuring this file showed
 // five thousand cycles per instruction, which is not what interpreting an instruction costs.
 // The same fault was fixed in syscall.c and missed here.
+
+// Cached numeric environment values. Several debugging switches take an address as their
+// value, and the code that parsed them called getenv and strtoull on every instruction -
+// together with the pure on/off switches that was 21 getenv calls per instruction, twice the
+// interpreter's own cost. These remember the parsed value instead.
+static uint64_t env_u64(const char *name, uint64_t *slot) {
+    if (*slot == UINT64_MAX) {
+        const char *v = getenv(name);
+        *slot = (v != NULL) ? strtoull(v, NULL, 0) : 0;
+    }
+    return *slot;
+}
+
+static long env_long(const char *name, long *slot) {
+    if (*slot < 0) {
+        const char *v = getenv(name);
+        *slot = (v != NULL) ? strtol(v, NULL, 0) : 0;
+    }
+    return *slot;
+}
+
+static long g_envl_8 = -1;
+static uint64_t g_envu_0 = UINT64_MAX;
+static uint64_t g_envu_1 = UINT64_MAX;
+static uint64_t g_envu_2 = UINT64_MAX;
+static uint64_t g_envu_3 = UINT64_MAX;
+static uint64_t g_envu_4 = UINT64_MAX;
+static uint64_t g_envu_5 = UINT64_MAX;
+static uint64_t g_envu_6 = UINT64_MAX;
+static uint64_t g_envu_7 = UINT64_MAX;
+static uint64_t g_envu_8 = UINT64_MAX;
 static int env_once(const char *name, int *slot) {
     if (*slot < 0) *slot = getenv(name) != NULL;
     return *slot;
@@ -1712,7 +1743,7 @@ static int run_proc(int idx) {
                             nc, (unsigned long long)last_lr);
             }
         }
-        if (getenv("E2_TRACE_ENTRY") && p->m.cpu.pc == 0x101669a4) {
+        if (env_u64("E2_TRACE_ENTRY", &g_envu_3) && p->m.cpu.pc == 0x101669a4) {
             static int ne = 0;
             if (++ne < 40)
                 fprintf(stderr, "[entry] x0=0x%llx lr=0x%llx tpidr=0x%llx\n",
@@ -1720,11 +1751,11 @@ static int run_proc(int idx) {
                         (unsigned long long)p->m.cpu.x[30],
                         (unsigned long long)p->m.cpu.tpidr_el0);
         }
-        if (getenv("E2_TRACE_WINDOW")) {
+        if (env_u64("E2_TRACE_WINDOW", &g_envu_8)) {
             static long wmark = -1;
             static uint64_t wbuf[400];
             static int wn = 0;
-            if (wmark < 0) wmark = atol(getenv("E2_TRACE_WINDOW"));
+            if (wmark < 0) wmark = env_long("E2_TRACE_WINDOW", &g_envl_8);
             if (p->m.instructions >= (uint64_t)wmark && wn < 400) {
                 wbuf[wn++] = p->m.cpu.pc;
                 if (wn == 400) {
@@ -1737,7 +1768,7 @@ static int run_proc(int idx) {
                 }
             }
         }
-        if (getenv("E2_TRACE_BSS")) {
+        if (env_u64("E2_TRACE_BSS", &g_envu_2)) {
             // .bss must read as zero throughout. Watching one field over time
             // tells us whether it was never zeroed or written later.
             static const uint64_t th[5] = {10ULL, 1000ULL, 100000ULL,
@@ -1753,7 +1784,7 @@ static int run_proc(int idx) {
                 ti++;
             }
         }
-        if (getenv("E2_TRACE_WATCH") && p->m.instructions < 200000) {
+        if (env_u64("E2_TRACE_WATCH", &g_envu_7) && p->m.instructions < 200000) {
             // Compare around a single step: whoever changed the word is the
             // instruction we just executed.
             static uint64_t last_b = 0;
@@ -1777,7 +1808,7 @@ static int run_proc(int idx) {
             prev_pc = p->m.cpu.pc;
             e2_memory_read(&p->m.mem, p->m.cpu.pc, &prev_insn, 4);
         }
-        if (getenv("E2_TRACE_OBJ") && p->m.cpu.pc == 0x102fbbb0) {
+        if (env_u64("E2_TRACE_OBJ", &g_envu_5) && p->m.cpu.pc == 0x102fbbb0) {
             static int no = 0;
             if (++no <= 3) {
                 const uint64_t o = p->m.cpu.x[0];
@@ -1793,7 +1824,7 @@ static int run_proc(int idx) {
                 }
             }
         }
-        if (getenv("E2_TRACE_AT") && p->m.cpu.pc == strtoull(getenv("E2_TRACE_AT"), NULL, 0)) {
+        if (env_u64("E2_TRACE_AT", &g_envu_1) && p->m.cpu.pc == env_u64("E2_TRACE_AT", &g_envu_1)) {
             static int once = 0;
             if (!once) {
                 once = 1;
@@ -1811,7 +1842,7 @@ static int run_proc(int idx) {
                 }
             }
         }
-        if (getenv("E2_TRACE_ARGS") && p->m.cpu.pc == 0x1017c568) {
+        if (env_u64("E2_TRACE_ARGS", &g_envu_0) && p->m.cpu.pc == 0x1017c568) {
             {
                 fprintf(stderr, "[struct] at 0x%llx:\n",
                         (unsigned long long)p->m.cpu.x[22]);
@@ -1843,14 +1874,14 @@ static int run_proc(int idx) {
                         (unsigned long long)p->m.cpu.x[19], (unsigned long long)p->m.cpu.x[22],
                         (unsigned long long)p->m.cpu.x[23]);
         }
-        if (getenv("E2_TRACE_FIELD")) {
+        if (env_u64("E2_TRACE_FIELD", &g_envu_4)) {
             // Watch one 8-byte word across the whole run. Answers the question
             // "was this never written, or written and then cleared" - which
             // decides whether to look at the store or at the allocation.
             static uint64_t last = 0;
             static int armed = 0;
             static uint64_t prev_pc = 0;
-            const uint64_t where = strtoull(getenv("E2_TRACE_FIELD"), NULL, 0);
+            const uint64_t where = env_u64("E2_TRACE_FIELD", &g_envu_4);
             uint64_t now = 0;
             if (e2_memory_read(&p->m.mem, where, &now, 8) == 0) {
                 if (armed && now != last) {
@@ -1864,7 +1895,7 @@ static int run_proc(int idx) {
             }
             prev_pc = p->m.cpu.pc;
         }
-        if (getenv("E2_TRACE_TSTATE") && p->m.cpu.pc == 0x1027d520) {
+        if (env_u64("E2_TRACE_TSTATE", &g_envu_6) && p->m.cpu.pc == 0x1027d520) {
             // _PyErr_WriteUnraisableMsg reads the pending exception from the
             // thread state, which musl keeps in TPIDR_EL0. Dump enough of it to
             // find the three exception slots.
