@@ -2196,7 +2196,16 @@ static int run_proc(int idx) {
                         (unsigned long long)pre_pc,
                         (unsigned)p->m.ctx.instruction);
                 g_watch_prev = now;
-                if (++g_watch_hits >= 8) g_watch_addr = 0;
+                // The cap exists so a watchdog on a hot address does not flood stderr. It
+                // used to be 8, which silently stopped watching long before the write that
+                // mattered - a frame field changed eight times during start-up and the
+                // corruption came much later. E2_WATCH_MAX raises it.
+                static long watch_max = -1;
+                if (watch_max < 0) {
+                    const char *m = getenv("E2_WATCH_MAX");
+                    watch_max = (m != NULL) ? strtol(m, NULL, 0) : 8L;
+                }
+                if (++g_watch_hits >= watch_max) g_watch_addr = 0;
             }
         }
         // Between instructions, before this process runs again. A handler installed with
