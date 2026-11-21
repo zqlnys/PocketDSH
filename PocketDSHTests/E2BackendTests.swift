@@ -154,7 +154,9 @@ final class E2BackendTests: XCTestCase {
         // subprocess imports locale, which imports re; a guest root trimmed too far reports
         // MemoryError there, and that is a property of the root rather than of subprocess.
         if output.contains("MemoryError") {
-            throw XCTSkip("this guest root cannot import re: \(output.prefix(200))")
+            // The whole traceback: the first 200 characters are the import chain, and the last
+            // line - the actual error - is the one worth seeing.
+            throw XCTSkip("this guest root cannot import re: \(output)")
         }
         XCTAssertEqual(status, 0, "python exited \(status); output was <<<\(output)>>>")
         XCTAssertTrue(output.contains("0 sub-ok"), output)
