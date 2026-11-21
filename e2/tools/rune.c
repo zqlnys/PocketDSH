@@ -82,6 +82,9 @@ typedef struct {
 // process it waits for exits, so a surviving sibling can still be left behind.
 // The window is now wide enough that the case does not arise in practice.
 // Tracked in docs/E2-BACKEND.md.
+static int g_sw_dbg9 = -1;
+static int g_sw_dbg6 = -1, g_sw_dbg7 = -1, g_sw_dbg8 = -1;
+static int g_sw_dbg0 = -1, g_sw_dbg1 = -1, g_sw_dbg2 = -1, g_sw_dbg3 = -1, g_sw_dbg4 = -1, g_sw_dbg5 = -1;
 static int g_sw_calls = -1, g_sw_ring = -1, g_sw_after = -1, g_sw_pipe = -1;
 static int g_sw_map = -1, g_sw_pcs = -1, g_sw_exc = -1, g_sw_nul = -1;
 // One-time lookups for the switches consulted inside the instruction loop. getenv walks
@@ -1469,7 +1472,7 @@ static int run_proc(int idx) {
         hist[hist_at].x23 = p->m.cpu.x[23];
         hist_at = (hist_at + 1) % 256;
         if (hist_n < 256) hist_n++;
-        if (getenv("E2_TRACE_TRACE") &&
+        if (env_once("E2_TRACE_TRACE", &g_sw_dbg0) &&
             p->m.cpu.pc >= 0x10161070 && p->m.cpu.pc < 0x101610f0) {
             static long nt = 0;
             if (nt < 80) {
@@ -1481,7 +1484,7 @@ static int run_proc(int idx) {
                 nt++;
             }
         }
-        if (getenv("E2_TRACE_REGIONS") && p->m.cpu.pc == 0x10161074) {
+        if (env_once("E2_TRACE_REGIONS", &g_sw_dbg6) && p->m.cpu.pc == 0x10161074) {
             static int nr = 0;
             if (nr == 0) {
                 fprintf(stderr, "[regions] count=%u\n", p->m.mem.count);
@@ -1493,7 +1496,7 @@ static int run_proc(int idx) {
                 nr++;
             }
         }
-        if (getenv("E2_TRACE_T3") && p->m.cpu.pc == 0x10163230) {
+        if (env_once("E2_TRACE_T3", &g_sw_dbg1) && p->m.cpu.pc == 0x10163230) {
             static unsigned v3 = 0;
             static uint64_t prev = 0;
             v3++;
@@ -1504,7 +1507,7 @@ static int run_proc(int idx) {
                         (int)(p->m.cpu.x[1] == prev));
             prev = p->m.cpu.x[1];
         }
-        if (getenv("E2_TRACE_T2") && p->m.cpu.pc == 0x10163988) {
+        if (env_once("E2_TRACE_T2", &g_sw_dbg2) && p->m.cpu.pc == 0x10163988) {
             static unsigned v2 = 0;
             ++v2;
             if (v2 == 100 || v2 == 200000 || v2 == 2000000) {
@@ -1519,7 +1522,7 @@ static int run_proc(int idx) {
                 fprintf(stderr, "\n");
             }
         }
-        if (getenv("E2_TRACE_SLOTS") && p->m.cpu.pc == 0x10161074) {
+        if (env_once("E2_TRACE_SLOTS", &g_sw_dbg3) && p->m.cpu.pc == 0x10161074) {
             static unsigned visits = 0;
             visits++;
             if (visits == 200) {
@@ -1540,7 +1543,7 @@ static int run_proc(int idx) {
                 fprintf(stderr, "\n");
             }
         }
-        if (getenv("E2_TRACE_TBL") && p->m.cpu.pc == 0x101634dc) {
+        if (env_once("E2_TRACE_TBL", &g_sw_dbg4) && p->m.cpu.pc == 0x101634dc) {
             static int nt2 = 0;
             if (nt2 < 20) {
                 uint64_t freev = 0, cnt = 0, sz8 = 0;
@@ -1577,7 +1580,7 @@ static int run_proc(int idx) {
                 nt2++;
             }
         }
-        if (getenv("E2_TRACE_PROBE") && p->m.cpu.pc == 0x101634dc) {
+        if (env_once("E2_TRACE_PROBE", &g_sw_dbg5) && p->m.cpu.pc == 0x101634dc) {
             fprintf(stderr, "[code2] 0x101634b0..0x101634F0:\n");
             for (uint64_t a = 0x101634b0; a < 0x101634F0; a += 16) {
                 uint32_t w[4] = {0,0,0,0};
@@ -1589,7 +1592,7 @@ static int run_proc(int idx) {
                     (unsigned long long)p->m.cpu.x[0], (unsigned long long)p->m.cpu.x[1],
                     (unsigned long long)p->m.cpu.x[19]);
         }
-        if (getenv("E2_TRACE_PROBE") &&
+        if (env_once("E2_TRACE_PROBE", &g_sw_dbg5) &&
             (p->m.cpu.pc == 0x10161074 || p->m.cpu.pc == 0x101610b4) &&
             p->m.cpu.x[21] == 0) {
             static int nz = 0;
@@ -1602,7 +1605,7 @@ static int run_proc(int idx) {
                 nz++;
             }
         }
-        if (getenv("E2_TRACE_PROBE") && p->m.cpu.pc == 0x10161074) {
+        if (env_once("E2_TRACE_PROBE", &g_sw_dbg5) && p->m.cpu.pc == 0x10161074) {
             static int np = 0;
             if (np == 40) {
                 fprintf(stderr, "[code] 0x10161070..0x101610F0:\n");
@@ -1637,7 +1640,7 @@ static int run_proc(int idx) {
                 np++;
             }
         }
-        if (getenv("E2_TRACE_PROGRESS") && (guard % 5000000L) == 0 && guard > 0) {
+        if (env_once("E2_TRACE_PROGRESS", &g_sw_dbg7) && (guard % 5000000L) == 0 && guard > 0) {
             // Sampling the pc tells "slow" from "stuck": a loop shows the same
             // handful of addresses every sample.
             fprintf(stderr, "[progress] %ld instr pc=0x%llx syscalls_so_far=%ld\n",
@@ -1667,7 +1670,7 @@ static int run_proc(int idx) {
             }
             break;
         }
-        if (getenv("E2_TRACE_GREP") && p->m.cpu.pc == 0x4c4408) {
+        if (env_once("E2_TRACE_GREP", &g_sw_dbg8) && p->m.cpu.pc == 0x4c4408) {
             static int ng = 0;
             if (ng == 0) {
                 const uint64_t base = p->m.cpu.x[1];
@@ -1686,8 +1689,14 @@ static int run_proc(int idx) {
         // Counted rather than printed: printing every entry changes the timing enough
         // to hide what is being looked for. This says how often the block is reached
         // and with what return address, which is what the M4 investigation needs.
-        if (getenv("E2_TRACE_CALLER")) {
-            const uint64_t at = strtoull(getenv("E2_TRACE_CALLER"), NULL, 0);
+        if (env_once("E2_TRACE_CALLER", &g_sw_dbg9)) {
+            static uint64_t at_cached;
+            if (at_cached == 0) {
+                const char *v = getenv("E2_TRACE_CALLER");
+                at_cached = (v != NULL) ? strtoull(v, NULL, 0) : 1;
+                if (at_cached == 0) at_cached = 1;
+            }
+            const uint64_t at = at_cached;
             if (p->m.cpu.pc == at) {
                 static unsigned long nc;
                 static uint64_t last_lr;
@@ -2332,7 +2341,7 @@ static int run_proc(int idx) {
                                 (unsigned long long)hist[idx].x23);
                     }
                 }
-                if (getenv("E2_TRACE_GREP")) {
+                if (env_once("E2_TRACE_GREP", &g_sw_dbg8)) {
                     fprintf(stderr, "[fault] pid=%d regions=%u\n", p->pid, p->m.mem.count);
                     for (unsigned k = 0; k < p->m.mem.count; k++)
                         fprintf(stderr, "   [%u] 0x%llx + 0x%llx\n", k,
@@ -2378,7 +2387,7 @@ static int run_proc(int idx) {
                             (unsigned long long)off, (unsigned long long)v);
                 }
             }
-            if (getenv("E2_TRACE_REGIONS")) {
+            if (env_once("E2_TRACE_REGIONS", &g_sw_dbg6)) {
                 fprintf(stderr, "[regions] %u in use (max %d)\n",
                         p->m.mem.count, E2_MAX_REGIONS);
                 for (unsigned k = 0; k < p->m.mem.count; k++) {
@@ -2435,7 +2444,7 @@ static int run_proc(int idx) {
                             (unsigned long long)hist[hidx].x23);
                 }
             }
-            if (getenv("E2_TRACE_GREP")) {
+            if (env_once("E2_TRACE_GREP", &g_sw_dbg8)) {
                 fprintf(stderr, "[fault] pid=%d regions=%u\n", p->pid, p->m.mem.count);
                 for (unsigned k = 0; k < p->m.mem.count; k++)
                     fprintf(stderr, "   [%u] 0x%llx + 0x%llx\n", k,

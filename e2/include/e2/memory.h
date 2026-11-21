@@ -36,6 +36,12 @@ typedef struct {
 typedef struct {
     e2_region regions[E2_MAX_REGIONS];
     unsigned count;
+    // Cache of the region the last lookup resolved. Instruction fetch reads through
+    // region_at on every step, and a linear scan over every mapping - CPython creates about
+    // seventy - dominated the interpreter's own cost. Holding the last hit makes the common
+    // case one comparison, because execution stays inside one region for millions of steps.
+    // It is a pure cache: stale values are detected by the containment test and fall back.
+    unsigned cache_index;
 } e2_memory;
 
 #define E2_PROT_READ 1

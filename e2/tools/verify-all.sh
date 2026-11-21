@@ -89,6 +89,14 @@ for bb in "$STATIC" "$DYNAMIC"; do
 done
 fi
 
+# Interpreter throughput. A per-instruction getenv in the step loop once cost more than
+# the interpreter itself, and nothing else in this script would have noticed: every
+# correctness suite passed at half speed.
+out=$(./tools/perf-check.sh 2>&1 | tail -1)
+echo "  $out"
+case "$out" in *ns/instruction*) ;; *) fail=1 ;; esac
+case "$out" in "perf-check: slower"*) fail=1 ;; esac
+
 echo
 if [ "$fail" -eq 0 ]; then echo "verify-all: everything passed"; else echo "verify-all: FAILURES above"; fi
 exit "$fail"

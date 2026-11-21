@@ -40,6 +40,20 @@ static size_t page_round(size_t size) {
 
 /// Region fully containing [addr, addr+len), with at least `prot` granted.
 static const e2_region *find(const e2_memory *mem, uint64_t addr, size_t len) {
+    // Same last-hit cache as region_at, for the same reason: this is the lookup every
+    // instruction fetch and every data access goes through.
+    e2_memory *mutable_mem = (e2_memory *)(uintptr_t)mem;
+    const unsigned cached = mutable_mem->cache_index;
+    if (cached < mem->count) {
+        const e2_region *r = &mem->regions[cached];
+        if (addr >= r->base && addr - r->base < r->size) {
+            const size_t offset = (size_t)(addr - r->base);
+            if (len <= r->size - offset) {
+                return r;
+            }
+            return NULL;
+        }
+    }
     for (unsigned i = 0; i < mem->count; i++) {
         const e2_region *r = &mem->regions[i];
         if (addr < r->base || addr - r->base >= r->size) {
@@ -49,6 +63,7 @@ static const e2_region *find(const e2_memory *mem, uint64_t addr, size_t len) {
         if (len > r->size - offset) {
             return NULL;
         }
+        mutable_mem->cache_index = i;
         return r;
     }
     return NULL;
@@ -56,9 +71,21 @@ static const e2_region *find(const e2_memory *mem, uint64_t addr, size_t len) {
 
 /// Region containing `addr` regardless of length, or NULL.
 static const e2_region *region_at(const e2_memory *mem, uint64_t addr) {
+    // Try the previously resolved region first. The cast only writes a cache hint, so the
+    // const contract holds; a hint that no longer matches simply fails the containment
+    // test and the scan below corrects it.
+    e2_memory *mutable_mem = (e2_memory *)(uintptr_t)mem;
+    const unsigned cached = mutable_mem->cache_index;
+    if (cached < mem->count) {
+        const e2_region *r = &mem->regions[cached];
+        if (addr >= r->base && addr - r->base < r->size) {
+            return r;
+        }
+    }
     for (unsigned i = 0; i < mem->count; i++) {
         const e2_region *r = &mem->regions[i];
         if (addr >= r->base && addr - r->base < r->size) {
+            mutable_mem->cache_index = i;
             return r;
         }
     }
