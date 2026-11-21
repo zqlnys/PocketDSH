@@ -2018,6 +2018,14 @@ static int run_proc(int idx) {
                         (unsigned long long)p->m.cpu.x[4], (unsigned long long)p->m.cpu.x[6],
                         (unsigned long long)p->m.cpu.x[19],
                         (unsigned long long)p->m.cpu.sp);
+                // The callee-saved registers matter here: the DECREF sequence indexes
+                // through x27, and the slot it reads is what turns an object pointer into
+                // the address of a field.
+                fprintf(stderr,
+                        "[at] x20=0x%llx x21=0x%llx x24=0x%llx x25=0x%llx x26=0x%llx x27=0x%llx\n",
+                        (unsigned long long)p->m.cpu.x[20], (unsigned long long)p->m.cpu.x[21],
+                        (unsigned long long)p->m.cpu.x[24], (unsigned long long)p->m.cpu.x[25],
+                        (unsigned long long)p->m.cpu.x[26], (unsigned long long)p->m.cpu.x[27]);
                 {
                     uint8_t dmp[24]; uint64_t a0 = p->m.cpu.x[6] - 16;
                     if (e2_memory_read(&p->m.mem, a0, dmp, sizeof dmp) == 0) {
