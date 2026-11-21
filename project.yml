@@ -51,6 +51,12 @@ targets:
       # command-line harness. It creates no host processes - guest fork is a copy of an E2
       # machine - so it runs inside the app sandbox as-is.
       - path: e2/tools/rune.c
+      # The guest root Tier D runs in: a statically linked aarch64 busybox and nothing else.
+      # The full Alpine tree is hundreds of megabytes and only matters for CPython; this is
+      # what makes a shell command work.
+      - path: PocketDSH/Resources/alpine-root
+        buildPhase: resources
+        type: folder
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.pocketdsh
@@ -61,6 +67,8 @@ targets:
         # Shipped target: bridging header exposes only the original probe, so no
         # GPL-licensed headers are even reachable.
         SWIFT_OBJC_BRIDGING_HEADER: TierCProbe/RuntimeOnly-Bridging-Header.h
+        # Tier D only. Tier C is the Lab build's flag and pulls in iSH; E2 needs neither.
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) TIER_D_AVAILABLE"
         HEADER_SEARCH_PATHS:
           - "$(SRCROOT)/TierCProbe"
           - "$(SRCROOT)/e2/include"

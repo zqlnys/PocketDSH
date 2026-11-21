@@ -3,7 +3,7 @@ import Foundation
 // so the import has to sit outside the conditional.
 import PocketDSHCore
 
-#if TIER_C_AVAILABLE
+#if TIER_D_AVAILABLE
 
 /// Tier D: commands run on E2, the aarch64 interpreter written for this project.
 ///
