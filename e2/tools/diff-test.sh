@@ -870,6 +870,10 @@ sh -c 'v=a/b/c; echo ${#v} ${v%%/*} ${v##*/}'
 printf '[%05d][%-5d][%+d]\n' 42 42 42
 # awk: sprintf and string repetition through a loop
 awk 'BEGIN{s=""; for(i=0;i<3;i++) s = s "ab"; printf "%s|%s\n", s, sprintf("%03d", 7)}'
+# ld1/st1 post-index: a block copy, the shape CPython's fast paths take
+printf 'abcdefghijklmnopqrstuvwx' | od -An -c | head -2
+# sh: a copy loop that advances a pointer past 16 bytes at a time
+head -c 40 /dev/zero | tr '\0' 'x' | wc -c
 echo 'hello' | sed 'y/el/ip/'
 # printf: escaped percent and field width reuse
 printf '%s|%5.2f|%%\n' ab 3.14159

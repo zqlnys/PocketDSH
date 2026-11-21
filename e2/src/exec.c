@@ -1876,6 +1876,52 @@ not_a_shift:;
         return E2_OK;
     }
 
+    // --- SIMD: LD1 / ST1 single structure, post-indexed ---
+    // `ld1 {v0.16b}, [x], #16` loads a whole register and advances the pointer. It is the
+    // shape a block copy takes, and it was missing: a fast path that copies 16 bytes a pass
+    // stopped at the first one, which is why argv strings longer than a register arrived
+    // truncated to their first four characters.
+    if ((insn & 0xBFBFFC00u) == 0x0C9F7000u) {
+        const bool q = BIT(insn, 30) != 0;
+        const bool is_load = BIT(insn, 22) != 0;
+        const unsigned rn = BITS(insn, 9, 5);
+        const unsigned rt = BITS(insn, 4, 0);
+        const unsigned bytes = q ? 16u : 8u;
+        const uint64_t addr = e2_read_sp(cpu, rn);
+        if (is_load) {
+            uint64_t lo = 0, hi = 0;
+            if (e2_memory_read(&machine->mem, addr, &lo, bytes > 8 ? 8 : bytes) != 0) {
+                machine->ctx.reason = "ld1 outside mapped memory";
+                machine->ctx.fault_addr = addr;
+                return E2_FAULT;
+            }
+            if (bytes > 8 && e2_memory_read(&machine->mem, addr + 8, &hi, 8) != 0) {
+                machine->ctx.reason = "ld1 outside mapped memory";
+                machine->ctx.fault_addr = addr + 8;
+                return E2_FAULT;
+            }
+            cpu->v[rt][0] = lo;
+            cpu->v[rt][1] = q ? hi : 0;
+        } else {
+            if (e2_memory_write(&machine->mem, addr, &cpu->v[rt][0],
+                                bytes > 8 ? 8 : bytes) != 0) {
+                machine->ctx.reason = "st1 outside mapped memory";
+                machine->ctx.fault_addr = addr;
+                return E2_FAULT;
+            }
+            if (bytes > 8 &&
+                e2_memory_write(&machine->mem, addr + 8, &cpu->v[rt][1], 8) != 0) {
+                machine->ctx.reason = "st1 outside mapped memory";
+                machine->ctx.fault_addr = addr + 8;
+                return E2_FAULT;
+            }
+        }
+        write_reg(cpu, rn, addr + bytes, false);
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     // --- SIMD: LD1 / ST1 with two structure registers ---
     // memcpy's wide path moves 32 bytes per iteration with this form, so the
     // whole of strcpy/memcpy shows up here. Bits 14-13 = 01 selects two
