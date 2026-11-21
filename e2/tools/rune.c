@@ -2426,10 +2426,11 @@ static int run_proc(int idx) {
         e2_status st = e2_step(&p->m);
         // A chdir inside the step changed env.cwd; keep the process copy in step so
         // the change survives to the next scheduling turn.
-        if (strcmp(p->pc.cwd, env.cwd) != 0) {
+        // Only a chdir moves it, and chdir sets the flag. Comparing the strings after every
+        // instruction cost 10 ns of 86 for a value that changes a handful of times a run.
+        if (env.cwd_changed) {
+            env.cwd_changed = 0;
             snprintf(p->pc.cwd, sizeof(p->pc.cwd), "%s", env.cwd);
-        }
-        if (strcmp(g_cur_cwd, p->pc.cwd) != 0) {
             snprintf(g_cur_cwd, sizeof(g_cur_cwd), "%s", p->pc.cwd);
         }
         if (g_shadow_on) {

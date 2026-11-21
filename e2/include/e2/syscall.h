@@ -147,6 +147,10 @@ typedef struct {
     int pid;
     /// The parent's pid, for getppid. 0 for the first process.
     int ppid;
+    /// Set whenever cwd changes, so the caller does not have to compare strings after every
+    /// instruction to notice. Two strcmp calls per step measured 10 ns of 86, which is more
+    /// than the bookkeeping is worth.
+    int cwd_changed;
 } e2_syscall_env;
 
 /// Services the syscall the machine stopped on.

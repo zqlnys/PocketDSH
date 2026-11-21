@@ -578,6 +578,10 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
                 }
                 files->close(env->ctx, probe);
             }
+            // The flag has to be set on both branches: the first version of this only set it
+            // for relative paths, so `cd /tmp` changed cwd without telling the caller and the
+            // next mkdir landed in the wrong directory.
+            env->cwd_changed = 1;
             if (path[0] == '/') {
                 snprintf(env->cwd, sizeof(env->cwd), "%.*s",
                          (int)(sizeof(env->cwd) - 1), path);
