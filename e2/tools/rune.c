@@ -2437,6 +2437,62 @@ static int run_proc(int idx) {
     return p->exit_status;
 }
 
+// Dumps the structures the faulting instruction was reading. The evaluation loop keeps its
+// frame in x5, and x24 points at the thread state that held it, so between them the bad
+// pointer and its origin are both visible.
+static void dump_fault_state(const e2_machine *m)
+{
+    const unsigned regs[4] = {5, 24, 19, 1};
+    for (unsigned i = 0; i < 4; i++) {
+        const uint64_t addr = m->cpu.x[regs[i]];
+        uint64_t head = 0;
+        if (e2_memory_read(&m->mem, addr, &head, 8) != 0) {
+            fprintf(stderr, "[fault] [x%u] at 0x%llx unreadable%c", regs[i],
+                    (unsigned long long)addr, 10);
+            continue;
+        }
+        fprintf(stderr, "[fault] [x%u]=0x%llx%c", regs[i], (unsigned long long)head, 10);
+    }
+    {
+        // Raw bytes around x24: if the pointer it yields is one byte off the aligned value
+        // that holds a valid pointer, the struct itself is being read one byte early.
+        uint8_t raw[40];
+        const uint64_t at = m->cpu.x[24] - 8;
+        if (e2_memory_read(&m->mem, at, raw, sizeof raw) == 0) {
+            fprintf(stderr, "[fault] bytes@0x%llx:", (unsigned long long)at);
+            for (unsigned j = 0; j < sizeof raw; j++) fprintf(stderr, " %02x", raw[j]);
+            fprintf(stderr, "%c", 10);
+        }
+    }
+    {
+        // The frame pointer in x5 came out odd, so compare what the fields would look like
+        // at the nearby aligned bases: if an aligned base yields plausible pointers, the
+        // fault is in how the pointer was computed rather than in the frame's contents.
+        const uint64_t bases[4] = {(m->cpu.x[5] & ~7ULL) - 8, (m->cpu.x[5] & ~7ULL),
+                                   (m->cpu.x[5] & ~7ULL) + 8, (m->cpu.x[5] & ~7ULL) + 16};
+        for (unsigned b = 0; b < 4; b++) {
+            uint64_t got = 0;
+            if (e2_memory_read(&m->mem, bases[b] + 0x28, &got, 8) == 0)
+                fprintf(stderr, "[fault] [0x%llx+0x28] = 0x%llx%c",
+                        (unsigned long long)bases[b], (unsigned long long)got, 10);
+        }
+    }
+    for (unsigned i = 0; i < 2; i++) {
+        const unsigned which = (i == 0) ? 5u : 24u;
+        const uint64_t base = m->cpu.x[which];
+        uint64_t fields[8];
+        if (e2_memory_read(&m->mem, base, fields, sizeof fields) != 0) {
+            continue;
+        }
+        fprintf(stderr, "[fault] x%u struct at 0x%llx:%c", which,
+                (unsigned long long)base, 10);
+        for (unsigned w = 0; w < 8; w++) {
+            fprintf(stderr, "   +0x%02x = 0x%016llx (align %u)%c", w * 8,
+                    (unsigned long long)fields[w], (unsigned)(w * 0) + 0, 10);
+        }
+    }
+}
+
 int main(int argc, char **argv) {
     const char *path = argc > 1 ? argv[1] : "/tmp/bbs/bin/busybox.static";
     g_self_path = path;
@@ -2539,6 +2595,9 @@ env_done:
     if (getenv("E2_TRACE_WAITSUM"))
         fprintf(stderr, "[waitsum] calls=%d ok=%d echild=%d\n",
                 g_wait_calls, g_wait_ok, g_wait_echild);
+    if (g_fault && getenv("E2_DUMP_AT_FAULT")) {
+        dump_fault_state(&procs[1].m);
+    }
     printf("\n[exit %d] instructions=%ld%s%s\n", procs[1].exit_status,
            (long)procs[1].m.instructions,
            g_fault ? " FAULT reason=" : "", g_fault ? g_reason : "");
