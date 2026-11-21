@@ -2117,6 +2117,34 @@ static int run_proc(int idx) {
                 // code-like. That distinguishes "a frame was pushed by mistake" from "the
                 // slot is an ordinary object that merely looks odd".
                 {
+                    // The neighbour question: if one fewer argument were expected, x27 would
+                    // land one word higher. Dump the words around it so the boundary between
+                    // "real stack values" and "the _PyCFrame next door" is visible.
+                    // Name each of those words, so it is clear which are objects and which
+                    // are interpreter structures.
+                    for (int q = -4; q <= 0; q++) {
+                        uint64_t v = 0, ty = 0, nm = 0;
+                        if (e2_memory_read(&p->m.mem, p->m.cpu.x[24] + (uint64_t)(q * 8), &v, 8) != 0)
+                            continue;
+                        if (e2_memory_read(&p->m.mem, v + 8, &ty, 8) != 0) continue;
+                        if (e2_memory_read(&p->m.mem, ty + 0x18, &nm, 8) != 0) continue;
+                        char t[32] = {0};
+                        e2_memory_read(&p->m.mem, nm, t, sizeof(t) - 1);
+                        int ok = 1;
+                        for (int z = 0; z < 24 && t[z]; z++)
+                            if (t[z] < 0x20 || t[z] > 0x7e) { ok = 0; break; }
+                        fprintf(stderr, "[decref]   [%+d]=0x%llx type=%s%c", q,
+                                (unsigned long long)v, (ok && t[0]) ? t : "?", 10);
+                    }
+                    fprintf(stderr, "[decref] words around x24:");
+                    for (int q = -5; q <= 0; q++) {
+                        uint64_t w = 0;
+                        if (e2_memory_read(&p->m.mem, p->m.cpu.x[24] + (uint64_t)(q * 8), &w, 8) == 0)
+                            fprintf(stderr, " [%+d]=0x%llx", q, (unsigned long long)w);
+                    }
+                    fprintf(stderr, "%c", 10);
+                }
+                {
                     uint64_t f_code = 0, code_type = 0, name_ptr = 0;
                     e2_memory_read(&p->m.mem, slot + 0x20, &f_code, 8);
                     e2_memory_read(&p->m.mem, f_code + 0x8, &code_type, 8);

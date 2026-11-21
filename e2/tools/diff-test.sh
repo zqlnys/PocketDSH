@@ -846,6 +846,18 @@ printf '1\n2\n3\n' | awk 'END{print NR, $0}'
 # sed: a substitution with & and \& in the replacement
 echo 'abc' | sed 's/b/[&]/; s/a/\\&/'
 # sed: y/// transliteration versus tr
+# sed: an address range with a regex on both ends
+printf 'a\nb\nc\nd\n' | sed -n '/b/,/c/p'
+# awk: substr with a negative length and a start past the end
+echo abcdef | awk '{print substr($0,2,0) "|" substr($0,99,3) "|" substr($0,0,2)}'
+# awk: printf rounding at a .5 boundary
+awk 'BEGIN{printf "%.0f %.0f %.1f\n", 0.5, 1.5, 2.25}'
+# sh: a case pattern with several alternatives and a glob
+sh -c 'for v in abc abd xbc; do case $v in a*c|x?c) echo "hit $v";; *) echo "miss $v";; esac; done'
+# sed: the N command reaching end of file without a following line
+printf 'one\n' | sed 'N;s/\n/+/'
+# awk: assigning to NF truncates the record
+printf 'a b c d\n' | awk '{NF=2; print; print NF}'
 echo 'hello' | sed 'y/el/ip/'
 # printf: escaped percent and field width reuse
 printf '%s|%5.2f|%%\n' ab 3.14159
