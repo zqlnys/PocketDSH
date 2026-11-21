@@ -1114,6 +1114,65 @@ e2_status e2_step(e2_machine *machine) {
         return E2_OK;
     }
 
+    // --- Scalar floating point conditional compare: FCCMP / FCCMPE ---
+    // Compare when the condition holds, otherwise load NZCV from the instruction's own
+    // immediate. Compilers emit these to chain float comparisons without a branch between them,
+    // and it showed up as an unimplemented instruction the first time a program did.
+    if ((insn & 0xFF200C00u) == 0x1E200400u) {
+        const unsigned ftype = BITS(insn, 23, 22);
+        const unsigned rm = BITS(insn, 20, 16);
+        const unsigned cond = BITS(insn, 15, 12);
+        const unsigned rn = BITS(insn, 9, 5);
+        const unsigned nzcv = BITS(insn, 3, 0);
+        const bool signalling = BIT(insn, 4) != 0;
+        if (ftype == 3) {
+            machine->ctx.reason = "invalid fccmp ftype";
+            return E2_UNIMPL;
+        }
+        if (!condition_holds(cpu, cond)) {
+            // The condition failed: NZCV comes from the instruction's own immediate, which is
+            // how a chained comparison carries the previous result forward.
+            cpu->flags.n = (nzcv >> 3) & 1;
+            cpu->flags.z = (nzcv >> 2) & 1;
+            cpu->flags.c = (nzcv >> 1) & 1;
+            cpu->flags.v = nzcv & 1;
+            cpu->pc = next_pc;
+            machine->instructions++;
+            return E2_OK;
+        }
+        // The condition held: compare, with the same NaN and equality rules FCMP uses.
+        double a, b;
+        if (ftype == 0) {
+            uint32_t ba = (uint32_t)cpu->v[rn][0];
+            uint32_t bb = (uint32_t)cpu->v[rm][0];
+            float fa, fb;
+            memcpy(&fa, &ba, 4);
+            memcpy(&fb, &bb, 4);
+            a = (double)fa;
+            b = (double)fb;
+        } else {
+            memcpy(&a, &cpu->v[rn][0], 8);
+            memcpy(&b, &cpu->v[rm][0], 8);
+        }
+        (void)signalling;
+        if (a != a || b != b) {          // unordered
+            cpu->flags.n = false; cpu->flags.z = false;
+            cpu->flags.c = true;  cpu->flags.v = true;
+        } else if (a == b) {
+            cpu->flags.n = false; cpu->flags.z = true;
+            cpu->flags.c = true;  cpu->flags.v = false;
+        } else if (a < b) {
+            cpu->flags.n = true;  cpu->flags.z = false;
+            cpu->flags.c = false; cpu->flags.v = false;
+        } else {
+            cpu->flags.n = false; cpu->flags.z = false;
+            cpu->flags.c = true;  cpu->flags.v = false;
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     // --- Scalar floating point compare: FCMP / FCMPE ---
     // AArch64 sets NZCV in a specific way for unordered comparisons, which is
     // how C's <, <=, == on floats end up branching.

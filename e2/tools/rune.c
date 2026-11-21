@@ -2745,6 +2745,12 @@ int main(int argc, char **argv) {
 #else
 int e2_rune_main(int argc, char **argv) {
 #endif
+    // E2_ROOT has to move the guest root itself, not just the /proc seed below. It only did the
+    // latter, so pointing it at a different rootfs still resolved guest paths against the
+    // built-in one - the wrong root's scripts ran and the output looked plausible.
+    if (getenv("E2_ROOT") != NULL) {
+        e2_set_root(getenv("E2_ROOT"));
+    }
     const char *path = argc > 1 ? argv[1] : "/tmp/bbs/bin/busybox.static";
     g_self_path = path;
     fd_init();

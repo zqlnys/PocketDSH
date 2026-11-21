@@ -14,6 +14,7 @@ struct SettingsView: View {
     @State private var keyError: String?
     @State private var isTestingKey = false
     @State private var showTierCSmoke = false
+    @State private var showE2Smoke = false
     @State private var showExecProbe = false
 
     var body: some View {
@@ -53,6 +54,10 @@ struct SettingsView: View {
                     .padding(.top, 10)
                     .padding(.bottom, 36)
                 }
+            }
+            .sheet(isPresented: $showE2Smoke) {
+                E2SmokeView()
+                    .environmentObject(appState)
             }
             .sheet(isPresented: $showTierCSmoke) {
                 TierCSmokeView()
@@ -353,6 +358,23 @@ struct SettingsView: View {
                 .font(.caption)
             LabeledContent("Tier D session", value: runtime.e2Available ? "running" : "not running")
                 .font(.caption)
+
+            Button {
+                showE2Smoke = true
+            } label: {
+                Label("Run the Tier D smoke test", systemImage: "terminal")
+            }
+            .buttonStyle(.bordered)
+            .tint(PocketTheme.accent)
+
+            // Selecting D does not make D active: the label flips only after a command has
+            // actually run, so the screen never claims a backend it has not seen work. That
+            // rule is right, and it is confusing without being stated.
+            if runtime.preferredTier == .tierD && !runtime.e2Available {
+                Text("D is selected but has not run yet, so the active backend still reads Tier A. Run the smoke test above, or have the agent call run_linux.")
+                    .font(.caption)
+                    .foregroundStyle(PocketTheme.secondaryText)
+            }
 
             LabeledContent("JIT probe", value: runtime.jit.entitlementSummary)
                 .font(.caption)
