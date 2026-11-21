@@ -40,6 +40,14 @@ static void e2_configure_environment(void) {
     if (getenv("PYTHONHOME") == NULL) {
         setenv("PYTHONHOME", "/usr", 0);
     }
+    // A UTF-8 locale, deliberately. Under LANG=C CPython converts argv through musl's
+    // single-byte locale path, and that path returns the first four characters of any argument
+    // twelve or more characters long - which silently truncates a script's path. Under a UTF-8
+    // locale it takes the other branch and is correct. The underlying bug in that branch is
+    // real and still open; this is the configuration the interpreter needs to work.
+    if (getenv("LANG") == NULL) {
+        setenv("LANG", "C.UTF-8", 0);
+    }
 }
 
 /// Runs the harness with `argv` and captures stdout into `out_path`.

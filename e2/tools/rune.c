@@ -2827,7 +2827,12 @@ int e2_rune_main(int argc, char **argv) {
     // E2_NO_LANG exists to test whether a failing applet is taking a locale
     // path: several text tools consult LANG before compiling a pattern.
     if (getenv("E2_NO_LANG") == NULL) {
-        snprintf(envs[nenv++], sizeof(envs[0]), "LANG=C");
+        // E2_LANG wins, then the host's own LANG, then C. The order matters: a host that
+        // needs a UTF-8 locale must be able to say so, and CPython takes a different argv
+        // conversion path per locale - one of which truncates long arguments.
+        const char *lang = getenv("E2_LANG");
+        if (lang == NULL) lang = getenv("LANG");
+        snprintf(envs[nenv++], sizeof(envs[0]), "LANG=%s", lang ? lang : "C");
     }
     // Pass Python's own knobs through, so the guest can be pointed at a
     // rootfs without rebuilding the harness.

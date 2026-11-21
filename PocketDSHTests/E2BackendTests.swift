@@ -89,11 +89,12 @@ final class E2BackendTests: XCTestCase {
         try XCTSkipUnless(FileManager.default.fileExists(atPath: python),
                           "this build's guest root has no CPython")
 
-        // Deliberately short. CPython's early configuration path corrupts strings longer than
-        // about eight characters by the time they reach Python - `/tmp/e2-pytest.py` arrives as
-        // `/tmp/e2-//test.py`, which is why this is `/t.py`. The bug is open and tracked; a
-        // short path lets the interpreter itself be verified meanwhile.
-        let script = root.appendingPathComponent("tmp/t.py")
+        // A long path on purpose. It used to be short because CPython truncated any argument
+        // of twelve characters or more: under the C locale it converts argv through musl's
+        // single-byte path, which returns four characters and stops. The bridge sets a UTF-8
+        // locale, which takes the other branch, so this now covers a realistic path instead of
+        // tiptoeing around the bug.
+        let script = root.appendingPathComponent("tmp/e2-python-smoke.py")
         try? FileManager.default.createDirectory(at: script.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: script) }
@@ -105,7 +106,7 @@ final class E2BackendTests: XCTestCase {
         try #"print("python", __import__("sys").version.split()[0])"#
             .write(to: script, atomically: true, encoding: .utf8)
 
-        let (status, output) = try runGuest(python, ["/tmp/t.py"])
+        let (status, output) = try runGuest(python, ["/tmp/e2-python-smoke.py"])
         XCTAssertEqual(status, 0, "python exited \(status); output was <<<\(output)>>>")
         XCTAssertTrue(output.contains("python 3.12"), output)
     }
