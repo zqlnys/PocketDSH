@@ -518,7 +518,14 @@ static long fs_readdir(void *c, int h, void *buf, size_t buf_size) {
     uint8_t *out = (uint8_t *)buf;
     memset(out, 0, reclen);
     uint64_t ino = (uint64_t)e->d_ino;
+    // Linux calls the directory offset d_off; Apple's SDK names it d_seekoff, and a couple of
+    // its older headers omit the field entirely. Only the guest's getdents buffer cares, and
+    // nothing has ever depended on a real resume offset there.
+#if defined(__APPLE__)
+    int64_t off = 0;
+#else
     int64_t off = (int64_t)e->d_off;
+#endif
     uint16_t rl = (uint16_t)reclen;
     memcpy(out, &ino, 8);
     memcpy(out + 8, &off, 8);
