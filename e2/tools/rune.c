@@ -83,6 +83,8 @@ typedef struct {
 // The window is now wide enough that the case does not arise in practice.
 // Tracked in docs/E2-BACKEND.md.
 static int g_sw_decref = -1;
+// Last operands seen at the call-unpacking instruction, for E2_CHECK_DECREF.
+static uint64_t g_unpack_x19, g_unpack_x20, g_unpack_x24, g_unpack_pc;
 static int g_sw_dbg9 = -1;
 static int g_sw_dbg6 = -1, g_sw_dbg7 = -1, g_sw_dbg8 = -1;
 static int g_sw_dbg0 = -1, g_sw_dbg1 = -1, g_sw_dbg2 = -1, g_sw_dbg3 = -1, g_sw_dbg4 = -1, g_sw_dbg5 = -1;
@@ -2075,10 +2077,18 @@ static int run_proc(int idx) {
         // A frame address there means a pointer to the interpreter's own frame was pushed
         // onto the value stack, and the decrement then corrupts that frame's first field.
         // Reported once, at the first occurrence, because that is the one that matters.
+        if (env_once("E2_CHECK_DECREF", &g_sw_decref) && p->m.cpu.pc == 0x400017af64) {
+            g_unpack_x19 = p->m.cpu.x[19];
+            g_unpack_x20 = p->m.cpu.x[20];
+            g_unpack_x24 = p->m.cpu.x[24];
+            g_unpack_pc = p->m.instructions;
+        }
         if (env_once("E2_CHECK_DECREF", &g_sw_decref) && p->m.cpu.pc == 0x400017b004) {
             static int reported;
             uint64_t slot = 0, head = 0;
             const uint64_t x27 = p->m.cpu.x[27];
+            static unsigned long decref_seen;
+            decref_seen++;
             if (!reported &&
                 e2_memory_read(&p->m.mem, x27, &slot, 8) == 0 &&
                 e2_memory_read(&p->m.mem, slot, &head, 8) == 0 &&
@@ -2087,13 +2097,45 @@ static int run_proc(int idx) {
                 // that is a PyObject* being treated as a count.
                 head >= 0x4000000000ULL && head < 0x4000c00000ULL) {
                 reported = 1;
+                // x27 is loaded by `ldr x27, [x21, #0x38]` in this loop, so print what that
+                // address holds: if it matches x27 then the slot index, not the load, is wrong.
+                uint64_t via_x21 = 0;
+                const uint64_t x21 = p->m.cpu.x[21];
+                e2_memory_read(&p->m.mem, x21 + 0x38, &via_x21, 8);
                 fprintf(stderr,
-                        "[decref] first implausible object: x27=0x%llx slot=0x%llx head=0x%llx "
-                        "x24=0x%llx x19=0x%llx x20=0x%llx sp=0x%llx\n",
+                        "[decref] visit %lu: x27=0x%llx slot=0x%llx head=0x%llx "
+                        "x24=0x%llx x19=0x%llx x20=0x%llx x21=0x%llx [x21+0x38]=0x%llx "
+                        "sp=0x%llx\n",
+                        decref_seen,
                         (unsigned long long)x27, (unsigned long long)slot,
                         (unsigned long long)head, (unsigned long long)p->m.cpu.x[24],
                         (unsigned long long)p->m.cpu.x[19], (unsigned long long)p->m.cpu.x[20],
+                        (unsigned long long)x21, (unsigned long long)via_x21,
                         (unsigned long long)p->m.cpu.sp);
+                // If that argument really is a frame, its own fields will look like a frame:
+                // f_func at +0, f_code at +0x20 pointing at an object whose type name is
+                // code-like. That distinguishes "a frame was pushed by mistake" from "the
+                // slot is an ordinary object that merely looks odd".
+                {
+                    uint64_t f_code = 0, code_type = 0, name_ptr = 0;
+                    e2_memory_read(&p->m.mem, slot + 0x20, &f_code, 8);
+                    e2_memory_read(&p->m.mem, f_code + 0x8, &code_type, 8);
+                    e2_memory_read(&p->m.mem, code_type + 0x18, &name_ptr, 8);
+                    char name[48] = {0};
+                    e2_memory_read(&p->m.mem, name_ptr, name, sizeof(name) - 1);
+                    int printable = 1;
+                    for (int q = 0; q < 40 && name[q]; q++)
+                        if (name[q] < 0x20 || name[q] > 0x7e) { printable = 0; break; }
+                    fprintf(stderr, "[decref] slot as frame: f_code=0x%llx type=0x%llx name=%s%c",
+                            (unsigned long long)f_code, (unsigned long long)code_type,
+                            (printable && name[0]) ? name : "(none)", 10);
+                }
+                fprintf(stderr,
+                        "[decref] at 0x17af64 (insn %llu): x19=0x%llx x20=0x%llx x24=0x%llx "
+                        "-> x27 would be 0x%llx\n",
+                        (unsigned long long)g_unpack_pc, (unsigned long long)g_unpack_x19,
+                        (unsigned long long)g_unpack_x20, (unsigned long long)g_unpack_x24,
+                        (unsigned long long)(g_unpack_x24 - ((int64_t)g_unpack_x19 << 3)));
             }
         }
         {
