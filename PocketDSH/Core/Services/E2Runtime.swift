@@ -1,7 +1,9 @@
 import Foundation
+// ToolExecutionResult lives in PocketDSHCore, and both branches of the build below return it,
+// so the import has to sit outside the conditional.
+import PocketDSHCore
 
 #if TIER_C_AVAILABLE
-import PocketDSHCore
 
 /// Tier D: commands run on E2, the aarch64 interpreter written for this project.
 ///
