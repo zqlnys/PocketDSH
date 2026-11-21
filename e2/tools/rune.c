@@ -147,6 +147,10 @@ static long proc_quantum(void) {
     return q;
 }
 static long g_proc_budget = -1;
+/// Whether the instruction-history ring is maintained. It exists for post-mortem dumps and
+/// used to be filled on every instruction - seven stores per step, which profiling put at
+/// about a fifth of the entire run.
+static int g_hist_on = 0;
 // Counters rather than per-call logging: a fprintf inside the wait path changes
 // the timing enough to hide the very bug being measured.
 static int g_wait_calls, g_wait_ok, g_wait_echild;
@@ -1584,6 +1588,15 @@ static int run_proc(int idx) {
     // keeps reporting the inner one's pid and pc, and any diagnosis built on them is
     // describing the wrong process.
     const int saved_pid = g_dbg_pid;
+    // The history ring is read only by E2_TRACE_HIST, and maintaining it costs seven stores
+    // per instruction. Resolved once, before the run.
+    {
+        static int resolved = 0;
+        if (!resolved) {
+            resolved = 1;
+            g_hist_on = getenv("E2_TRACE_HIST") != NULL;
+        }
+    }
     const int saved_self_pid = g_proc_self_pid;
     long spent = 0;
     e2_syscall_env env = {.exit = p_exit, .files = &FS, .ctx = p,
@@ -1647,6 +1660,7 @@ static int run_proc(int idx) {
         g_proc_self_pid = p->pid;
         g_cur_ppid = p->ppid;
         g_dbg_pc2 = p->m.cpu.pc;
+        if (g_hist_on) {
         hist[hist_at].pc = p->m.cpu.pc;
         // Read the word at pc rather than ctx.instruction: ctx carries the
         // instruction of the previous step, which put every history entry one
@@ -1664,6 +1678,7 @@ static int run_proc(int idx) {
         hist[hist_at].x23 = p->m.cpu.x[23];
         hist_at = (hist_at + 1) % 256;
         if (hist_n < 256) hist_n++;
+        }
         if (env_once("E2_TRACE_TRACE", &g_sw_dbg0) &&
             p->m.cpu.pc >= 0x10161070 && p->m.cpu.pc < 0x101610f0) {
             static long nt = 0;
