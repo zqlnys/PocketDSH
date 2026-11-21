@@ -82,6 +82,7 @@ typedef struct {
 // process it waits for exits, so a surviving sibling can still be left behind.
 // The window is now wide enough that the case does not arise in practice.
 // Tracked in docs/E2-BACKEND.md.
+static int g_sw_decref = -1;
 static int g_sw_dbg9 = -1;
 static int g_sw_dbg6 = -1, g_sw_dbg7 = -1, g_sw_dbg8 = -1;
 static int g_sw_dbg0 = -1, g_sw_dbg1 = -1, g_sw_dbg2 = -1, g_sw_dbg3 = -1, g_sw_dbg4 = -1, g_sw_dbg5 = -1;
@@ -2068,6 +2069,31 @@ static int run_proc(int idx) {
                     fprintf(stderr, "[tstate]   +0x%02llx = 0x%llx%s\n",
                             (unsigned long long)off, (unsigned long long)v, note);
                 }
+            }
+        }
+        // At the CALL-site cleanup, [x27] must be an object whose first word is a refcount.
+        // A frame address there means a pointer to the interpreter's own frame was pushed
+        // onto the value stack, and the decrement then corrupts that frame's first field.
+        // Reported once, at the first occurrence, because that is the one that matters.
+        if (env_once("E2_CHECK_DECREF", &g_sw_decref) && p->m.cpu.pc == 0x400017b004) {
+            static int reported;
+            uint64_t slot = 0, head = 0;
+            const uint64_t x27 = p->m.cpu.x[27];
+            if (!reported &&
+                e2_memory_read(&p->m.mem, x27, &slot, 8) == 0 &&
+                e2_memory_read(&p->m.mem, slot, &head, 8) == 0 &&
+                // A refcount of 0xffffffff is CPython's immortal marker and the decrement
+                // skips it. What is wrong is a first word that is itself a guest pointer:
+                // that is a PyObject* being treated as a count.
+                head >= 0x4000000000ULL && head < 0x4000c00000ULL) {
+                reported = 1;
+                fprintf(stderr,
+                        "[decref] first implausible object: x27=0x%llx slot=0x%llx head=0x%llx "
+                        "x24=0x%llx x19=0x%llx x20=0x%llx sp=0x%llx\n",
+                        (unsigned long long)x27, (unsigned long long)slot,
+                        (unsigned long long)head, (unsigned long long)p->m.cpu.x[24],
+                        (unsigned long long)p->m.cpu.x[19], (unsigned long long)p->m.cpu.x[20],
+                        (unsigned long long)p->m.cpu.sp);
             }
         }
         {
