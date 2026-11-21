@@ -49,7 +49,9 @@ final class WorkspaceSession: ObservableObject {
             luaEngine: luaEngine,
             pluginRuntime: pluginRuntime,
             systemActions: systemActions,
-            linuxRuntime: linuxRuntime
+            linuxRuntime: linuxRuntime,
+            e2Runtime: e2Runtime,
+            runtimeStore: runtime
         )
         self.agent = AgentRunner(
             workspace: fileSystem,
@@ -87,6 +89,7 @@ final class AppState: ObservableObject {
     let runtime: RuntimeCapabilityStore
     let systemActions: SystemActionStore
     let linuxRuntime: LinuxRuntime
+    let e2Runtime: E2Runtime
     let luaEngine: LuaEngine
 
     @Published var activeSession: WorkspaceSession?
@@ -95,6 +98,7 @@ final class AppState: ObservableObject {
     @Published var isTierCSmoke = false
     @Published var isExecProbe = false
     private var sessionSubscription: AnyCancellable?
+    private var e2Subscription: AnyCancellable?
     @Published private(set) var isPluginDemo = false
 
     init() {
@@ -105,11 +109,18 @@ final class AppState: ObservableObject {
         runtime = RuntimeCapabilityStore()
         systemActions = SystemActionStore()
         linuxRuntime = LinuxRuntime()
+        e2Runtime = E2Runtime()
         luaEngine = LuaEngine()
         sessionSubscription = linuxRuntime.$state
             .map { $0 == .active }
             .removeDuplicates()
             .sink { [runtime] isActive in runtime.linuxAvailable = isActive }
+        // Two backends, two flags: a preference alone must never make the UI claim a backend
+        // is active, so each one reports only after it has really run something.
+        e2Subscription = e2Runtime.$state
+            .map { $0 == .active }
+            .removeDuplicates()
+            .sink { [runtime] isActive in runtime.e2Available = isActive }
         let arguments = ProcessInfo.processInfo.arguments
         showOnboarding = !keychain.hasKey
         #if DEBUG
@@ -172,6 +183,7 @@ final class AppState: ObservableObject {
                 pluginStore: pluginStore,
                 systemActions: systemActions,
                 linuxRuntime: linuxRuntime,
+                e2Runtime: e2Runtime,
                 luaEngine: luaEngine
             )
             projectStore.touch(project)

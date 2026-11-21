@@ -337,13 +337,22 @@ struct SettingsView: View {
             }
             .tint(PocketTheme.accent)
 
+            // A segmented control rather than a menu: switching the Linux backend is the kind
+            // of thing worth doing in one tap, and the four choices fit. The full name of the
+            // selected backend is repeated underneath, because a single letter cannot carry
+            // the difference between iSH and E2.
             Picker("Runtime preference", selection: $runtime.preferredTier) {
                 ForEach(RuntimeTier.allCases) { tier in
-                    Text(tier.title).tag(tier)
+                    Text(tier.shortTitle).tag(tier)
                 }
             }
-            .pickerStyle(.menu)
+            .pickerStyle(.segmented)
             .tint(PocketTheme.accent)
+
+            LabeledContent("Selected backend", value: runtime.preferredTier.title)
+                .font(.caption)
+            LabeledContent("Tier D session", value: runtime.e2Available ? "running" : "not running")
+                .font(.caption)
 
             LabeledContent("JIT probe", value: runtime.jit.entitlementSummary)
                 .font(.caption)

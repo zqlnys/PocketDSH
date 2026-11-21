@@ -88,7 +88,7 @@ struct WorkspaceView: View {
                 Circle()
                     .fill(runtime.jit.isAvailable ? PocketTheme.accent : PocketTheme.amber)
                     .frame(width: 6, height: 6)
-                Text(runtime.activeTier == .tierA ? "Tier A" : "Tier C")
+                Text(runtime.activeTier.badgeLabel)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(PocketTheme.secondaryText)
             }

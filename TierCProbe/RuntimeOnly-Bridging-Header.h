@@ -6,3 +6,6 @@
 // exclusion is structural rather than a matter of not calling into the backend.
 
 #import "RuntimeExecProbe.h"
+
+// Tier D: the E2 harness bridge.
+#include "E2Bridge.h"

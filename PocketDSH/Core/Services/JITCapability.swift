@@ -73,14 +73,38 @@ enum RuntimeTier: String, CaseIterable, Identifiable {
     case automatic
     case tierA
     case tierC
+    /// E2: the aarch64 interpreter written for this project. No JIT, no iSH, no GPL.
+    case tierD
 
     var id: String { rawValue }
+
+    /// Label for the workspace badge. Automatic is shown by what it resolved to, never by the
+    /// word itself, so this only ever names a concrete tier.
+    var badgeLabel: String {
+        switch self {
+        case .automatic: ""
+        case .tierA: "Tier A"
+        case .tierC: "Tier C"
+        case .tierD: "Tier D"
+        }
+    }
+
+    /// Compact label for the segmented backend switch.
+    var shortTitle: String {
+        switch self {
+        case .automatic: "Auto"
+        case .tierA: "A"
+        case .tierC: "C"
+        case .tierD: "D"
+        }
+    }
 
     var title: String {
         switch self {
         case .automatic: NSLocalizedString("Automatic", comment: "")
         case .tierA: NSLocalizedString("Tier A · Native Lua", comment: "")
-        case .tierC: NSLocalizedString("Tier C · Linux", comment: "")
+        case .tierC: NSLocalizedString("Tier C · Linux (iSH)", comment: "")
+        case .tierD: NSLocalizedString("Tier D · E2 (aarch64)", comment: "")
         }
     }
 }
@@ -112,14 +136,24 @@ final class RuntimeCapabilityStore: ObservableObject {
     /// Tier C is a userland Linux emulator and needs no JIT at all.
     @Published var linuxAvailable = false
 
+    /// True once an E2 command has actually run in this process. Like linuxAvailable this is
+    /// never inferred from a preference or a capability probe.
+    @Published var e2Available = false
+
     /// What is really running right now. A preference alone never counts: the
     /// report flips to Tier C only after a session has started.
     var activeTier: RuntimeTier {
-        preferredTier == .tierC && linuxAvailable ? .tierC : .tierA
+        if preferredTier == .tierD && e2Available { return .tierD }
+        if preferredTier == .tierC && linuxAvailable { return .tierC }
+        return .tierA
     }
 
     var wantsTierC: Bool {
         preferredTier == .tierC
+    }
+
+    var wantsTierD: Bool {
+        preferredTier == .tierD
     }
 
     /// The user asked for Tier C but no session is running, so Tier A is serving

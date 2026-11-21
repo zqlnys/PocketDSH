@@ -65,6 +65,7 @@ targets:
         HEADER_SEARCH_PATHS:
           - "$(SRCROOT)/TierCProbe"
           - "$(SRCROOT)/e2/include"
+          - "$(SRCROOT)/PocketDSH/Core/Services"
         # rune.c exposes e2_rune_main instead of main under this define.
         GCC_PREPROCESSOR_DEFINITIONS:
           - "$(inherited)"

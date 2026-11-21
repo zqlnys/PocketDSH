@@ -19,6 +19,12 @@ final class ToolExecutor {
     var onDeliverablesChanged: (([Deliverable]) -> Void)?
 
     private let linuxRuntime: LinuxRuntime?
+    private let e2Runtime: E2Runtime?
+    /// The capability store, consulted at call time so flipping the backend in Settings takes
+    /// effect on the next command rather than the next session.
+    private let runtimeStore: RuntimeCapabilityStore?
+
+    private var preferredTier: RuntimeTier { runtimeStore?.preferredTier ?? .tierC }
     private let eventStore = EKEventStore()
 
     init(
@@ -26,13 +32,17 @@ final class ToolExecutor {
         luaEngine: LuaEngine,
         pluginRuntime: PluginRuntimeManager? = nil,
         systemActions: SystemActionStore,
-        linuxRuntime: LinuxRuntime? = nil
+        linuxRuntime: LinuxRuntime? = nil,
+        e2Runtime: E2Runtime? = nil,
+        runtimeStore: RuntimeCapabilityStore? = nil
     ) {
         self.workspace = workspace
         self.luaEngine = luaEngine
         self.pluginRuntime = pluginRuntime
         self.systemActions = systemActions
         self.linuxRuntime = linuxRuntime
+        self.e2Runtime = e2Runtime
+        self.runtimeStore = runtimeStore
     }
 
     func execute(
@@ -233,14 +243,26 @@ final class ToolExecutor {
         guard let command = arguments["command"]?.stringValue, !command.isEmpty else {
             return .failure("run_linux requires command.")
         }
-        guard let linuxRuntime else {
-            return .failure("Tier C is not linked in this build.")
+        // Two Linux backends. Which one runs is the user's choice, and it is reported in the
+        // output so a transcript never leaves it ambiguous which interpreter produced it.
+        switch preferredTier {
+        case .tierD:
+            guard let e2Runtime else {
+                return .failure("Tier D is not linked in this build.")
+            }
+            let result = await e2Runtime.run(command: command, workspace: workspace.root)
+            guard !result.isError else { return result }
+            return .success("Linux output (Tier D · E2):\n\(result.content)")
+        default:
+            guard let linuxRuntime else {
+                return .failure("Tier C is not linked in this build.")
+            }
+            // The active project root is mounted at /workspace via iSH realfs, so a
+            // guest command sees the same files the Swift tools operate on.
+            let result = await linuxRuntime.run(command: command, workspace: workspace.root)
+            guard !result.isError else { return result }
+            return .success("Linux output (Tier C):\n\(result.content)")
         }
-        // The active project root is mounted at /workspace via iSH realfs, so a
-        // guest command sees the same files the Swift tools operate on.
-        let result = await linuxRuntime.run(command: command, workspace: workspace.root)
-        guard !result.isError else { return result }
-        return .success("Linux output (Tier C):\n\(result.content)")
     }
     /// List or load a skill.
     ///
