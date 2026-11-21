@@ -97,18 +97,17 @@ final class E2BackendTests: XCTestCase {
         try? FileManager.default.createDirectory(at: script.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: script) }
-        try """
-        print("python", __import__("sys").version.split()[0])
-        print(2 ** 10)
-        import json
-        print(json.dumps({"k": [1, 2]}))
-        """.write(to: script, atomically: true, encoding: .utf8)
+        // Deliberately one line. Starting CPython imports roughly seventy million guest
+        // instructions' worth of standard library before the first statement runs, which takes
+        // about a minute on a simulator; the claim under test is that the interpreter runs a
+        // Python program on a device at all, and this is the shortest program that shows it.
+        // Arithmetic and json are covered by the command-line suites, where they cost seconds.
+        try #"print("python", __import__("sys").version.split()[0])"#
+            .write(to: script, atomically: true, encoding: .utf8)
 
         let (status, output) = try runGuest(python, ["/tmp/t.py"])
         XCTAssertEqual(status, 0, "python exited \(status); output was <<<\(output)>>>")
         XCTAssertTrue(output.contains("python 3.12"), output)
-        XCTAssertTrue(output.contains("1024"), output)
-        XCTAssertTrue(output.contains("{\"k\": [1, 2]}"), output)
     }
 
     /// A file the guest writes has to show up on disk, because the workspace mount depends on
