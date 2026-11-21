@@ -55,10 +55,10 @@ final class PocketDSHTests: XCTestCase {
         let rejected = await executor.execute(name: ToolNames.todoWrite, argumentsJSON: twoActive)
         XCTAssertTrue(rejected.isError)
 
-        let empty = """{"todos":[{"content":"  ","status":"pending"}]}"""
+        let empty = "{\"todos\":[{\"content\":\"  \",\"status\":\"pending\"}]}"
         XCTAssertTrue(await executor.execute(name: ToolNames.todoWrite, argumentsJSON: empty).isError)
 
-        let good = """{"todos":[{"content":"a","status":"completed"},{"content":"b","status":"in_progress"}]}"""
+        let good = "{\"todos\":[{\"content\":\"a\",\"status\":\"completed\"},{\"content\":\"b\",\"status\":\"in_progress\"}]}"
         let accepted = await executor.execute(name: ToolNames.todoWrite, argumentsJSON: good)
         XCTAssertFalse(accepted.isError)
         XCTAssertEqual(executor.todos.count, 2)
