@@ -1378,3 +1378,55 @@ PYTHONHOME=/usr ./tools/rune /tmp/alpine-root/usr/bin/python3.12 脚本.py
 
 **`PYTHONHOME` 绕开 getpath，脚本文件绕开 `-c` 的字符串问题。**
 
+## 完整功能验证（含标准库导入）
+
+```
+$ E2_CAP=400000000 PYTHONHOME=/usr E2_HEAP_MB=256 ./tools/rune .../python3.12 t3.py
+argv /t3.py
+cwd /
+json {"k": [1, 2, 3]}                     import json 成功
+sorted [1, 2, 3]
+join a-b-c
+upper ABC
+range [0, 1, 2]
+bool True True
+slice bcd
+nested [[0, 0], [0, 1], [1, 0], [1, 1]]
+loop 45
+lambda 42
+```
+
+**`import json` 会递归导入 `re` → `enum` → `functools`，全部走通。**
+
+## 运行命令
+
+```
+E2_CAP=400000000 PYTHONHOME=/usr E2_HEAP_MB=256 \
+  ./tools/rune /tmp/alpine-root/usr/bin/python3.12 脚本.py
+```
+
+**三个环境变量的作用：**
+
+| 变量 | 为什么需要 |
+| --- | --- |
+| `PYTHONHOME=/usr` | 绕开 getpath 的路径推导 |
+| `E2_HEAP_MB=256` | CPython 的分配器需要更大的堆（默认 16 MB 是给 busybox 的）|
+| `E2_CAP=400000000` | 导入标准库要 4000 万条指令以上 |
+
+## 堆大小为什么是可配置的
+
+**把默认堆从 16 MB 提到 64 MB 后，一条 busybox 用例从 3 秒变成 40 秒
+（`sys 26s`）——每次 fork 都要带上这块堆。**
+
+**所以默认保持 16 MB，需要大堆的场景用 `E2_HEAP_MB` 显式指定。**
+
+**栈同理：`e2_machine_init` 的第三个参数是栈大小，我曾误当成总内存调到 256 MB，
+每个进程都分配一次，同样拖慢。已恢复 16 MB。**
+
+## 仍未解决：`-c` 的源码字符串
+
+**`-c 'print(12)'` 会变成 `printrr2)`——长度超过 8 时，第 5、6 个字符
+总被替换成源串第 2 个字符。**
+
+**通过脚本文件运行完全正常，所以不影响主要用途，但根因还没找到。**
+

@@ -857,7 +857,19 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             // how musl's allocator fails after its first allocation.
             if (m->brk_base == 0) {
                 const uint64_t base = 0x20000000ULL;
-                const size_t size = 16u << 20;
+                // Default stays small: every fork carries this much, and a large heap turned
+                // a 3-second shell case into 40 seconds of system time. CPython needs more,
+                // so E2_HEAP_MB raises it for the runs that do.
+                size_t size = 16u << 20;
+                {
+                    static long heap_mb = -1;
+                    if (heap_mb < 0) {
+                        const char *v = getenv("E2_HEAP_MB");
+                        heap_mb = v ? strtol(v, NULL, 0) : 0;
+                        if (heap_mb <= 0) heap_mb = 0;
+                    }
+                    if (heap_mb > 0) size = (size_t)heap_mb << 20;
+                }
                 if (e2_memory_map_at(&m->mem, base, size,
                                     E2_PROT_READ | E2_PROT_WRITE) != 0) {
                     E2_RETURN(-12);
