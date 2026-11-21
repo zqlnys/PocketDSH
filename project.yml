@@ -41,6 +41,12 @@ targets:
           - Resources/Info.plist
       - path: TierCProbe/RuntimeExecProbe.c
       - path: TierCProbe/RuntimeExecProbe.h
+      # Tier D: the E2 aarch64 interpreter. It is compiled straight into the app rather than
+      # built as a separate static library, so device and simulator each get their own slice
+      # from the same sources. E2 needs none of the things iOS forbids: no fork, no exec, no
+      # JIT - guest system calls arrive through a table of callbacks the app supplies.
+      - path: e2/src
+      - path: e2/include
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.pocketdsh
@@ -53,6 +59,7 @@ targets:
         SWIFT_OBJC_BRIDGING_HEADER: TierCProbe/RuntimeOnly-Bridging-Header.h
         HEADER_SEARCH_PATHS:
           - "$(SRCROOT)/TierCProbe"
+          - "$(SRCROOT)/e2/include"
         OTHER_LDFLAGS:
           - "$(inherited)"
           - -framework
