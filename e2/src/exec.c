@@ -801,18 +801,19 @@ e2_status e2_step(e2_machine *machine) {
             b[l] = e2_v_get(cpu, rm_v, esize, l);
         }
         switch (opcode) {
-        case 1:  // UZP1: the even-numbered elements of each source, interleaved.
-            // Stepping by 2 matters. Writing (l&1) ? b[l/2] : a[l/2] instead produces
-            // a0 b0 a1 b1, which is neither this instruction nor ZIP1 - it only agreed
-            // with the reference often enough that grep and sed still worked.
+        case 1:  // UZP1: the even-numbered elements of A, then of B. Concatenated, not
+            // interleaved - interleaving here is what TRN1 does, and getting the two
+            // confused scrambles byte buffers while leaving most tools working.
             for (unsigned i = 0; i < half; i++) {
-                out[2 * i] = a[2 * i];
-                out[2 * i + 1] = b[2 * i];
+                out[i] = a[2 * i];
+                out[half + i] = b[2 * i];
             }
             break;
-        case 5:  // UZP2
-            for (unsigned l = 0; l < lanes; l++)
-                out[l] = (l & 1u) ? b[l / 2 + half] : a[l / 2 + half];
+        case 5:  // UZP2: the odd-numbered elements of A, then of B.
+            for (unsigned i = 0; i < half; i++) {
+                out[i] = a[2 * i + 1];
+                out[half + i] = b[2 * i + 1];
+            }
             break;
         case 2:  // TRN1
             for (unsigned i = 0; i < half; i++) { out[2 * i] = a[2 * i]; out[2 * i + 1] = b[2 * i]; }
@@ -820,11 +821,16 @@ e2_status e2_step(e2_machine *machine) {
         case 6:  // TRN2
             for (unsigned i = 0; i < half; i++) { out[2 * i] = a[2 * i + 1]; out[2 * i + 1] = b[2 * i + 1]; }
             break;
-        case 3:  // ZIP1: the low half of each source, concatenated - not interleaved.
-            for (unsigned i = 0; i < half; i++) { out[i] = a[i]; out[i + half] = b[i]; }
+        case 3:  // ZIP1: interleave the LOW half of each source. ZIP interleaves and UZP
+            // concatenates; the two had been swapped here, which is invisible on a buffer
+            // whose halves happen to agree and scrambles every other one.
+            for (unsigned i = 0; i < half; i++) { out[2 * i] = a[i]; out[2 * i + 1] = b[i]; }
             break;
-        case 7:  // ZIP2: the high half of each source, concatenated.
-            for (unsigned i = 0; i < half; i++) { out[i] = a[i + half]; out[i + half] = b[i + half]; }
+        case 7:  // ZIP2: interleave the HIGH half of each source.
+            for (unsigned i = 0; i < half; i++) {
+                out[2 * i] = a[i + half];
+                out[2 * i + 1] = b[i + half];
+            }
             break;
         default:
             machine->ctx.reason = "invalid permute opcode";
@@ -1749,6 +1755,44 @@ not_a_shift:;
                     return E2_FAULT;
                 }
             }
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
+    // --- SIMD: REV64 / REV32 / REV16 (reverse bytes inside each element) ---
+    // `rev64 v1.16b, v0.16b` reverses the bytes of each 64-bit half. Absent, it stopped the
+    // interpreter outright; present-but-wrong it would scramble byte buffers silently, which
+    // is the shape of the corrupted path strings CPython was printing.
+    if ((insn & 0xBFFFF800u) == 0x0E200800u || (insn & 0xBFFFF800u) == 0x0E201800u) {
+        const bool q = BIT(insn, 30) != 0;
+        const bool is_rev32 = BIT(insn, 29) != 0;
+        const bool is_rev16 = (insn & 0x00001000u) != 0;
+        const unsigned size = BITS(insn, 23, 22);
+        const unsigned rn = BITS(insn, 9, 5);
+        const unsigned rd = BITS(insn, 4, 0);
+        // REV64 reverses inside each 64-bit container, REV32 inside 32-bit, REV16 inside
+        // 16-bit; the element size selects how wide one group of bytes is.
+        unsigned group_bits;
+        if (is_rev16) group_bits = 16;
+        else if (is_rev32) group_bits = 32;
+        else group_bits = 64;
+        (void)size;
+        const unsigned group_bytes = group_bits / 8;
+        const unsigned halves = q ? 2u : 1u;
+        for (unsigned h = 0; h < halves; h++) {
+            const uint64_t src = cpu->v[rn][h];
+            uint64_t out = 0;
+            for (unsigned g = 0; g < 8 / group_bytes; g++) {
+                const uint64_t chunk = (src >> (g * group_bits)) & (group_bits == 64 ? ~0ULL : ((1ULL << group_bits) - 1));
+                uint64_t rev = 0;
+                for (unsigned b = 0; b < group_bytes; b++) {
+                    rev = (rev << 8) | ((chunk >> (b * 8)) & 0xFF);
+                }
+                out |= rev << (g * group_bits);
+            }
+            cpu->v[rd][h] = out;
         }
         cpu->pc = next_pc;
         machine->instructions++;

@@ -895,12 +895,16 @@ static void test_simd_permute(void) {
     // All three are decoded by the same rule, so checking each against its own result
     // is what shows the opcode is actually consulted.
     struct { uint32_t insn; unsigned l0, l1, l2, l3; const char *name; } cases[] = {
-        {0x4E821820u, 1, 5, 3, 7, "UZP1"},   // a0 b0 a2 b2 - stride 2
+        // UZP concatenates the even elements of A then of B; interleaving them is TRN1,
+        // and the expectation here had encoded the interleaved form, so the bug was
+        // pinned in place by its own test.
+        {0x4E821820u, 1, 3, 5, 7, "UZP1"},
         {0x4E822820u, 1, 5, 3, 7, "TRN1"},   // a0 b0 a2 b2 for 4S
-        {0x4E823820u, 1, 2, 5, 6, "ZIP1"},   // a0 a1 b0 b1 - the low halves concatenated
-        {0x4E825820u, 3, 7, 4, 8, "UZP2"},   // a2 b2 a3 b3
+        // ZIP1 interleaves the low halves; it had been tested as if it concatenated them.
+        {0x4E823820u, 1, 5, 2, 6, "ZIP1"},
+        {0x4E825820u, 2, 4, 6, 8, "UZP2"},
         {0x4E826820u, 2, 6, 4, 8, "TRN2"},   // a1 b1 a3 b3
-        {0x4E827820u, 3, 4, 7, 8, "ZIP2"},   // a2 a3 b2 b3
+        {0x4E827820u, 3, 7, 4, 8, "ZIP2"},   // a2 a3 b2 b3
     };
     for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
         e2_machine m;
