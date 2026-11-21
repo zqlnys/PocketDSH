@@ -414,6 +414,41 @@ static void test_xtn_narrows_lanes(void) {
     e2_machine_destroy(&m);
 }
 
+static void test_jump_table_matches_a_real_run(void) {
+    printf("scaled jump-table load plus BR reaches the same target as the hardware\n");
+    // CPython dispatches bytecode with `ldr x1, [x0, x1, lsl #3]` followed by `br x1`. A
+    // wrong scale or a mis-set PC there runs the wrong opcode handler, which would look
+    // like corrupt data rather than like a branch bug.
+    e2_machine m;
+    e2_machine_init(&m, 0, 1 << 20);
+    FILE *f = fopen("tests/guest/jump.elf", "rb");
+    CHECK(f != NULL, "jump.elf missing - run make first");
+    if (f == NULL) { e2_machine_destroy(&m); return; }
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    uint8_t *image = (uint8_t *)malloc((size_t)size);
+    CHECK(image != NULL, "out of memory");
+    if (image == NULL) { fclose(f); e2_machine_destroy(&m); return; }
+    if (fread(image, 1, (size_t)size, f) != (size_t)size) { /* short read still usable */ }
+    fclose(f);
+
+    e2_loaded_image info = {0};
+    e2_load_result lr = e2_load_elf_full(&m, image, (size_t)size, true, &info);
+    CHECK(lr == E2_LOAD_OK, "load: %s", e2_load_result_name(lr));
+    if (lr == E2_LOAD_OK) {
+        capture cap = {0};
+        e2_syscall_env env = {.exit = capture_exit, .files = &test_files, .ctx = &cap};
+        e2_status st = run_program(&m, &env, 2000000);
+        CHECK(st == E2_HALTED, "expected halt, got %s", e2_status_name(st));
+        // qemu prints 0x21 here; the point is that the branch reached targ, not wrong.
+        CHECK(strstr(cap.out, "0000000000000021") != NULL,
+              "output was \"%.40s\"", cap.out);
+    }
+    free(image);
+    e2_machine_destroy(&m);
+}
+
 static void test_ldp_stp_match_a_real_run(void) {
     printf("LDP/STP with pre- and post-index match what the hardware produced\n");
     // Expected values came from running the same ELF under qemu-aarch64. The CALL path in
@@ -1587,6 +1622,7 @@ int main(void) {
     test_load_store();
     test_svc();
     test_hint_space_is_noop();
+    test_jump_table_matches_a_real_run();
     test_ldp_stp_match_a_real_run();
     test_bitfield_matches_a_real_run();
     test_ushll2_widens_from_the_upper_half();

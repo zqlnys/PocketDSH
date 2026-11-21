@@ -2148,6 +2148,28 @@ static int run_proc(int idx) {
                                 (unsigned long long)instr, op, arg,
                                 (unsigned long long)p->m.cpu.x[21], 10);
                     }
+                    {
+                        // f_code->co_name tells which Python function is executing, which
+                        // narrows this to a piece of code rather than an address.
+                        uint64_t fcode = 0, nm = 0;
+                        if (e2_memory_read(&p->m.mem, p->m.cpu.x[24] + 0x20, &fcode, 8) == 0) {
+                            // The code object's field offsets moved in 3.12, so scan them and
+                            // print every field that looks like a short printable name.
+                            fprintf(stderr, "[decref] code 0x%llx names:",
+                                    (unsigned long long)fcode);
+                            for (int off = 0x10; off <= 0x70; off += 8) {
+                                if (e2_memory_read(&p->m.mem, fcode + (uint64_t)off, &nm, 8) != 0)
+                                    continue;
+                                char t[48] = {0};
+                                if (e2_memory_read(&p->m.mem, nm, t, sizeof(t) - 1) != 0) continue;
+                                int ok = 1, n = 0;
+                                for (; n < 32 && t[n]; n++)
+                                    if (t[n] < 0x20 || t[n] > 0x7e) { ok = 0; break; }
+                                if (ok && n >= 2) fprintf(stderr, " +0x%x=\"%s\"", off, t);
+                            }
+                            fprintf(stderr, "%c", 10);
+                        }
+                    }
                     fprintf(stderr, "[decref] words around x24:");
                     for (int q = -5; q <= 0; q++) {
                         uint64_t w = 0;
