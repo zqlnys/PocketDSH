@@ -26,19 +26,28 @@ int e2_bridge_run(const char *rootfs, const char *out_path,
         e2_set_root(rootfs);
     }
 
+    // Both streams go to the file. The harness reports load and syscall failures on stderr, and
+    // an exit status with no output is undiagnosable - which is exactly what the first run on
+    // iOS produced: status 1, empty file, no clue.
     fflush(stdout);
-    const int saved = dup(STDOUT_FILENO);
-    if (saved < 0) {
+    fflush(stderr);
+    const int saved_out = dup(STDOUT_FILENO);
+    const int saved_err = dup(STDERR_FILENO);
+    if (saved_out < 0 || saved_err < 0) {
+        if (saved_out >= 0) close(saved_out);
+        if (saved_err >= 0) close(saved_err);
         return -1;
     }
     const int sink = open(out_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (sink < 0) {
-        close(saved);
+        close(saved_out);
+        close(saved_err);
         return -1;
     }
-    if (dup2(sink, STDOUT_FILENO) < 0) {
+    if (dup2(sink, STDOUT_FILENO) < 0 || dup2(sink, STDERR_FILENO) < 0) {
         close(sink);
-        close(saved);
+        close(saved_out);
+        close(saved_err);
         return -1;
     }
     close(sink);
@@ -46,7 +55,10 @@ int e2_bridge_run(const char *rootfs, const char *out_path,
     const int status = e2_rune_main(argc, argv);
 
     fflush(stdout);
-    dup2(saved, STDOUT_FILENO);
-    close(saved);
+    fflush(stderr);
+    dup2(saved_out, STDOUT_FILENO);
+    dup2(saved_err, STDERR_FILENO);
+    close(saved_out);
+    close(saved_err);
     return status;
 }

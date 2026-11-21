@@ -47,7 +47,9 @@ final class E2BackendTests: XCTestCase {
                       "Tier D's guest root has no bin/busybox")
 
         let (status, output) = try runGuest([busybox, "sh", "-c", "echo tier-d-ok"])
-        XCTAssertEqual(status, 0, "busybox sh exited \(status); output was \(output)")
+        // The bridge captures stderr as well, so a failure here carries the interpreter's own
+        // complaint instead of an empty string.
+        XCTAssertEqual(status, 0, "busybox sh exited \(status); output was <<<\(output)>>>")
         XCTAssertEqual(output.trimmingCharacters(in: .whitespacesAndNewlines), "tier-d-ok")
     }
 
