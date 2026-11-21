@@ -9,6 +9,7 @@ LDLIBS ?= -lm
 CFLAGS ?= -std=c11 -Wall -Wextra -Werror -O2 -g -Iinclude
 BUILD := build
 SRC := src/memory.c src/exec.c src/syscall.c src/loader.c
+HDR := $(wildcard include/e2/*.h)
 TEST_SRC := tests/main.c
 TEST_BIN := $(BUILD)/e2-tests
 GUEST_ELF := tests/guest/jump.elf tests/guest/auxv.elf tests/guest/loop.elf tests/guest/ldp.elf tests/guest/bitfield.elf tests/guest/hello.elf tests/guest/fib.elf tests/guest/memset.elf tests/guest/cprog.elf tests/guest/calls.elf tests/guest/mul.elf tests/guest/shll.elf tests/guest/bitops.elf
@@ -29,7 +30,7 @@ all: test harness
 $(BUILD):
 	@mkdir -p $(BUILD)
 
-$(TEST_BIN): $(SRC) $(TEST_SRC) | $(BUILD)
+$(TEST_BIN): $(SRC) $(TEST_SRC) $(HDR) | $(BUILD)
 	$(CC) $(CFLAGS) $(SRC) $(TEST_SRC) -o $@ $(LDLIBS)
 
 tests/guest/bitops.elf: tests/guest/bitops.s | $(BUILD)
@@ -108,5 +109,5 @@ tests/guest/shll.elf: tests/guest/shll.c | $(BUILD)
 # `make test` - but building it does not, so `all` includes it.
 harness: tools/rune
 
-tools/rune: tools/rune.c $(SRC)
+tools/rune: tools/rune.c $(SRC) $(HDR)
 	$(CC) $(CFLAGS) $(SRC) tools/rune.c -o $@ $(LDLIBS)

@@ -131,6 +131,37 @@ final class E2BackendTests: XCTestCase {
         XCTAssertTrue(output.contains("55 xxx"), output)
     }
 
+    /// fork, on its own.
+    ///
+    /// subprocess does not complete on the device while it does on the command line, and
+    /// subprocess is fork plus exec plus a wait. This is the cheap half of that pair: no re
+    /// import, no exec, so if it passes the problem is after the fork.
+    func testPythonFork() throws {
+        let root = try guestRoot()
+        let python = root.appendingPathComponent("usr/bin/python3.12").path
+        try XCTSkipUnless(FileManager.default.fileExists(atPath: python),
+                          "this build's guest root has no CPython")
+
+        let script = root.appendingPathComponent("tmp/e2-fork.py")
+        try? FileManager.default.createDirectory(at: script.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: script) }
+        try """
+        import os
+        pid = os.fork()
+        if pid == 0:
+            os._exit(7)
+        print("child", os.waitpid(pid, 0)[1] >> 8)
+        """.write(to: script, atomically: true, encoding: .utf8)
+
+        let (status, output) = try runGuest(python, ["/tmp/e2-fork.py"])
+        if output.contains("instruction cap") {
+            throw XCTSkip("fork does not complete on this device")
+        }
+        XCTAssertEqual(status, 0, "python exited \(status); output was <<<\(output)>>>")
+        XCTAssertTrue(output.contains("child 7"), output)
+    }
+
     /// A file the guest writes has to show up on disk, because the workspace mount depends on
     /// it.
     func testGuestWritesAFile() throws {
