@@ -83,11 +83,15 @@ final class E2BackendTests: XCTestCase {
     func testGuestWritesAFile() throws {
         let root = try guestRoot()
         let busybox = root.appendingPathComponent("bin/busybox").path
-        let target = FileManager.default.temporaryDirectory
-            .appendingPathComponent("e2-written-\(UUID().uuidString).txt")
+        // The guest's /tmp maps under the guest root, so the result is read from there. Aiming
+        // at the host's temporary directory tests a path the guest cannot reach.
+        let name = "e2-written-\(UUID().uuidString).txt"
+        let target = root.appendingPathComponent("tmp").appendingPathComponent(name)
+        try? FileManager.default.createDirectory(at: target.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: target) }
 
-        let (status, _) = try runGuest(busybox, ["sh", "-c", "echo written > \(target.path)"])
+        let (status, _) = try runGuest(busybox, ["sh", "-c", "echo written > /tmp/\(name)"])
         XCTAssertEqual(status, 0)
         let contents = (try? String(contentsOf: target, encoding: .utf8)) ?? ""
         XCTAssertEqual(contents.trimmingCharacters(in: .whitespacesAndNewlines), "written")
