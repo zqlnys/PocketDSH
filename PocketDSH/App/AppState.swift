@@ -26,6 +26,8 @@ final class WorkspaceSession: ObservableObject {
         pluginStore: PluginStore,
         systemActions: SystemActionStore,
         linuxRuntime: LinuxRuntime,
+        e2Runtime: E2Runtime,
+        runtimeStore: RuntimeCapabilityStore,
         luaEngine: LuaEngine
     ) throws {
         self.project = project
@@ -51,7 +53,7 @@ final class WorkspaceSession: ObservableObject {
             systemActions: systemActions,
             linuxRuntime: linuxRuntime,
             e2Runtime: e2Runtime,
-            runtimeStore: runtime
+            runtimeStore: runtimeStore
         )
         self.agent = AgentRunner(
             workspace: fileSystem,
@@ -184,6 +186,7 @@ final class AppState: ObservableObject {
                 systemActions: systemActions,
                 linuxRuntime: linuxRuntime,
                 e2Runtime: e2Runtime,
+                runtimeStore: runtime,
                 luaEngine: luaEngine
             )
             projectStore.touch(project)
