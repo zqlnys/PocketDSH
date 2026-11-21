@@ -874,6 +874,20 @@ awk 'BEGIN{s=""; for(i=0;i<3;i++) s = s "ab"; printf "%s|%s\n", s, sprintf("%03d
 printf 'abcdefghijklmnopqrstuvwx' | od -An -c | head -2
 # sh: a copy loop that advances a pointer past 16 bytes at a time
 head -c 40 /dev/zero | tr '\0' 'x' | wc -c
+# awk: a BEGIN block that never reads input, and printf with escaped percent
+awk 'BEGIN{printf "%d%% of %s\n", 50, "eighty"}'
+# awk: changing OFS and reassigning a field rebuilds $0 with the new separator
+printf 'a b c\n' | awk 'BEGIN{OFS="-"}{$1=$1; print}'
+# sed: N joining pairs of lines, and $ matching the last line after a join
+printf '1\n2\n3\n4\n' | sed 'N;s/\n/+/'
+# sh: a case statement with a glob pattern and a fallthrough default
+sh -c 'for f in a.txt b.log c.txt; do case $f in *.txt) echo "text:$f";; *) echo "other:$f";; esac; done'
+# sh: set -e must stop at the first failure, and $? reports it
+sh -c 'set -e; false; echo unreachable' ; echo "status=$?"
+# printf: field width from an argument, and a literal backslash
+printf '%*d|\\n' 6 42
+# awk: substr with a start past the end, and length of an empty field
+printf 'abc\n' | awk '{print substr($0, 9) length("") "|" index($0, "z")}'
 echo 'hello' | sed 'y/el/ip/'
 # printf: escaped percent and field width reuse
 printf '%s|%5.2f|%%\n' ab 3.14159
