@@ -47,6 +47,7 @@ targets:
       # JIT - guest system calls arrive through a table of callbacks the app supplies.
       - path: e2/src
       - path: e2/include
+      - path: PocketDSH/Core/Services/E2TraceGlobals.c
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.pocketdsh
