@@ -1755,6 +1755,41 @@ not_a_shift:;
         return E2_OK;
     }
 
+    // --- SIMD: LD1R / LD2R / LD3R / LD4R (load one element, replicate) ---
+    // `ld1r {v1.2d}, [x0]` loads a single element and copies it into every lane. CPython
+    // emits this while maintaining reference counts in bulk, and its absence stopped the
+    // interpreter with "unimplemented instruction" the first time start-up got that far.
+    // LD2R..LD4R differ only in how many registers they fill, so they share this decode.
+    if ((insn & 0xBFFFF000u) == 0x0D40C000u) {
+        const unsigned q = BIT(insn, 30);
+        const unsigned size = BITS(insn, 11, 10);
+        const unsigned rn = BITS(insn, 9, 5);
+        const unsigned rt = BITS(insn, 4, 0);
+        const unsigned esize = 8u << size;
+        const unsigned bytes = esize / 8;
+        const unsigned regs = 1u << BITS(insn, 14, 12);   // opcode selects LD1R..LD4R
+        const uint64_t addr = e2_read_sp(cpu, rn);
+        for (unsigned r = 0; r < regs; r++) {
+            uint64_t v = 0;
+            if (e2_memory_read(&machine->mem, addr + r * bytes, &v, bytes) != 0) {
+                machine->ctx.reason = "ld1r outside mapped memory";
+                machine->ctx.fault_addr = addr + r * bytes;
+                return E2_FAULT;
+            }
+            uint64_t lane_mask = (esize >= 64) ? ~0ULL : ((1ULL << esize) - 1);
+            v &= lane_mask;
+            uint64_t fill = 0;
+            for (unsigned bit = 0; bit < 64; bit += esize) {
+                fill |= v << bit;
+            }
+            cpu->v[(rt + r) % 32][0] = fill;
+            if (q) cpu->v[(rt + r) % 32][1] = fill;
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     // --- SIMD: LD1 / ST1, one element into one lane ---
     // `ld1 {v0.d}[1], [x0]` loads a single element into one lane of a register.
     // Index comes from Q and S; the element width is size=00 (32-bit) or
