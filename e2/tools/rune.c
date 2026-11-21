@@ -1158,6 +1158,10 @@ typedef struct {
     /// suspended inside its own read corrupts its state. `head -3` never showed the
     /// problem because it stops reading early and so never needs the third level.
     int running;
+    /// Non-zero when this entry is a thread: it shares its owner's memory and file table
+    /// rather than owning its own. The interpreter is single-threaded, so threads take turns;
+    /// what they share is real, what runs them is a scheduler.
+    int thread_of;
 } proc_t;
 static proc_t procs[E2_MAX_PROCS];
 static int g_next_pid = 2;
@@ -1230,6 +1234,35 @@ static void p_exit(void *ctx, int status) {
     p->alive = 0;
     trace_flush();
     p->exit_status = status;
+}
+
+static long p_thread(void *ctx, const e2_machine *parent, uint64_t pc, uint64_t sp) {
+    proc_t *self = ctx;
+    const int slot = proc_slot();
+    if (slot < 0) return -11;   // EAGAIN: no free slot
+    proc_t *t = &procs[slot];
+
+    // The memory STRUCT is copied, not the memory: each region's `host` already points at a
+    // buffer, so both sides keep writing the same bytes. Regions mapped after this point are
+    // refreshed from the owner at each scheduling turn, below.
+    t->m = *parent;
+    t->m.cpu.pc = pc;
+    t->m.cpu.sp = sp;
+    t->m.cpu.x[0] = 0;          // the new thread sees clone() return 0
+    t->m.cpu.x[30] = 0;
+    t->m.ctx.reason = NULL;
+    t->m.ctx.fault_addr = 0;
+
+    t->pc.fdtab = self->pc.fdtab;              // threads share the file table
+    snprintf(t->pc.cwd, sizeof(t->pc.cwd), "%s", self->pc.cwd);
+    t->pid = g_next_pid++;
+    // Not the creator's pid: wait4 reaps children, and a thread must never be reaped by it.
+    t->ppid = -1;
+    t->thread_of = self->pc.fdtab + 1;
+    t->alive = 1;
+    t->used = 1;
+    t->exit_status = 0;
+    return t->pid;
 }
 
 static long p_fork(void *ctx, const e2_machine *parent) {
@@ -1500,7 +1533,15 @@ static int run_proc(int idx) {
     const int saved_self_pid = g_proc_self_pid;
     long spent = 0;
     e2_syscall_env env = {.exit = p_exit, .files = &FS, .ctx = p,
-                          .fork = p_fork, .execve = p_execve, .wait4 = p_wait4};
+                          .fork = p_fork,
+                          .execve = p_execve, .wait4 = p_wait4};
+    // Threads are opt-in, and off by default, because a half-working one is worse than none:
+    // clone() without a thread callback returns EINVAL and a program reports the failure,
+    // while a thread that is created but cannot make progress hangs instead. E2 has no futex,
+    // and every real threading library waits on one.
+    if (getenv("E2_THREADS") != NULL) {
+        env.thread = p_thread;
+    }
     // A process starts at the root unless it has moved; E2_CWD still forces one.
     if (p->pc.cwd[0] == '\0') {
         snprintf(p->pc.cwd, sizeof(p->pc.cwd), "%s",

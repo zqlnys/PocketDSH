@@ -429,11 +429,18 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             // The shell uses clone(SIGCHLD, 0, ...) for fork; a NULL stack means
             // "same address space, copied". A non-NULL stack is a thread, which
             // this model does not offer.
+            if (a1 != 0) {
+                // A non-NULL stack means a thread. The host decides whether it can run one;
+                // when it cannot, this is EINVAL exactly as before.
+                if (env->thread == NULL) {
+                    E2_RETURN(-E2_EINVAL);
+                }
+                // clone's child starts at the return address on the new stack: x30 holds the
+                // entry point for a fresh thread, and a0 is the top of its stack.
+                E2_RETURN(env->thread(env->ctx, m, m->cpu.x[30], a1));
+            }
             if (env->fork == NULL) {
                 E2_RETURN(-E2_ENOSYS);
-            }
-            if (a1 != 0) {
-                E2_RETURN(-E2_EINVAL);
             }
             E2_RETURN(env->fork(env->ctx, m));
         }

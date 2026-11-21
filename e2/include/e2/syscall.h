@@ -128,6 +128,10 @@ typedef struct {
     /// host decides where the child runs. Returns the child pid in the parent,
     /// 0 in the child's own image, or a negative errno.
     long (*fork)(void *ctx, const e2_machine *parent);
+    /// Creates a thread: same address space, new CPU state, entry at `pc`, stack at `sp`.
+    /// Returns the new thread's id for the child, or a negative errno. Optional - a host
+    /// that cannot run threads simply leaves it NULL and clone() reports EINVAL as before.
+    long (*thread)(void *ctx, const e2_machine *parent, uint64_t pc, uint64_t sp);
     /// Replaces the current image with the program at `path`. The host builds
     /// the new address space and stack inside `m`. Returns 0 or negative errno.
     int (*execve)(void *ctx, e2_machine *m, const char *path, uint64_t argv,
