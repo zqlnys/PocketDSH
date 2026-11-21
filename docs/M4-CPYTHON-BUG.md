@@ -684,3 +684,40 @@ ValueError: character U+7275732f is not in range [U+0000; U+10ffff]
 
 **已加单测 `test_ushll2_widens_from_the_upper_half`，变异改回 `src_idx` → CAUGHT。**
 
+## 位域指令是对的 —— 用真实执行验证过
+
+上一轮我重写了 `UBFM`/`SBFM`/`BFM`，用自写的 Python 参考模型生成 233 条对照，
+得到「0/233 不符」。**那个绿色是假的**：模型和实现都出自我一个人，
+两边一起错的时候它们会互相印证。
+
+**回退之后，改用真实执行做对照：**
+
+**写一个 guest ELF（`tests/guest/bitfield.s`），里面跑 50 条位域指令并打印结果，
+在 qemu 和本实现下各跑一次。**
+
+```
+$ chroot ... /tmp/qemu bf.elf   > q.txt
+$ ./tools/rune bf.elf           > m.txt
+$ diff q.txt m.txt
+50 条完全一致
+```
+
+**所以原来的位域实现是正确的，我的「重写」才是错的。**
+
+### 这个方法才是可用的
+
+**已固化为 `tests/guest/bitfield.elf` + `test_bitfield_matches_a_real_run`，
+期望值直接来自 qemu 的输出，而不是我对架构规范的理解。**
+
+**同一条路已经验证过 `shll.elf`：`1,-1|16,-16|1,4294967295` 两边一致。**
+
+### 一条方法上的教训
+
+| 对照物 | 可信度 |
+| --- | --- |
+| 自写的参考模型 | **不可信**——同源错误会互相印证 |
+| llvm 的汇编/反汇编 | 可信（用于 `movi`、`ushll2` 的定位）|
+| **qemu 实跑同一 ELF** | **最可信**——就是真机行为 |
+
+**以后验证指令语义，一律走第三条。**
+

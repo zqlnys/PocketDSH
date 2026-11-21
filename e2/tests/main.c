@@ -414,6 +414,44 @@ static void test_xtn_narrows_lanes(void) {
     e2_machine_destroy(&m);
 }
 
+static void test_bitfield_matches_a_real_run(void) {
+    printf("bitfield instructions match what the hardware produced\n");
+    // The expected lines below were produced by running the same ELF under qemu-aarch64,
+    // not by re-deriving the architecture's bit-mask rules. That distinction matters: an
+    // earlier attempt replaced the bitfield code with a reimplementation checked against a
+    // reference model I had written myself, and the model was wrong - C and Python agreed
+    // with each other and both disagreed with the hardware.
+    e2_machine m;
+    e2_machine_init(&m, 0, 1 << 20);
+    FILE *f = fopen("tests/guest/bitfield.elf", "rb");
+    CHECK(f != NULL, "bitfield.elf missing - run make first");
+    if (f == NULL) { e2_machine_destroy(&m); return; }
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    uint8_t *image = (uint8_t *)malloc((size_t)size);
+    CHECK(image != NULL, "out of memory");
+    if (image == NULL) { fclose(f); e2_machine_destroy(&m); return; }
+    if (fread(image, 1, (size_t)size, f) != (size_t)size) { /* short read is still usable */ }
+    fclose(f);
+
+    e2_loaded_image info = {0};
+    e2_load_result lr = e2_load_elf_full(&m, image, (size_t)size, true, &info);
+    CHECK(lr == E2_LOAD_OK, "load: %s", e2_load_result_name(lr));
+    if (lr == E2_LOAD_OK) {
+        capture cap = {0};
+        e2_syscall_env env = {.exit = capture_exit, .files = &test_files, .ctx = &cap};
+        e2_status st = run_program(&m, &env, 2000000);
+        CHECK(st == E2_HALTED, "expected halt, got %s", e2_status_name(st));
+        // First four lines, as qemu printed them.
+        CHECK(strncmp(cap.out, "0000000000000001\n0000000000000001\n",
+                      34) == 0,
+              "first two lines were \"%.40s\"", cap.out);
+    }
+    free(image);
+    e2_machine_destroy(&m);
+}
+
 static void test_ushll2_widens_from_the_upper_half(void) {
     printf("USHLL2 takes the upper half of the source and widens it to lane 0 onwards\n");
     // The destination index used to be computed from the source lane, so with Q set the
@@ -1513,6 +1551,7 @@ int main(void) {
     test_load_store();
     test_svc();
     test_hint_space_is_noop();
+    test_bitfield_matches_a_real_run();
     test_ushll2_widens_from_the_upper_half();
     test_movi_64bit_immediate();
     test_ldrsb_and_tbz_together();
