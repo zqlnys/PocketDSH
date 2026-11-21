@@ -850,7 +850,7 @@ e2_status e2_step(e2_machine *machine) {
     // not a general register. Both imm5 and imm4 carry element size and index,
     // so they have to stay outside the mask - testing them fixed the family
     // against one encoding only.
-    if ((insn & 0xFF008400u) == 0x6E000400u) {
+    if ((insn & 0xFF008C00u) == 0x6E000400u) {
         const unsigned imm5 = BITS(insn, 20, 16);
         const unsigned imm4 = BITS(insn, 14, 11);
         const unsigned rn_v = BITS(insn, 9, 5);
@@ -1041,7 +1041,23 @@ e2_status e2_step(e2_machine *machine) {
         const uint64_t a0 = cpu->v[rn2][0], a1 = cpu->v[rn2][1];
         const uint64_t b0 = cpu->v[rm][0], b1 = cpu->v[rm][1];
         uint64_t r0 = 0, r1 = 0;
-        if (key == 3) {                       // logical subgroup
+        if (key == 35 && size != 0) {         // BSL / BIT / BIF: same bits as the logical
+            // group but with U set. `size` picks which of the three.
+            switch (size) {
+                case 1:                        // BSL: the old destination selects
+                    r0 = (cpu->v[rd][0] & a0) | (~cpu->v[rd][0] & b0);
+                    r1 = (cpu->v[rd][1] & a1) | (~cpu->v[rd][1] & b1);
+                    break;
+                case 2:                        // BIT: where Vn is 1, take Vm
+                    r0 = (a0 & b0) | (~a0 & cpu->v[rd][0]);
+                    r1 = (a1 & b1) | (~a1 & cpu->v[rd][1]);
+                    break;
+                default:                       // BIF: where Vn is 0, take Vm
+                    r0 = (a0 & cpu->v[rd][0]) | (~a0 & b0);
+                    r1 = (a1 & cpu->v[rd][1]) | (~a1 & b1);
+                    break;
+            }
+        } else if (key == 3) {                // logical subgroup
             switch (size) {
                 case 0: r0 = a0 & b0;  r1 = a1 & b1;  break;   // and
                 case 1: r0 = a0 & ~b0; r1 = a1 & ~b1; break;   // bic
@@ -1088,6 +1104,9 @@ e2_status e2_step(e2_machine *machine) {
             machine->ctx.reason = "unimplemented SIMD three-same opcode";
             return E2_UNIMPL;
         }
+        if (getenv("E2_DBG_3SAME"))
+            fprintf(stderr, "[3same] insn=0x%08x key=%u size=%u rd=%u rn=%u rm=%u\n",
+                    insn, key, size, rd, rn2, rm);
         cpu->v[rd][0] = r0;
         cpu->v[rd][1] = q ? r1 : 0;
         cpu->pc = next_pc;

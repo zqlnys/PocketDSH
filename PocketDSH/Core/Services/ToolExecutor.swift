@@ -474,8 +474,7 @@ final class ToolExecutor {
         let results = Self.searchResults(fromHTML: body, limit: count)
 
         if results.isEmpty {
-            return .success("query: \(query)\nstatus: \(status)\nresults: 0\n-----
-No results were parsed. The page may be a captcha, a consent screen, or a layout change.")
+            return .success("query: \(query)\nstatus: \(status)\nresults: 0\n-----\nNo results were parsed. The page may be a captcha, a consent screen, or a layout change.")
         }
         var output = "query: \(query)\nstatus: \(status)\nresults: \(results.count)\n-----\n"
         for (index, item) in results.enumerated() {
