@@ -78,6 +78,35 @@ final class E2BackendTests: XCTestCase {
         XCTAssertEqual(output.trimmingCharacters(in: .whitespacesAndNewlines), "HELLO")
     }
 
+    /// CPython, in the app.
+    ///
+    /// This is the point of Tier D: a real interpreter running a real program on a device that
+    /// refuses executable pages. It is skipped when the bundle has only the busybox root, which
+    /// is the shipping default unless the build fetched Python.
+    func testPythonRunsInTheApp() throws {
+        let root = try guestRoot()
+        let python = root.appendingPathComponent("usr/bin/python3.12").path
+        try XCTSkipUnless(FileManager.default.fileExists(atPath: python),
+                          "this build's guest root has no CPython")
+
+        let script = root.appendingPathComponent("tmp/e2-pytest.py")
+        try? FileManager.default.createDirectory(at: script.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: script) }
+        try """
+        print("python", __import__("sys").version.split()[0])
+        print(2 ** 10)
+        import json
+        print(json.dumps({"k": [1, 2]}))
+        """.write(to: script, atomically: true, encoding: .utf8)
+
+        let (status, output) = try runGuest(python, ["/tmp/e2-pytest.py"])
+        XCTAssertEqual(status, 0, "python exited \(status); output was <<<\(output)>>>")
+        XCTAssertTrue(output.contains("python 3.12"), output)
+        XCTAssertTrue(output.contains("1024"), output)
+        XCTAssertTrue(output.contains("{\"k\": [1, 2]}"), output)
+    }
+
     /// A file the guest writes has to show up on disk, because the workspace mount depends on
     /// it.
     func testGuestWritesAFile() throws {

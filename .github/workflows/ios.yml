@@ -74,6 +74,22 @@ jobs:
           fi
           xcodegen --version | tee "$LOG_DIR/xcodegen-version.log"
 
+      # Tier D ships a busybox so shell commands work. CPython needs the interpreter, libpython,
+      # the standard library and musl - about 27 MB after trimming - which is fetched here
+      # rather than committed. Without this step the Python test skips instead of failing, so a
+      # network problem cannot break the build.
+      - name: Fetch the CPython guest root for Tier D
+        id: guest_root
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -uo pipefail
+          scripts/fetch-python-rootfs.sh PocketDSH/Resources/alpine-root --minimal \
+            2>&1 | tee "$LOG_DIR/fetch-rootfs.log"
+          # The script only writes usr/ and lib/; keep the repo's static busybox, which is
+          # already there and is the one thing the root cannot be without.
+          test -x PocketDSH/Resources/alpine-root/bin/busybox
+
       - name: Generate Xcode project
         id: generate
         shell: bash

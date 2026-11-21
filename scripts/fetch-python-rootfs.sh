@@ -46,7 +46,8 @@ fi
 echo "python3 $PYVER"
 
 mkdir -p "$DEST"
-# Busybox comes from the repo, not from here: it is static and version-controlled.
+# Busybox comes from the repo, not from here: it is static and version-controlled. Only the
+# package-managed trees are replaced, so running this over an existing root keeps bin/.
 rm -rf "$DEST/usr" "$DEST/lib" "$DEST/etc"
 mkdir -p "$DEST/usr" "$DEST/lib"
 
