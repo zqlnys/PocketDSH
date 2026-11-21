@@ -334,9 +334,6 @@ final class ToolExecutor {
         if entry.isDirectory {
             return .failure("present takes a file, not a directory: \(path)")
         }
-        guard exists else {
-            return .failure("present: no such workspace file \(path). Create it with write_file first.")
-        }
 
         var items = deliverables
         if let index = items.firstIndex(where: { $0.path == path }) {
