@@ -916,14 +916,25 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
                 E2_RETURN(m->brk_current);
             }
             if (a0 > m->brk_limit) {
-                // Extend by whole chunks until the request fits. Growth is contiguous because
-                // the guest expects a single range between brk_base and brk.
-                uint64_t want = a0;
-                while (m->brk_limit < want) {
-                    const uint64_t more = 16ULL << 20;
-                    if (e2_memory_map_at(&m->mem, m->brk_limit, (size_t)more,
-                                        E2_PROT_READ | E2_PROT_WRITE) != 0) {
-                        E2_RETURN(-12);
+                // Extend until the request fits. Growth is contiguous because the guest expects
+                // one range between brk_base and brk.
+                //
+                // The step shrinks when a large mapping is refused. A phone can say no to 16 MB
+                // while still allowing a few hundred kilobytes, and failing the whole request
+                // over the size of the step turns "less memory available" into "out of memory".
+                while (m->brk_limit < a0) {
+                    uint64_t more = 16ULL << 20;
+                    int mapped = 0;
+                    while (more >= (64ULL << 10)) {
+                        if (e2_memory_map_at(&m->mem, m->brk_limit, (size_t)more,
+                                             E2_PROT_READ | E2_PROT_WRITE) == 0) {
+                            mapped = 1;
+                            break;
+                        }
+                        more >>= 2;
+                    }
+                    if (!mapped) {
+                        E2_RETURN(-12);   // ENOMEM: even 64 KiB was refused
                     }
                     m->brk_limit += more;
                 }
