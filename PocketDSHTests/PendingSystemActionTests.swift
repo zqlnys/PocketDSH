@@ -4,7 +4,7 @@ import XCTest
 /// The rule the pending-action protocol exists to enforce: nothing reaches the system on the
 /// model's word alone, and a person can always tell what they approved.
 @MainActor
-final class SystemActionTests: XCTestCase {
+final class PendingSystemActionTests: XCTestCase {
 
     func testNotificationIsStagedNotScheduled() {
         let store = SystemActionStore()
