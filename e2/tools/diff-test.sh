@@ -817,6 +817,17 @@ seq 3 | sed 's/1/one/;s/3/three/'
 printf 'A:B\n' | cut -d: -f2 | tr 'A-Z' 'a-z'
 printf 'a\tb\n' | awk -F'\t' '{print $2}'
 seq 4 | sed 'N;s/\n/+/'
+# sed: the hold space across two lines, and a range that ends on the same line
+printf 'a\nb\nc\n' | sed -n '1h;2{x;p};3p'
+printf 'a\nb\nc\nd\n' | sed -n '/b/,/c/!p'
+# awk: string to number coercion and an empty field
+printf 'x 1\ny\n' | awk '{n=$2+0; print $1, n, NF}'
+# sh: arithmetic on unset variables and the ${x:-default} forms
+sh -c 'unset x; echo $((x+1)) ${x:-d} ${x-d}'
+# sed: a substitution whose replacement contains the delimiter
+echo 'a/b' | sed 's|/|\\|'
+# awk: printf with a width from a variable
+printf '1 5\n' | awk '{printf "%*d\n", $2, $1}'
 echo 'x' | tr 'a-z' 'n-za-m'
 printf '1\n2\n3\n' | awk 'NR>1{print prev}{prev=$0}'
 sh /tmp/dtreal2.sh
