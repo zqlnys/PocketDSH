@@ -59,8 +59,10 @@ final class E2Runtime: ObservableObject {
             .appendingPathComponent("e2-\(UUID().uuidString).out")
         defer { try? FileManager.default.removeItem(at: outURL) }
 
-        // The harness takes the program, then its arguments: rune <busybox> sh -c <command>.
-        let argv: [String] = [busybox, "sh", "-c", command]
+        // The harness follows the usual convention: argv[0] is its own name, argv[1] is the
+        // program to load, and the rest belong to the guest. Passing the busybox path at
+        // index 0 instead made it try to load a file called "sh" - "cannot load sh".
+        let argv: [String] = ["e2", busybox, "sh", "-c", command]
         var cArgs: [UnsafeMutablePointer<CChar>?] = argv.map { strdup($0) }
         defer { for pointer in cArgs { free(pointer) } }
         cArgs.append(nil)
