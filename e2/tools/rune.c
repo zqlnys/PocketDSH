@@ -1176,19 +1176,16 @@ typedef struct {
 static proc_t procs[E2_MAX_PROCS];
 static int g_next_pid = 2;
 // Shared with debug builds of the memory layer that need the faulting pc.
-uint64_t g_dbg_pc;
 // Also publish sp, so a debug build can express a stack watch as an offset from
 // the current frame rather than an absolute address. Absolute addresses move
 // between runs, which made several stack investigations report a write in one
 // run and nothing in the next for the very same logical slot.
-uint64_t g_dbg_sp;
 // One counter across all processes. Per-process instruction counts cannot order
 // events that happen in different processes, which is exactly what pipeline and
 // scheduling questions need.
 unsigned long long g_global_step;
 int g_dbg_pid;
 extern unsigned long long g_dbg_last_syscall;
-uint64_t g_dbg_pc2;
 static const char *g_self_path = NULL;
 
 static int proc_slot(void) {
@@ -1654,12 +1651,6 @@ static int run_proc(int idx) {
         if (g_proc_budget >= 0 && ++spent > g_proc_budget) {
             break;
         }
-        g_dbg_pc = p->m.cpu.pc;
-        g_dbg_sp = p->m.cpu.sp;
-        g_dbg_pid = p->pid;
-        g_proc_self_pid = p->pid;
-        g_cur_ppid = p->ppid;
-        g_dbg_pc2 = p->m.cpu.pc;
         if (g_hist_on) {
         hist[hist_at].pc = p->m.cpu.pc;
         // Read the word at pc rather than ctx.instruction: ctx carries the
@@ -2586,6 +2577,13 @@ static int run_proc(int idx) {
             }
             if (delivered > 0) continue;
         }
+        // Only the two the syscall handlers read are published here; they run inside the
+        // step and have no other way to learn the caller. g_dbg_pc, g_dbg_sp and g_dbg_pc2
+        // were stored on every instruction and never read by anything at all - three stores
+        // per step for nothing.
+        g_dbg_pid = p->pid;
+        g_proc_self_pid = p->pid;
+        g_cur_ppid = p->ppid;
         e2_status st = e2_step(&p->m);
         // A chdir inside the step changed env.cwd; keep the process copy in step so
         // the change survives to the next scheduling turn.
