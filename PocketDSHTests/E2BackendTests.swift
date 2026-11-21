@@ -111,6 +111,26 @@ final class E2BackendTests: XCTestCase {
         XCTAssertTrue(output.contains("python 3.12"), output)
     }
 
+    /// `python -c`, which was broken for a long time.
+    ///
+    /// Under the C locale CPython converts argv through musl's single-byte path and truncates
+    /// any argument of fourteen characters or more to its first six - so a `-c` program arrived
+    /// as a syntax error. The bridge sets a UTF-8 locale, which takes the other branch. This
+    /// test exists so that fix cannot be undone by accident.
+    func testPythonCommandString() throws {
+        let root = try guestRoot()
+        let python = root.appendingPathComponent("usr/bin/python3.12").path
+        try XCTSkipUnless(FileManager.default.fileExists(atPath: python),
+                          "this build's guest root has no CPython")
+
+        // Long enough to have been truncated, and it computes something rather than printing
+        // a constant, so a partial program would fail rather than pass by luck.
+        let program = "print(sum(range(1, 11)), 'x' * 3)"
+        let (status, output) = try runGuest(python, ["-c", program])
+        XCTAssertEqual(status, 0, "python -c exited \(status); output was <<<\(output)>>>")
+        XCTAssertTrue(output.contains("55 xxx"), output)
+    }
+
     /// A file the guest writes has to show up on disk, because the workspace mount depends on
     /// it.
     func testGuestWritesAFile() throws {
