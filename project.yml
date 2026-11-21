@@ -48,6 +48,10 @@ targets:
       - path: e2/src
       - path: e2/include
       - path: PocketDSH/Core/Services/E2TraceGlobals.c
+      # The host layer: filesystem, pipes, process table and the run loop, unchanged from the
+      # command-line harness. It creates no host processes - guest fork is a copy of an E2
+      # machine - so it runs inside the app sandbox as-is.
+      - path: e2/tools/rune.c
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.pocketdsh
@@ -61,6 +65,10 @@ targets:
         HEADER_SEARCH_PATHS:
           - "$(SRCROOT)/TierCProbe"
           - "$(SRCROOT)/e2/include"
+        # rune.c exposes e2_rune_main instead of main under this define.
+        GCC_PREPROCESSOR_DEFINITIONS:
+          - "$(inherited)"
+          - E2_AS_LIBRARY
         OTHER_LDFLAGS:
           - "$(inherited)"
           - -framework

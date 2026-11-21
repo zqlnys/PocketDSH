@@ -2727,7 +2727,17 @@ static void dump_fault_state(const e2_machine *m)
     }
 }
 
+// Library entry points. The command-line harness and the iOS app run the same code; the app
+// needs to point the guest root at its bundle and call in without owning main().
+void e2_set_root(const char *path) {
+    if (path != NULL && path[0] != '\0') ROOT = path;
+}
+
+#ifndef E2_AS_LIBRARY
 int main(int argc, char **argv) {
+#else
+int e2_rune_main(int argc, char **argv) {
+#endif
     const char *path = argc > 1 ? argv[1] : "/tmp/bbs/bin/busybox.static";
     g_self_path = path;
     fd_init();
