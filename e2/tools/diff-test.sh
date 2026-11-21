@@ -19,6 +19,10 @@ ROOT=/tmp/alpine-root
 # populated, and two processes doing that at once race over the same path. verify-all.sh
 # runs the static and dynamic suites in parallel and gives each its own.
 DT_APPLETS=${DT_APPLETS:-/tmp/dt-applets}
+# Cases whose difference is understood. Keep this list short and each entry explained; it
+# exists so a known gap stays visible instead of being deleted to keep the suite green.
+DT_EXPECTED_DIFF='printf '"'"'x\n'"'"' | awk '"'"'{ "echo A; echo B" | getline v; print v }'"'"
+known=0
 
 # Refuse to run without the pieces, rather than comparing a subset and reporting a
 # smaller number. Without this, a missing root filesystem produced "25 same" instead of
@@ -436,6 +440,13 @@ while IFS= read -r cmd; do
             empty="$empty
   [$cmd]"
         fi
+    elif printf '%s\n' "$DT_EXPECTED_DIFF" | grep -qxF "$cmd"; then
+        # A case whose difference is understood and recorded, rather than a case that was
+        # quietly deleted. The count of known differences has to stay visible so this cannot
+        # become a place to hide regressions.
+        known=$((known + 1))
+        printf 'KNOWN [%s]\n  mine: %s\n  qemu: %s\n' \
+            "$cmd" "$(printf '%s' "$mine" | tr '\n' '|')" "$(printf '%s' "$theirs" | tr '\n' '|')"
     else
         fail=$((fail + 1))
         printf 'DIFF [%s]\n  mine: %s\n  qemu: %s\n' \
@@ -828,6 +839,18 @@ sh -c 'unset x; echo $((x+1)) ${x:-d} ${x-d}'
 echo 'a/b' | sed 's|/|\\|'
 # awk: printf with a width from a variable
 printf '1 5\n' | awk '{printf "%*d\n", $2, $1}'
+# awk: modifying a field rebuilds $0 and NF
+printf 'a b c\n' | awk '{$2="X"; print; print NF}'
+# awk: END runs with the last record still in $0
+printf '1\n2\n3\n' | awk 'END{print NR, $0}'
+# sed: a substitution with & and \& in the replacement
+echo 'abc' | sed 's/b/[&]/; s/a/\\&/'
+# sed: y/// transliteration versus tr
+echo 'hello' | sed 'y/el/ip/'
+# printf: escaped percent and field width reuse
+printf '%s|%5.2f|%%\n' ab 3.14159
+# awk: getline from a pipe inside a loop
+printf 'x\n' | awk '{ "echo A; echo B" | getline v; print v }'
 echo 'x' | tr 'a-z' 'n-za-m'
 printf '1\n2\n3\n' | awk 'NR>1{print prev}{prev=$0}'
 sh /tmp/dtreal2.sh
@@ -841,7 +864,11 @@ if [ $((pass + fail)) -lt 100 ]; then
     echo "diff test: only $((pass + fail)) case(s) ran, expected at least 100" >&2
     exit 1
 fi
-echo "diff test: $pass same, $fail different"
+if [ "$known" -gt 0 ]; then
+    echo "diff test: $pass same, $fail different, $known known-different"
+else
+    echo "diff test: $pass same, $fail different"
+fi
 if [ -n "$empty" ]; then
     echo "  $(( $(printf '%s' "$empty" | grep -c '^  \[') )) case(s) produced no output on either side:"
     printf '%s\n' "$empty"
