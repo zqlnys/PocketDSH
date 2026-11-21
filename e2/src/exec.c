@@ -1113,20 +1113,23 @@ e2_status e2_step(e2_machine *machine) {
         const uint64_t a0 = cpu->v[rn2][0], a1 = cpu->v[rn2][1];
         const uint64_t b0 = cpu->v[rm][0], b1 = cpu->v[rm][1];
         uint64_t r0 = 0, r1 = 0;
-        if (key == 35 && size != 0) {         // BSL / BIT / BIF: same bits as the logical
-            // group but with U set. `size` picks which of the three.
+        if (key == 35 && size != 0) {         // BSL / BIT / BIF: the logical group with U set
+            // Derived from a truth table against qemu with three distinct registers rather
+            // than from the naming, which had misled twice: for BIT and BIF the mask is Vm,
+            // not Vn. All eight rows of each table agree with these expressions.
+            const uint64_t d0 = cpu->v[rd][0], d1 = cpu->v[rd][1];
             switch (size) {
                 case 1:                        // BSL: the old destination selects
-                    r0 = (cpu->v[rd][0] & a0) | (~cpu->v[rd][0] & b0);
-                    r1 = (cpu->v[rd][1] & a1) | (~cpu->v[rd][1] & b1);
+                    r0 = (d0 & a0) | (~d0 & b0);
+                    r1 = (d1 & a1) | (~d1 & b1);
                     break;
-                case 2:                        // BIT: where Vn is 1, take Vm
-                    r0 = (a0 & b0) | (~a0 & cpu->v[rd][0]);
-                    r1 = (a1 & b1) | (~a1 & cpu->v[rd][1]);
+                case 2:                        // BIT: where Vm is 1 take Vn, else keep Vd
+                    r0 = (a0 & b0) | (~b0 & d0);
+                    r1 = (a1 & b1) | (~b1 & d1);
                     break;
-                default:                       // BIF: where Vn is 0, take Vm
-                    r0 = (a0 & cpu->v[rd][0]) | (~a0 & b0);
-                    r1 = (a1 & cpu->v[rd][1]) | (~a1 & b1);
+                default:                       // BIF: where Vm is 0 take Vn, else keep Vd
+                    r0 = (d0 & b0) | (~b0 & a0);
+                    r1 = (d1 & b1) | (~b1 & a1);
                     break;
             }
         } else if (key == 3) {                // logical subgroup
