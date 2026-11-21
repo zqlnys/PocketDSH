@@ -1162,6 +1162,12 @@ typedef struct {
     /// rather than owning its own. The interpreter is single-threaded, so threads take turns;
     /// what they share is real, what runs them is a scheduler.
     int thread_of;
+    /// Set while this thread is parked in FUTEX_WAIT. `futex_addr` is where it is waiting and
+    /// `futex_val` is the word it saw; the scheduler skips it until the word changes or a
+    /// wake names it, which is what stops a join() from spinning through its whole budget.
+    uint64_t futex_addr;
+    uint64_t futex_val;
+    int futex_waiting;
 } proc_t;
 static proc_t procs[E2_MAX_PROCS];
 static int g_next_pid = 2;
@@ -1263,6 +1269,44 @@ static long p_thread(void *ctx, const e2_machine *parent, uint64_t pc, uint64_t 
     t->used = 1;
     t->exit_status = 0;
     return t->pid;
+}
+
+static long p_futex_wait(void *ctx, uint64_t addr, uint64_t val, int *yield) {
+    proc_t *self = ctx;
+    *yield = 0;
+    // The main thread can wait too, and in practice it is the one that does: join() is the
+    // main thread parking until a worker finishes. Not blocking it spun through 92,000 futex
+    // calls in sixty million instructions and never let the worker run.
+    if (!getenv("E2_THREADS")) {
+        return 0;
+    }
+    uint32_t word = 0;
+    if (e2_memory_read(&self->m.mem, addr, &word, 4) != 0) {
+        return -14;   // EFAULT
+    }
+    if (word != (uint32_t)val) {
+        return -11;   // EAGAIN: it changed between the test and the wait
+    }
+    self->futex_addr = addr;
+    self->futex_val = val;
+    self->futex_waiting = 1;
+    // End this turn so the scheduler can run somebody who can make progress.
+    g_proc_budget = 0;
+    *yield = 1;
+    return 0;
+}
+
+static long p_futex_wake(void *ctx, uint64_t addr, uint64_t count) {
+    (void)ctx;
+    long woken = 0;
+    for (int i = 1; i < E2_MAX_PROCS && (uint64_t)woken < count; i++) {
+        proc_t *t = &procs[i];
+        if (!t->used || !t->alive || !t->futex_waiting) continue;
+        if (t->futex_addr != addr) continue;
+        t->futex_waiting = 0;
+        woken++;
+    }
+    return woken;
 }
 
 static long p_fork(void *ctx, const e2_machine *parent) {
@@ -1396,6 +1440,16 @@ static int pump_children_for_tab(int tab) {
         if (!c->used || !c->alive) continue;
         if (c->pc.fdtab == tab) continue;   // that is us
         if (c->running) continue;           // already on the stack - do not re-enter
+        if (c->futex_waiting) {
+            // Parked in FUTEX_WAIT. If the word it was waiting on has changed, or cannot be
+            // read any more, wake it - a missed wakeup would strand the thread forever.
+            uint32_t word = 0;
+            if (e2_memory_read(&c->m.mem, c->futex_addr, &word, 4) == 0 &&
+                word == (uint32_t)c->futex_val) {
+                continue;
+            }
+            c->futex_waiting = 0;
+        }
         // run_proc here is nested inside the caller's own run_proc. Saving and
         // restoring the budget keeps the outer process bounded: resetting it to
         // -1 after the inner run left the caller unbounded, and preemption then
@@ -1541,6 +1595,8 @@ static int run_proc(int idx) {
     // and every real threading library waits on one.
     if (getenv("E2_THREADS") != NULL) {
         env.thread = p_thread;
+        env.futex_wait = p_futex_wait;
+        env.futex_wake = p_futex_wake;
     }
     // A process starts at the root unless it has moved; E2_CWD still forces one.
     if (p->pc.cwd[0] == '\0') {
@@ -1562,7 +1618,29 @@ static int run_proc(int idx) {
     long syscalls_seen = 0;
     long guard = 0;
     while (p->alive) {
-        if (g_proc_budget >= 0 && ++spent > g_proc_budget) break;
+        // A parked process yields whatever its budget says: the top-level process runs with no
+        // budget at all, so keying this on the budget alone left join() spinning forever.
+        if (p->futex_waiting) {
+            {
+                uint32_t parked = 0;
+                if (e2_memory_read(&p->m.mem, p->futex_addr, &parked, 4) == 0 &&
+                    parked == (uint32_t)p->futex_val) {
+                    const long saved = g_proc_budget;
+                    g_proc_budget = proc_quantum();
+                    pump_children_for_tab(p->pc.fdtab);
+                    g_proc_budget = saved;
+                    if (e2_memory_read(&p->m.mem, p->futex_addr, &parked, 4) == 0 &&
+                        parked == (uint32_t)p->futex_val) {
+                        spent = 0;
+                        continue;
+                    }
+                }
+                p->futex_waiting = 0;
+            }
+        }
+        if (g_proc_budget >= 0 && ++spent > g_proc_budget) {
+            break;
+        }
         g_dbg_pc = p->m.cpu.pc;
         g_dbg_sp = p->m.cpu.sp;
         g_dbg_pid = p->pid;

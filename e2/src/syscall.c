@@ -851,8 +851,30 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
                 }
             }
             E2_RETURN((int64_t)a1);
-        case 98:  // futex: single-threaded, so nothing ever blocks
+        case 98: {  // futex
+            // Without a scheduler there is nothing to block on and returning success is right:
+            // a single-threaded program that waits on a futex is waiting for a thread it does
+            // not have. With one, WAIT and WAKE are what make a lock a lock.
+            const uint64_t op = a1 & 0x7Fu;   // FUTEX_CMD_MASK
+            if (env->futex_wait == NULL || env->futex_wake == NULL) {
+                E2_RETURN(0);
+            }
+            if (op == 0) {          // FUTEX_WAIT
+                int yield = 0;
+                const long rc = env->futex_wait(env->ctx, a0, a2, &yield);
+                if (rc < 0) {
+                    E2_RETURN(rc);
+                }
+                // Yielding is the host's business: its callback has already arranged for this
+                // turn to end. Returning 0 says the wait succeeded, which it did.
+                (void)yield;
+                E2_RETURN(0);
+            }
+            if (op == 1) {          // FUTEX_WAKE
+                E2_RETURN(env->futex_wake(env->ctx, a0, a3));
+            }
             E2_RETURN(0);
+        }
         case 29:  // ioctl
             // ENOTTY, not ENOTSUP: callers test specifically for ENOTTY to mean
             // "not a terminal" and fall back to a default width. Any other error

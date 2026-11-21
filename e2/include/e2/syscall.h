@@ -132,6 +132,12 @@ typedef struct {
     /// Returns the new thread's id for the child, or a negative errno. Optional - a host
     /// that cannot run threads simply leaves it NULL and clone() reports EINVAL as before.
     long (*thread)(void *ctx, const e2_machine *parent, uint64_t pc, uint64_t sp);
+    /// FUTEX_WAIT: returns 0 when the caller should block, -EAGAIN when the word no longer
+    /// holds `val`. A host that blocks must also end the current turn itself; `*yield` is set
+    /// when it has done so.
+    long (*futex_wait)(void *ctx, uint64_t addr, uint64_t val, int *yield);
+    /// FUTEX_WAKE: wakes up to `count` waiters on `addr` and returns how many it woke.
+    long (*futex_wake)(void *ctx, uint64_t addr, uint64_t count);
     /// Replaces the current image with the program at `path`. The host builds
     /// the new address space and stack inside `m`. Returns 0 or negative errno.
     int (*execve)(void *ctx, e2_machine *m, const char *path, uint64_t argv,
