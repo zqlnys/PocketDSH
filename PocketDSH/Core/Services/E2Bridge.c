@@ -31,8 +31,11 @@ static void e2_configure_environment(void) {
         return;
     }
     done = 1;
+    // A cap, not a reservation: the guest heap grows in chunks on demand, so a large ceiling
+    // costs nothing until something asks for it. It was 256 and CPython importing re through
+    // subprocess reported MemoryError on the device at that figure.
     if (getenv("E2_HEAP_MB") == NULL) {
-        setenv("E2_HEAP_MB", "256", 0);
+        setenv("E2_HEAP_MB", "1024", 0);
     }
     if (getenv("E2_CAP") == NULL) {
         setenv("E2_CAP", "400000000", 0);
