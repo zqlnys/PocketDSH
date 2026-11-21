@@ -595,17 +595,25 @@ private struct AgentEventRow: View {
                 }
 
                 if showsDetails && !event.detail.isEmpty {
-                    Text(event.detail)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(PocketTheme.primaryText.opacity(0.92))
-                        .lineLimit(event.kind == .assistant ? nil : 12)
-                        .textSelection(.enabled)
-                        .padding(PocketSpacing.sm)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background {
-                            RoundedRectangle(cornerRadius: PocketRadius.xs, style: .continuous)
-                                .fill(PocketTheme.codeSurface)
-                        }
+                    // An assistant reply is prose and gets rendered as Markdown; anything else
+                    // here is machine output and stays in a code font, where its own form is
+                    // the point.
+                    if event.kind == .assistant {
+                        MarkdownText(source: event.detail)
+                            .padding(.top, 2)
+                    } else {
+                        Text(event.detail)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(PocketTheme.primaryText.opacity(0.92))
+                            .lineLimit(12)
+                            .textSelection(.enabled)
+                            .padding(PocketSpacing.sm)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background {
+                                RoundedRectangle(cornerRadius: PocketRadius.xs, style: .continuous)
+                                    .fill(PocketTheme.codeSurface)
+                            }
+                    }
                 }
             }
         }

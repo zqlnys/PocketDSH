@@ -129,3 +129,69 @@ final class E2BackendTests: XCTestCase {
         XCTAssertEqual(contents.trimmingCharacters(in: .whitespacesAndNewlines), "written")
     }
 }
+
+/// Markdown block parsing, which decides how an assistant reply is laid out.
+final class MarkdownParsingTests: XCTestCase {
+
+    private func kinds(_ source: String) -> [String] {
+        MarkdownText.blocks(in: source).map { block in
+            switch block {
+            case .paragraph: return "p"
+            case .heading(_, let level): return "h\(level)"
+            case .bullets(let items): return "ul\(items.count)"
+            case .numbered(let items): return "ol\(items.count)"
+            case .quote: return "quote"
+            case .code(_, let language): return "code:\(language ?? "-")"
+            case .rule: return "rule"
+            }
+        }
+    }
+
+    func testFencedCodeKeepsItsLanguageAndBody() {
+        let source = """
+        Before.
+
+        ```swift
+        let x = 1
+        let y = 2
+        ```
+
+        After.
+        """
+        XCTAssertEqual(kinds(source), ["p", "code:swift", "p"])
+        if case .code(let body, _) = MarkdownText.blocks(in: source)[1] {
+            XCTAssertEqual(body, "let x = 1\nlet y = 2")
+        } else {
+            XCTFail("second block should be code")
+        }
+    }
+
+    /// A fence that has not closed yet is the normal state while a reply streams in. It has to
+    /// render as code, not as a paragraph containing three backticks.
+    func testUnterminatedFenceRunsToTheEnd() {
+        XCTAssertEqual(kinds("text\n```\nstill typing"), ["p", "code:-"])
+    }
+
+    func testHeadingsListsAndQuotes() {
+        let source = """
+        ## Title
+        - one
+        - two
+
+        1. first
+        2. second
+
+        > quoted
+        """
+        XCTAssertEqual(kinds(source), ["h2", "ul2", "ol2", "quote"])
+    }
+
+    /// A stray asterisk must not swallow the sentence it sits in.
+    func testMalformedInlineFallsBackToPlainText() {
+        XCTAssertEqual(kinds("a *unclosed emphasis"), ["p"])
+    }
+
+    func testRuleIsNotSwallowedByParagraphs() {
+        XCTAssertEqual(kinds("a\n\n---\n\nb"), ["p", "rule", "p"])
+    }
+}
