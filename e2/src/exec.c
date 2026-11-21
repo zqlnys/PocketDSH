@@ -1977,8 +1977,11 @@ not_a_shift:;
             for (unsigned bit = 0; bit < 64; bit += esize) {
                 fill |= v << bit;
             }
+            // The 64-bit form writes only the low half; the upper 64 bits are cleared, as for
+            // every other 64-bit Advanced SIMD write. Leaving them alone instead made a reply
+            // that used `ld1r {v0.8b}` read whatever was in the register before it.
             cpu->v[(rt + r) % 32][0] = fill;
-            if (q) cpu->v[(rt + r) % 32][1] = fill;
+            cpu->v[(rt + r) % 32][1] = q ? fill : 0;
         }
         cpu->pc = next_pc;
         machine->instructions++;

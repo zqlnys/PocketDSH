@@ -2681,6 +2681,31 @@ static int run_proc(int idx) {
 // Dumps the structures the faulting instruction was reading. The evaluation loop keeps its
 // frame in x5, and x24 points at the thread state that held it, so between them the bad
 // pointer and its origin are both visible.
+// Scans guest memory for a byte pattern and prints where it lives.
+//
+// Written to find a buffer that something had corrupted two bytes at a time: knowing the
+// address is what makes E2_WATCH useful, because the watch reports every write to it.
+static void scan_guest_for(const e2_machine *m, const char *needle) {
+    const size_t n = strlen(needle);
+    if (n == 0) return;
+    for (unsigned r = 0; r < m->mem.count; r++) {
+        const e2_region *reg = &m->mem.regions[r];
+        const size_t step = 1;
+        for (size_t off = 0; off + n <= reg->size; off += step) {
+            uint8_t buf[256];
+            if (n > sizeof(buf)) break;
+            if (e2_memory_read(&m->mem, reg->base + off, buf, n) != 0) continue;
+            if (memcmp(buf, needle, n) == 0) {
+                fprintf(stderr, "[scan] %s at 0x%llx (region base 0x%llx)\n",
+                        needle, (unsigned long long)(reg->base + off),
+                        (unsigned long long)reg->base);
+                return;
+            }
+        }
+    }
+    fprintf(stderr, "[scan] %s not found\n", needle);
+}
+
 static void dump_fault_state(const e2_machine *m)
 {
     const unsigned regs[4] = {5, 24, 19, 1};
@@ -2852,6 +2877,9 @@ env_done:
     if (getenv("E2_TRACE_WAITSUM"))
         fprintf(stderr, "[waitsum] calls=%d ok=%d echild=%d\n",
                 g_wait_calls, g_wait_ok, g_wait_echild);
+    if (getenv("E2_SCAN")) {
+        scan_guest_for(&procs[1].m, getenv("E2_SCAN"));
+    }
     if (g_fault && getenv("E2_DUMP_AT_FAULT")) {
         dump_fault_state(&procs[1].m);
     }
