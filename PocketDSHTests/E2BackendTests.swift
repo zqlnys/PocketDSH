@@ -26,7 +26,16 @@ final class E2BackendTests: XCTestCase {
     /// The first version omitted the harness's own argv[0], so the busybox path landed at
     /// index 0 and the program's own name at index 1 - and the harness dutifully tried to
     /// load a file called "sh".
-    private func runGuest(_ program: String, _ arguments: [String]) throws -> (status: Int32, output: String) {
+    private func runGuest(_ program: String, _ arguments: [String],
+                          cap: String? = nil) throws -> (status: Int32, output: String) {
+        // A per-run instruction ceiling. A case that is going to be skipped should be skipped
+        // in seconds, not after the default cap has burned two minutes and left the
+        // interpreter in a state the next test inherits.
+        if let cap {
+            setenv("E2_CAP", cap, 1)
+        } else {
+            unsetenv("E2_CAP")
+        }
         let argv = ["e2", program] + arguments
         let root = try guestRoot()
         let out = FileManager.default.temporaryDirectory
@@ -220,7 +229,7 @@ final class E2BackendTests: XCTestCase {
         print("rc", rc)
         """.write(to: script, atomically: true, encoding: .utf8)
 
-        let (status, output) = try runGuest(python, ["/tmp/e2-sub-nocap.py"])
+        let (status, output) = try runGuest(python, ["/tmp/e2-sub-nocap.py"], cap: "120000000")
         if output.contains("MemoryError") || output.contains("instruction cap") {
             throw XCTSkip("subprocess does not complete on this device: \(output.suffix(160))")
         }
