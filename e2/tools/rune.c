@@ -1083,15 +1083,25 @@ static int start_image(e2_machine *m, const char *path, char args[][ARG_MAX], in
     // AT_* come from <elf.h>.
     uint64_t st[80];
     int k = 0;
+    uint64_t plat = 0;
+    {
+        static const char name[] = "aarch64";
+        plat = sp + (uint64_t)(k * 8) + 64;   /* after the vector, before argp strings */
+        e2_memory_write(&m->mem, plat, name, sizeof(name));
+    }
     st[k++] = (uint64_t)nargs;
     for (int i = 0; i < nargs; i++) st[k++] = argp[i];
     st[k++] = 0;
     for (int i = 0; i < nenv; i++) st[k++] = envp[i];
     st[k++] = 0;
-    st[k++] = AT_PAGESZ; st[k++] = 4096;
+    // qemu-user's order, which the loader walks rather than indexes: musl scans the panel
+    // looking for AT_PAGESZ and stops at the first one it meets, so a different position
+    // changes how many iterations happen. Order carries no meaning to a reader of auxv, but
+    // it decides whether a trace taken here lines up with qemu's.
     st[k++] = AT_PHDR;   st[k++] = app.phdr_addr;
     st[k++] = AT_PHENT;  st[k++] = app.phentsize;
     st[k++] = AT_PHNUM;  st[k++] = app.phnum;
+    st[k++] = AT_PAGESZ; st[k++] = 4096;
     st[k++] = AT_BASE;   st[k++] = ld.entry ? ld.load_bias : 0;
     st[k++] = AT_ENTRY;  st[k++] = app.entry;
     st[k++] = AT_EXECFN; st[k++] = argp[0];
@@ -1108,6 +1118,11 @@ static int start_image(e2_machine *m, const char *path, char args[][ARG_MAX], in
     st[k++] = AT_CLKTCK;  st[k++] = 100;
     st[k++] = AT_FLAGS;   st[k++] = 0;
     st[k++] = AT_RANDOM;  st[k++] = rnd;
+    // qemu-user also passes these two. Neither changes behaviour on its own, but the number
+    // of entries decides how many times musl's _dlstart walks the panel, and a different
+    // count makes an instruction trace taken here incomparable with qemu's from that point.
+    st[k++] = AT_PLATFORM;     st[k++] = plat;
+    st[k++] = AT_MINSIGSTKSZ;  st[k++] = 8192;
     st[k++] = AT_NULL;    st[k++] = 0;
     e2_memory_write(&m->mem, sp, st, (size_t)k * 8);
     m->cpu.sp = sp;
@@ -2059,13 +2074,27 @@ static int run_proc(int idx) {
             static uint64_t at_pc = 0;
             static int at_done = 0;
             static int at_init = 0;
+            static long at_nth = 0;
             if (!at_init) {
                 const char *a = getenv("E2_AT");
                 at_pc = a ? strtoull(a, NULL, 0) : 0;
+                // E2_AT_NTH reports only the nth visit to that address. Comparing two
+                // implementations at "the first visit" or "the last visit" compares two
+                // different invocations of the same code, and the differences that shows are
+                // noise - that mistake cost three rounds. Counting to a fixed visit makes the
+                // two sides comparable.
+                const char *n = getenv("E2_AT_NTH");
+                at_nth = n ? strtol(n, NULL, 0) : 0;
                 at_init = 1;
             }
-            if (at_pc != 0 && at_done < 400 && p->m.cpu.pc == at_pc) {
+            if (at_pc != 0 && p->m.cpu.pc == at_pc) {
                 at_done++;
+                if (at_nth > 0 && at_done != at_nth) {
+                    goto at_skip;
+                }
+                if (at_nth <= 0 && at_done > 400) {
+                    goto at_skip;
+                }
                 fprintf(stderr,
                         "[at] pc=0x%llx x0=0x%llx x1=0x%llx x2=0x%llx x3=0x%llx "
                         "x4=0x%llx x6=0x%llx x19=0x%llx sp=0x%llx\n",
@@ -2109,6 +2138,7 @@ static int run_proc(int idx) {
                             (unsigned long long)f18, ok18 == 0,
                             (unsigned long long)f20, ok20 == 0);
                 }
+            at_skip:;
             }
         }
         if (env_once("E2_TRACE_EXC", &g_sw_exc) && p->m.cpu.pc == 0x10203524) {
