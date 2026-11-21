@@ -162,6 +162,42 @@ final class E2BackendTests: XCTestCase {
         XCTAssertTrue(output.contains("child 7"), output)
     }
 
+    /// fork, exec and wait, without subprocess's imports.
+    ///
+    /// The fork test passes on the device, so this narrows it to the other two: a child that
+    /// execs busybox and a parent that reaps it. subprocess failing while this passes would put
+    /// the problem in subprocess's own machinery rather than in the syscalls under it.
+    func testPythonForkExecWait() throws {
+        let root = try guestRoot()
+        let python = root.appendingPathComponent("usr/bin/python3.12").path
+        try XCTSkipUnless(FileManager.default.fileExists(atPath: python),
+                          "this build's guest root has no CPython")
+        try XCTSkipUnless(FileManager.default.fileExists(
+                            atPath: root.appendingPathComponent("bin/busybox").path),
+                          "needs busybox in the guest root")
+
+        let script = root.appendingPathComponent("tmp/e2-forkexec.py")
+        try? FileManager.default.createDirectory(at: script.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: script) }
+        try """
+        import os
+        pid = os.fork()
+        if pid == 0:
+            os.execv("/bin/busybox", ["/bin/busybox", "echo", "exec-ran"])
+            os._exit(3)
+        print("status", os.waitpid(pid, 0)[1] >> 8)
+        """.write(to: script, atomically: true, encoding: .utf8)
+
+        let (status, output) = try runGuest(python, ["/tmp/e2-forkexec.py"])
+        if output.contains("instruction cap") {
+            throw XCTSkip("fork+exec+wait does not complete on this device")
+        }
+        XCTAssertEqual(status, 0, "python exited \(status); output was <<<\(output)>>>")
+        XCTAssertTrue(output.contains("exec-ran"), output)
+        XCTAssertTrue(output.contains("status 0"), output)
+    }
+
     /// A file the guest writes has to show up on disk, because the workspace mount depends on
     /// it.
     func testGuestWritesAFile() throws {
