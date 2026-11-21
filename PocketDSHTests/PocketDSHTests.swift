@@ -153,7 +153,16 @@ final class PocketDSHTests: XCTestCase {
             systemActions: SystemActionStore()
         )
 
+        // AgentRunner dispatches subagent itself - it needs the parent conversation and the
+        // API key, which the executor does not have - so the executor is the wrong place to
+        // look for that one. Everything else has to be handled here.
+        //
+        // runSubtaskTool is private, so this test cannot prove the exemption is still
+        // warranted; if that method is ever removed, this list has to be edited by hand.
+        let dispatchedByRunner: Set<String> = [ToolNames.subagent]
+
         for spec in ToolCatalog.specs {
+            if dispatchedByRunner.contains(spec.function.name) { continue }
             let result = await executor.execute(name: spec.function.name,
                                                 argumentsJSON: "{}")
             XCTAssertFalse(result.content.contains("Unknown tool"),
