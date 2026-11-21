@@ -1385,12 +1385,22 @@ static int p_execve(void *ctx, e2_machine *m, const char *path, uint64_t argv,
     const bool is_busybox = arg0_base != NULL && strncmp(arg0_base + 1, "busybox", 7) == 0;
     char arg0[2048];
     snprintf(arg0, sizeof(arg0), "%s", (is_busybox && arg0_base) ? arg0_base + 1 : path);
+    // Fall back to the image we are already running only when the requested path is not a
+    // readable file here - that is what makes exec'ing a guest symlink work. Doing it
+    // unconditionally meant every exec loaded the *initial* image: run_linux on python3
+    // then `subprocess.run(["/bin/busybox", ...])` re-loaded CPython instead of busybox, and
+    // busybox was never anywhere in the picture.
     if (g_self_path != NULL && strcmp(g_self_path, host) != 0) {
-        if (nargs == 0) {
-            snprintf(args[0], sizeof(args[0]), "%s", arg0);
-            nargs = 1;
+        FILE *probe = fopen(host, "rb");
+        if (probe == NULL) {
+            if (nargs == 0) {
+                snprintf(args[0], sizeof(args[0]), "%s", arg0);
+                nargs = 1;
+            }
+            snprintf(host, sizeof(host), "%s", g_self_path);
+        } else {
+            fclose(probe);
         }
-        snprintf(host, sizeof(host), "%s", g_self_path);
     }
     if (nargs == 0) {
         snprintf(args[0], sizeof(args[0]), "%s", arg0);
@@ -1402,6 +1412,12 @@ static int p_execve(void *ctx, e2_machine *m, const char *path, uint64_t argv,
         snprintf(args[0], sizeof(args[0]), "%s", arg0);
     }
 
+    if (getenv("E2_TRACE_EXEC")) {
+        fprintf(stderr, "[exec] path=\"%s\" host=\"%s\" nargs=%d\n", path, host, nargs);
+        for (int z = 0; z < nargs && z < 4; z++) {
+            fprintf(stderr, "[exec]   arg%d = \"%s\"\n", z, args[z]);
+        }
+    }
     // execve closes FD_CLOEXEC descriptors before the new image starts.
     {
         const int tab = ((const procctx *)ctx)->fdtab;
