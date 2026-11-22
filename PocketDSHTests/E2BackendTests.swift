@@ -279,6 +279,39 @@ final class E2BackendTests: XCTestCase {
         XCTAssertTrue(output.contains("capture cap"), output)
     }
 
+    /// The guest sees the project it was asked about.
+    ///
+    /// `run(command:workspace:)` accepted a workspace and ignored it, so every `run_linux` saw a
+    /// scratch directory instead of the project - a parameter that promised access and delivered
+    /// none.
+    @MainActor
+    func testGuestSeesTheWorkspace() async throws {
+        let root = try guestRoot()
+        try XCTSkipUnless(FileManager.default.isReadableFile(
+                            atPath: root.appendingPathComponent("bin/busybox").path),
+                          "needs a readable busybox in the guest root")
+
+        let project = FileManager.default.temporaryDirectory
+            .appendingPathComponent("e2ws-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: project) }
+        try "from-the-project".write(to: project.appendingPathComponent("note.txt"),
+                                     atomically: true, encoding: .utf8)
+
+        let runtime = E2Runtime()
+        let read = await runtime.run(command: "cat /workspace/note.txt", workspace: project)
+        XCTAssertFalse(read.isError, read.content)
+        XCTAssertTrue(read.content.contains("from-the-project"), read.content)
+
+        // And writing lands on the host, in the same directory.
+        let wrote = await runtime.run(command: "echo made-here > /workspace/made.txt",
+                                      workspace: project)
+        XCTAssertFalse(wrote.isError, wrote.content)
+        let onHost = project.appendingPathComponent("made.txt")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: onHost.path),
+                      "guest write did not reach the project directory")
+    }
+
     /// A command that fails has to say so.
     ///
     /// The runtime only checked for a negative status, so `exit 3` and a missing command both

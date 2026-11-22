@@ -80,8 +80,17 @@ final class E2Runtime: ObservableObject {
         defer { for pointer in cArgs { free(pointer) } }
         cArgs.append(nil)
 
+        // The command was asked about a project; without this the guest's /workspace is a scratch
+        // directory and the command cannot see a single file of it.
+        let workspacePath = workspace?.path
         let status = cArgs.withUnsafeMutableBufferPointer { buffer -> Int32 in
-            e2_bridge_run(rootfs.path, outURL.path, Int32(argv.count), buffer.baseAddress)
+            if let workspacePath {
+                return workspacePath.withCString { dir in
+                    e2_bridge_run_in(rootfs.path, dir, outURL.path,
+                                     Int32(argv.count), buffer.baseAddress)
+                }
+            }
+            return e2_bridge_run(rootfs.path, outURL.path, Int32(argv.count), buffer.baseAddress)
         }
 
         let output = (try? String(contentsOf: outURL, encoding: .utf8)) ?? ""
