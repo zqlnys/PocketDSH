@@ -429,15 +429,14 @@ struct AgentView: View {
                 TextField("Describe a task for this workspace…", text: $input, axis: .vertical)
                     .font(.body)
                     .lineLimit(1...5)
-                    .padding(.horizontal, 13)
+                    .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .background {
-                        RoundedRectangle(cornerRadius: PocketRadius.lg, style: .continuous)
-                            .fill(PocketTheme.elevatedSurface)
-                    }
-                    .overlay {
-                        RoundedRectangle(cornerRadius: PocketRadius.lg, style: .continuous)
-                            .stroke(PocketTheme.stroke.opacity(0.7), lineWidth: 1)
+                        // A soft filled pill rather than an outlined box: the composer is the
+                        // one control always on screen, and an outline makes it look like a
+                        // form field.
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .fill(PocketTheme.field)
                     }
                     .disabled(agent.isRunning)
 
@@ -560,8 +559,10 @@ private struct AgentEventRow: View {
             .padding(.horizontal, PocketSpacing.md)
             .padding(.vertical, PocketSpacing.sm)
             .background {
-                RoundedRectangle(cornerRadius: PocketRadius.lg, style: .continuous)
-                    .fill(PocketTheme.accent.opacity(0.10))
+                // A filled bubble, the way a chat app marks what the person said, rather than
+                // a tinted outline on the canvas.
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(PocketTheme.userBubble)
             }
         }
     }
@@ -642,14 +643,21 @@ private struct AgentEventRow: View {
                 }
             }
         }
-        .padding(PocketSpacing.md)
+        .padding(.vertical, PocketSpacing.xs)
         .background {
-            RoundedRectangle(cornerRadius: PocketRadius.lg, style: .continuous)
-                .fill(PocketTheme.surface)
+            // No card for an assistant reply: text on the canvas, with the icon and name above
+            // it. A bordered box around every answer is what made the transcript read as a list
+            // of events rather than a conversation.
+            if event.kind != .assistant {
+                RoundedRectangle(cornerRadius: PocketRadius.lg, style: .continuous)
+                    .fill(PocketTheme.surface)
+            }
         }
         .overlay {
-            RoundedRectangle(cornerRadius: PocketRadius.lg, style: .continuous)
-                .stroke(PocketTheme.stroke.opacity(0.55), lineWidth: 1)
+            if event.kind != .assistant {
+                RoundedRectangle(cornerRadius: PocketRadius.lg, style: .continuous)
+                    .stroke(PocketTheme.stroke.opacity(0.7), lineWidth: 1)
+            }
         }
     }
 

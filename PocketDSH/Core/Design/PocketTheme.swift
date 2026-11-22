@@ -12,30 +12,39 @@ import UIKit
 enum PocketTheme {
     // MARK: Brand
 
-    static let accent = Color(hex: "#2F5D50")
-    static let accentDeep = Color(hex: "#23483E")
-    static let blue = Color(hex: "#3E6FB0")
-    static let amber = Color(hex: "#A8732A")
-    static let red = Color(hex: "#A84B44")
-    static let violet = Color(hex: "#6E5E96")
+    // Cool blue on white, the palette a chat app people already use looks like. The previous
+    // one was warm - a deep green on a cream canvas - which read as a notebook rather than as a
+    // conversation.
+    static let accent = Color(hex: "#4D6BFE")
+    static let accentDeep = Color(hex: "#3A55D9")
+    static let blue = Color(hex: "#4D6BFE")
+    static let amber = Color(hex: "#D97706")
+    static let red = Color(hex: "#DC2626")
+    static let violet = Color(hex: "#7C5CE0")
+
+    /// The fill behind a user's own message: a very light blue, so the bubble is distinct from
+    /// the canvas without being a second colour.
+    static let userBubble = dynamic(light: "#EFF3FF", dark: "#1E2436")
+    /// The fill behind the composer and the small controls.
+    static let field = dynamic(light: "#F4F5F7", dark: "#202124")
 
     // MARK: Surfaces
 
-    static let canvas = dynamic(light: "#F7F6F2", dark: "#0C0D0D")
-    static let canvasElevated = dynamic(light: "#FBFAF7", dark: "#111212")
-    static let surface = dynamic(light: "#FFFFFF", dark: "#171818")
-    static let elevatedSurface = dynamic(light: "#F0EEE8", dark: "#1D1E1E")
-    static let codeSurface = dynamic(light: "#FAF9F6", dark: "#101111")
-    static let primaryText = dynamic(light: "#171716", dark: "#F1EFE9")
-    static let secondaryText = dynamic(light: "#77746C", dark: "#A5A199")
-    static let stroke = dynamic(light: "#E2DED4", dark: "#2B2C2B")
+    static let canvas = dynamic(light: "#FFFFFF", dark: "#0E0F11")
+    static let canvasElevated = dynamic(light: "#FFFFFF", dark: "#141518")
+    static let surface = dynamic(light: "#FFFFFF", dark: "#1A1B1E")
+    static let elevatedSurface = dynamic(light: "#F4F5F7", dark: "#202124")
+    static let codeSurface = dynamic(light: "#F7F8FA", dark: "#16171A")
+    static let primaryText = dynamic(light: "#1A1A1A", dark: "#ECECEC")
+    static let secondaryText = dynamic(light: "#8B8B8B", dark: "#9AA0A6")
+    static let stroke = dynamic(light: "#EAEAEA", dark: "#2A2B2E")
 
     /// Slightly stronger than `stroke`, for the edge of a card that has to read
     /// against a tinted canvas.
-    static let cardStroke = dynamic(light: "#E7E3DA", dark: "#262727")
+    static let cardStroke = dynamic(light: "#EFEFEF", dark: "#25262A")
 
     static let background = LinearGradient(
-        colors: [canvas, canvasElevated],
+        colors: [canvas, canvas],
         startPoint: .top,
         endPoint: .bottom
     )
