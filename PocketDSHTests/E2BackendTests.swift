@@ -184,6 +184,36 @@ final class E2BackendTests: XCTestCase {
     // anything. Both of the things that fail there are the ones that block in poll, and both
     // are covered by the command-line suites.
 
+    /// A diagnostic, not a test: what poll is asked and what it answers, on a device.
+    ///
+    /// asyncio and subprocess both block in poll, both work on the command line, and both fail
+    /// here. Nothing so far has shown what poll does on the device, so this run prints it and
+    /// deliberately stops early - the point is the trace, not the program.
+    func testPollTraceDiagnostic() throws {
+        let root = try guestRoot()
+        let python = root.appendingPathComponent("usr/bin/python3.12").path
+        try XCTSkipUnless(FileManager.default.fileExists(atPath: python),
+                          "this build's guest root has no CPython")
+
+        let script = root.appendingPathComponent("tmp/e2-polltrace.py")
+        try? FileManager.default.createDirectory(at: script.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: script) }
+        try """
+        import asyncio
+        loop = asyncio.new_event_loop()
+        print("loop built")
+        """.write(to: script, atomically: true, encoding: .utf8)
+
+        setenv("E2_TRACE_POLL", "1", 1)
+        defer { unsetenv("E2_TRACE_POLL") }
+        let (_, output) = try runGuest(python, ["/tmp/e2-polltrace.py"], cap: "40000000")
+        let lines = output.split(separator: "\n").filter { $0.contains("[poll]") }
+        print("POLLTRACE count=\(lines.count)")
+        for line in lines.prefix(12) { print("POLLTRACE \(line)") }
+        print("POLLTRACE tail=\(output.suffix(300))")
+    }
+
     /// A file the guest writes has to show up on disk, because the workspace mount depends on
     /// it.
     func testGuestWritesAFile() throws {

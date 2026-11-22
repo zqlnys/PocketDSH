@@ -151,6 +151,9 @@ static long sys_poll(e2_machine *m, e2_syscall_env *env, uint64_t fds_addr, uint
         // A zero timeout is a pure status check; report what is ready now.
     }
     long ready = 0;
+    // The device and the command line disagree about poll, and the disagreement is invisible
+    // without knowing what poll was asked and what it answered.
+    const bool trace_poll = getenv("E2_TRACE_POLL") != NULL;
     for (uint64_t i = 0; i < nfds; i++) {
         struct {
             int32_t fd;
@@ -177,6 +180,11 @@ static long sys_poll(e2_machine *m, e2_syscall_env *env, uint64_t fds_addr, uint
         entry.revents = (int16_t)revents;
         if (e2_memory_write(&m->mem, at, &entry, sizeof(entry)) != 0) {
             return -E2_EFAULT;
+        }
+        if (trace_poll) {
+            fprintf(stderr, "[poll] fd=%d events=0x%x -> revents=0x%x timeout=%ld\n",
+                    (int)entry.fd, (unsigned)(unsigned short)entry.events,
+                    (unsigned)(unsigned short)revents, timeout_ms);
         }
         if (revents != 0) {
             ready++;
