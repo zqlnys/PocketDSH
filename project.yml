@@ -69,6 +69,10 @@ targets:
       # with the bytecode present, past 600M without. Copying it here is the reliable way.
       - name: Copy precompiled Python bytecode into the bundle
         shell: /bin/bash
+        # Declared so the build sandbox allows the read. Without it find is denied access to the
+        # source tree and the whole build fails - ENABLE_USER_SCRIPT_SANDBOXING is on here.
+        inputFiles:
+          - $(SRCROOT)/PocketDSH/Resources/alpine-root
         script: |
           set -euo pipefail
           SRC="$SRCROOT/PocketDSH/Resources/alpine-root/usr/lib/python3.12"
