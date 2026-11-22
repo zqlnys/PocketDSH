@@ -211,6 +211,38 @@ final class E2BackendTests: XCTestCase {
         XCTAssertTrue(runtime.isSessionActive, "the runtime should report a live session")
     }
 
+    /// Where asyncio stops on a device, as markers rather than a guess.
+    ///
+    /// Named to sort last: if it reaches the instruction cap, everything after it in the same
+    /// process inherits the state, and the three earlier failures of that kind are enough.
+    func testZZAsyncioDiagnostic() throws {
+        let root = try guestRoot()
+        let python = root.appendingPathComponent("usr/bin/python3.12").path
+        try XCTSkipUnless(FileManager.default.isReadableFile(atPath: python),
+                          "this build's guest root has no CPython")
+
+        let script = root.appendingPathComponent("tmp/e2-asy-diag.py")
+        try? FileManager.default.createDirectory(at: script.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: script) }
+        try """
+        import sys
+        print("A-start", flush=True)
+        import asyncio
+        print("B-imported", flush=True)
+        loop = asyncio.new_event_loop()
+        print("C-loop", flush=True)
+        loop.close()
+        print("D-closed", flush=True)
+        """.write(to: script, atomically: true, encoding: .utf8)
+
+        let (_, output) = try runGuest(python, ["/tmp/e2-asy-diag.py"], cap: "500000000")
+        let marks = output.split(separator: "\n").filter { $0.hasPrefix("A-") || $0.hasPrefix("B-")
+            || $0.hasPrefix("C-") || $0.hasPrefix("D-") }
+        print("ASYNCIO-MARK \(marks.joined(separator: " "))")
+        print("ASYNCIO-TAIL \(output.suffix(240))")
+    }
+
     /// A file the guest writes has to show up on disk, because the workspace mount depends on
     /// it.
     func testGuestWritesAFile() throws {
