@@ -144,7 +144,7 @@ final class PluginRuntimeManager: ObservableObject {
                 argumentsJSON: encoded
             )
             if outcome.isError {
-                store.log(pluginID: route.pluginID, level: "error", message: outcome.content)
+                store.log(pluginID: route.pluginID, level: .error, message: outcome.content)
                 return .failure(outcome.content)
             }
             return .success(outcome.content)

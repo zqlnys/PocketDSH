@@ -46,6 +46,11 @@ final class WorkspaceSession: ObservableObject {
             workspace: fileSystem
         )
         self.pluginRuntime = pluginRuntime
+        // Python plugins run in the guest CPython, and this is the one place holding both the
+        // plugin manager and the Tier D runtime. Handed over unconditionally: the executor
+        // reports the reason when Tier D is unavailable, which is better than a plugin that
+        // silently fails to load.
+        pluginRuntime.pythonExecutor = E2PythonPluginExecutor(runtime: e2Runtime)
         let toolExecutor = ToolExecutor(
             workspace: fileSystem,
             luaEngine: luaEngine,
@@ -112,10 +117,6 @@ final class AppState: ObservableObject {
         systemActions = SystemActionStore()
         linuxRuntime = LinuxRuntime()
         e2Runtime = E2Runtime()
-        // Python plugins run in the guest CPython, so the executor is only useful once Tier D is
-        // there to run it. Handing it over unconditionally is right: it reports the reason when
-        // Tier D is unavailable, which is better than the plugin silently not loading.
-        self.pluginRuntime.pythonExecutor = E2PythonPluginExecutor(runtime: e2Runtime)
         luaEngine = LuaEngine()
         sessionSubscription = linuxRuntime.$state
             .map { $0 == .active }
