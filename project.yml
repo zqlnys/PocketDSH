@@ -67,39 +67,40 @@ targets:
       # named __pycache__ - and without it CPython compiles every module from source on a
       # read-only bundle, which costs more than twice the instructions: 239M for `import asyncio`
       # with the bytecode present, past 600M without. Copying it here is the reliable way.
-      - name: Copy precompiled Python bytecode into the bundle
+      - name: Compile Python bytecode into the bundle
         shell: /bin/bash
-        # Declared so the build sandbox allows the read. Without it find is denied access to the
-        # source tree and the whole build fails - ENABLE_USER_SCRIPT_SANDBOXING is on here.
         inputFiles:
           - $(SRCROOT)/PocketDSH/Resources/alpine-root
         script: |
-          # Every variable gets a fallback and nothing is set -u: under set -u an unset Xcode
-          # variable ends the script before its first line of output, which is what happened.
+          # Compiling here rather than in the fetch step. A clean runs between the two - the
+          # fetch wrote 585 files and the build found none - and .pyc matches a gitignore rule,
+          # so a git clean removes them and leaves the directories. Doing it as part of the build
+          # is after all of that.
+          #
+          # Why it matters: the app bundle is read-only, so without bytecode CPython compiles
+          # every import from source, and `import asyncio` costs past 600M instructions instead
+          # of 239M.
           SRC="${SRCROOT:-}/PocketDSH/Resources/alpine-root/usr/lib/python3.12"
           DST="${TARGET_BUILD_DIR:-}/${UNLOCALIZED_RESOURCES_FOLDER_PATH:-}/alpine-root/usr/lib/python3.12"
-          echo "bytecode phase: src=$SRC"
-          echo "bytecode phase: dst=$DST"
-          have=$(find "$SRC" -name '*.pyc' 2>/dev/null | wc -l | tr -d ' ')
-          echo "bytecode in the source tree: $have"
-          if [ "$have" = "0" ] || [ ! -d "$DST" ]; then
-            echo "bytecode phase: nothing to copy"
+          PY=""
+          for candidate in python3.12 python3; do
+            if command -v "$candidate" >/dev/null 2>&1; then PY=$(command -v "$candidate"); break; fi
+          done
+          echo "bytecode phase: python=$PY src=$SRC"
+          if [ -z "$PY" ] || [ ! -d "$SRC" ] || [ ! -d "$DST" ]; then
+            echo "bytecode phase: nothing to do"
             exit 0
           fi
-          # The fetch step renames __pycache__ to pycache so nothing can prune it; here it goes
-          # back to the name CPython looks for.
-          find "$SRC" -type d -name pycache -print0 | while IFS= read -r -d '' dir; do
-            rel="${dir#$SRC/}"
-            mkdir -p "$DST/$rel/__pycache__"
-            cp -f "$dir"/*.pyc "$DST/$rel/__pycache__/" 2>/dev/null || true
-          done
-          # Anything still in a real __pycache__ comes across too.
+          # The 3.12 magic number is what matters, not the patch version: bytecode from 3.12.3
+          # loads in 3.12.13, verified against the guest.
+          "$PY" -m compileall -q -j 4 "$SRC" || echo "bytecode phase: compileall reported an error"
+          n=0
           find "$SRC" -type d -name __pycache__ -print0 | while IFS= read -r -d '' dir; do
             rel="${dir#$SRC/}"
             mkdir -p "$DST/$rel"
             cp -f "$dir"/*.pyc "$DST/$rel/" 2>/dev/null || true
           done
-          echo "bytecode in the bundle: $(find "$DST" -name '*.pyc' | wc -l | tr -d ' ')"
+          echo "bytecode in the bundle: $(find "$DST" -name '*.pyc' 2>/dev/null | wc -l | tr -d ' ')"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.pocketdsh

@@ -125,30 +125,7 @@ find "$DEST" -type l -xtype l -delete 2>/dev/null || true
 
 mkdir -p "$DEST/tmp"
 
-# Precompile the standard library. An app bundle is read-only, so CPython cannot write
-# __pycache__ there and every import is compiled from source - which costs more than twice the
-# instructions of loading a .pyc. Measured on the same program: 239M instructions with these
-# files present, past 600M without.
-if [ -x "$DEST/usr/bin/python3.12" ]; then
-    PY=${HOST_PYTHON_FOR_BYTECODE:-}
-    if [ -z "$PY" ]; then PY=$(command -v python3.12 2>/dev/null || true); fi
-    if [ -z "$PY" ]; then PY=$(command -v python3 2>/dev/null || true); fi
-    if [ -n "$PY" ]; then
-        echo "precompiling the standard library with $PY"
-        "$PY" -m compileall -q -j 4 "$DEST/usr/lib/python3"* || \
-            echo "  (compileall reported an error; the guest will compile on import)"
-        echo "bytecode written: $(find "$DEST/usr/lib" -name '*.pyc' 2>/dev/null | wc -l | tr -d ' ')"
-        # Renamed away from __pycache__ deliberately. Something between this step and the build
-        # removes those directories - 585 files written here, zero found two minutes later in the
-        # same tree - and a name nothing prunes is easier than finding what prunes it. The build
-        # phase renames them back as it copies.
-        find "$DEST/usr/lib" -type d -name __pycache__ -print0 | while IFS= read -r -d '' d; do
-            mv "$d" "${d%__pycache__}pycache" 2>/dev/null || true
-        done
-        echo "renamed for transport: $(find "$DEST/usr/lib" -type d -name pycache | wc -l | tr -d ' ')"
-    else
-        echo "precompiling skipped: no python3.12 on the build host"
-    fi
-fi
+# Precompiling happens in the app build, not here: a git clean runs between the two and .pyc
+# matches a gitignore rule, so files written now do not survive to the build.
 
 echo "root is $(du -sh "$DEST" | cut -f1)"
