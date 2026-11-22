@@ -568,6 +568,44 @@ static void test_permutes_match_a_real_run(void) {
     e2_machine_destroy(&m);
 }
 
+static void test_division_and_shifts_match_a_real_run(void) {
+    printf("SDIV, UDIV and the variable shifts match what the hardware produced\n");
+    // A mutation check on SDIV's overflow guard reported NOT CAUGHT, which is why this exists:
+    // nothing exercised INT64_MIN / -1, division by zero, or a rounding that goes the wrong way.
+    e2_machine m;
+    e2_machine_init(&m, 0, 1 << 20);
+    FILE *f = fopen("tests/guest/divshift.elf", "rb");
+    CHECK(f != NULL, "divshift.elf missing - run make first");
+    if (f == NULL) { e2_machine_destroy(&m); return; }
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    uint8_t *image = (uint8_t *)malloc((size_t)size);
+    CHECK(image != NULL, "out of memory");
+    if (image == NULL) { fclose(f); e2_machine_destroy(&m); return; }
+    if (fread(image, 1, (size_t)size, f) != (size_t)size) { /* short read still usable */ }
+    fclose(f);
+
+    e2_loaded_image info = {0};
+    e2_load_result lr = e2_load_elf_full(&m, image, (size_t)size, true, &info);
+    CHECK(lr == E2_LOAD_OK, "load: %s", e2_load_result_name(lr));
+    if (lr == E2_LOAD_OK) {
+        capture cap = {0};
+        e2_syscall_env env = {.exit = capture_exit, .files = &test_files, .ctx = &cap};
+        e2_status st = run_program(&m, &env, 2000000);
+        CHECK(st == E2_HALTED, "expected halt, got %s", e2_status_name(st));
+        CHECK(strstr(cap.out, "0000000000000032") != NULL, "SDIV 100/2 wrong: %.160s", cap.out);
+        CHECK(strstr(cap.out, "fffffffffffffffd") != NULL, "SDIV -7/2 wrong: %.160s", cap.out);
+        CHECK(strstr(cap.out, "8000000000000000") != NULL,
+              "SDIV INT64_MIN/-1 wrong: %.160s", cap.out);
+        CHECK(strstr(cap.out, "7ffffffffffffffc") != NULL, "UDIV wrong: %.160s", cap.out);
+        CHECK(strstr(cap.out, "870e961da52cb438") != NULL, "LSLV wrong: %.160s", cap.out);
+        CHECK(strstr(cap.out, "87f0e1d2c3b4a596") != NULL, "RORV wrong: %.160s", cap.out);
+    }
+    free(image);
+    e2_machine_destroy(&m);
+}
+
 static void test_ldp_stp_match_a_real_run(void) {
     printf("LDP/STP with pre- and post-index match what the hardware produced\n");
     // Expected values came from running the same ELF under qemu-aarch64. The CALL path in
@@ -1750,6 +1788,7 @@ int main(void) {
     test_ldp_stp_match_a_real_run();
     test_simd_matches_a_real_run();
     test_permutes_match_a_real_run();
+    test_division_and_shifts_match_a_real_run();
     test_bitfield_matches_a_real_run();
     test_ushll2_widens_from_the_upper_half();
     test_movi_64bit_immediate();

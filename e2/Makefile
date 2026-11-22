@@ -12,7 +12,7 @@ SRC := src/memory.c src/exec.c src/syscall.c src/loader.c
 HDR := $(wildcard include/e2/*.h)
 TEST_SRC := tests/main.c
 TEST_BIN := $(BUILD)/e2-tests
-GUEST_ELF := tests/guest/jump.elf tests/guest/auxv.elf tests/guest/loop.elf tests/guest/ldp.elf tests/guest/bitfield.elf tests/guest/hello.elf tests/guest/fib.elf tests/guest/memset.elf tests/guest/cprog.elf tests/guest/calls.elf tests/guest/mul.elf tests/guest/shll.elf tests/guest/bitops.elf tests/guest/simdext.elf tests/guest/permute.elf
+GUEST_ELF := tests/guest/jump.elf tests/guest/auxv.elf tests/guest/loop.elf tests/guest/ldp.elf tests/guest/bitfield.elf tests/guest/hello.elf tests/guest/fib.elf tests/guest/memset.elf tests/guest/cprog.elf tests/guest/calls.elf tests/guest/mul.elf tests/guest/shll.elf tests/guest/bitops.elf tests/guest/simdext.elf tests/guest/permute.elf tests/guest/divshift.elf
 
 # Cross-toolchain pieces for building the guest test binary. clang handles the
 # aarch64 target and lld links it statically, so no libc is needed.
@@ -32,6 +32,10 @@ $(BUILD):
 
 $(TEST_BIN): $(SRC) $(TEST_SRC) $(HDR) | $(BUILD)
 	$(CC) $(CFLAGS) $(SRC) $(TEST_SRC) -o $@ $(LDLIBS)
+
+tests/guest/divshift.elf: tests/guest/divshift.s | $(BUILD)
+	$(CLANG) --target=aarch64-linux-gnu -c $< -o $(BUILD)/divshift-guest.o
+	$(LLD) -static -o $@ $(BUILD)/divshift-guest.o
 
 tests/guest/permute.elf: tests/guest/permute.s | $(BUILD)
 	$(CLANG) --target=aarch64-linux-gnu -c $< -o $(BUILD)/permute-guest.o

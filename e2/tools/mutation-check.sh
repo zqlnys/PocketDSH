@@ -78,10 +78,21 @@ caught=0
 printf '%s' "$out" | grep -qE '^FAIL ' && caught=1
 printf '%s' "$out" | grep -qE ', [1-9][0-9]* failure' && caught=1
 printf '%s' "$out" | grep -qE '[1-9][0-9]* different$' && caught=1
+# A crash counts. Removing SDIV's overflow guard makes the interpreter divide INT64_MIN by -1,
+# which raises SIGFPE and kills the test binary before it prints a result line - a detection, and
+# the strongest one there is. Reading that as "the test passed" reported NOT CAUGHT for a
+# mutation that was caught as hard as a mutation can be.
+crashed=0
+printf '%s' "$out" | grep -qE 'Floating point exception|Segmentation fault|core dumped' && crashed=1
 
 if [ "$caught" -eq 1 ]; then
     echo "CAUGHT   (the test failed as it should)"
     printf '%s\n' "$out" | grep -E '^FAIL |, [1-9][0-9]* failure|[1-9][0-9]* different$' | head -3
+    exit 0
+fi
+if [ "$crashed" -eq 1 ]; then
+    echo "CAUGHT   (the test crashed, which is a detection too)"
+    printf '%s\n' "$out" | grep -E 'Floating point exception|Segmentation fault' | head -2
     exit 0
 fi
 
