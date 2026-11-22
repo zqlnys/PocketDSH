@@ -41,5 +41,11 @@ TestResults.xcresult
 .venv/
 __pycache__/
 *.pyc
+# The guest root is assembled by scripts/fetch-python-rootfs.sh at build time. Only the static
+# busybox and its applet links belong in version control; the CPython tree is 40 MB and is
+# fetched, not committed.
+PocketDSH/Resources/alpine-root/usr/
+PocketDSH/Resources/alpine-root/lib/
+PocketDSH/Resources/alpine-root/etc/
 # Build artifacts from the guest fixtures
 *.o
