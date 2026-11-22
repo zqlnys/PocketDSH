@@ -60,17 +60,12 @@ static void e2_configure_environment(void) {
     // scratch file failed with "Operation not permitted" and the smoke test still called it a
     // pass. This is the app's own temporary directory, which is writable and is cleared by the
     // system.
-    // A caller that named a workspace wins over the scratch directory: the guest's /workspace is
-    // then the project the command was about, not a temporary folder nothing else can see.
-    if (workspace != NULL && workspace[0] != '\0') {
-        setenv("E2_WORKSPACE", workspace, 1);
-    }
     if (getenv("E2_WORKSPACE") == NULL) {
         const char *tmp = getenv("TMPDIR");
-        static char workspace[1024];
-        snprintf(workspace, sizeof(workspace), "%s/e2-workspace", tmp != NULL ? tmp : "/tmp");
-        mkdir(workspace, 0700);
-        setenv("E2_WORKSPACE", workspace, 0);
+        static char scratch[1024];
+        snprintf(scratch, sizeof(scratch), "%s/e2-workspace", tmp != NULL ? tmp : "/tmp");
+        mkdir(scratch, 0700);
+        setenv("E2_WORKSPACE", scratch, 0);
     }
     if (getenv("PYTHONPYCACHEPREFIX") == NULL) {
         const char *tmp = getenv("TMPDIR");
@@ -91,6 +86,11 @@ int e2_bridge_run(const char *rootfs, const char *out_path,
 
 int e2_bridge_run_in(const char *rootfs, const char *workspace, const char *out_path,
                      int argc, char **argv) {
+    // A caller that named a workspace wins over the scratch directory: the guest's /workspace is
+    // then the project the command was about, not a temporary folder nothing else can see.
+    if (workspace != NULL && workspace[0] != '\0') {
+        setenv("E2_WORKSPACE", workspace, 1);
+    }
     if (rootfs != NULL) {
         e2_set_root(rootfs);
     }
