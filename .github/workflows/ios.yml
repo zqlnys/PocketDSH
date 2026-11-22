@@ -29,6 +29,7 @@ env:
   SCHEME: PocketDSH
   BUNDLE_ID: com.example.pocketdsh
   DERIVED_DATA: ${{ github.workspace }}/build/DerivedData
+  GUEST_ROOT: ${{ runner.temp }}/alpine-root
   ARTIFACTS_DIR: ${{ github.workspace }}/artifacts
   LOG_DIR: ${{ github.workspace }}/artifacts/logs
 
@@ -84,11 +85,17 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
-          scripts/fetch-python-rootfs.sh PocketDSH/Resources/alpine-root --minimal \
+          # Assembled outside the source tree on purpose. XcodeGen scans the tree it is given
+          # and the guest root was disappearing between one step and the next when it lived
+          # under PocketDSH/; as a build input under $RUNNER_TEMP nothing scans it.
+          rm -rf "$GUEST_ROOT"
+          scripts/fetch-python-rootfs.sh "$GUEST_ROOT" --minimal \
             2>&1 | tee "$LOG_DIR/fetch-rootfs.log"
           # The script only writes usr/ and lib/; keep the repo's static busybox, which is
-          # already there and is the one thing the root cannot be without.
-          test -x PocketDSH/Resources/alpine-root/bin/busybox
+          # checked in and is the one thing the root cannot be without.
+          cp -a PocketDSH/Resources/alpine-root/bin "$GUEST_ROOT/bin" 2>/dev/null || true
+          test -x "$GUEST_ROOT/bin/busybox"
+          echo "guest root: $(find "$GUEST_ROOT" -name '*.py' | wc -l | tr -d ' ') python files"
 
       - name: Generate Xcode project
         id: generate
@@ -113,6 +120,7 @@ jobs:
         run: |
           set -euo pipefail
           xcodebuild build \
+            GUEST_ROOT="$GUEST_ROOT" \
             -project "$PROJECT_NAME.xcodeproj" \
             -scheme "$SCHEME" \
             -configuration Debug \
@@ -219,6 +227,7 @@ jobs:
         run: |
           set -euo pipefail
           xcodebuild build \
+            GUEST_ROOT="$GUEST_ROOT" \
             -project "$PROJECT_NAME.xcodeproj" \
             -scheme "$SCHEME" \
             -configuration Release \

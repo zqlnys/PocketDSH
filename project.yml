@@ -56,54 +56,42 @@ targets:
       # command-line harness. It creates no host processes - guest fork is a copy of an E2
       # machine - so it runs inside the app sandbox as-is.
       - path: e2/tools/rune.c
-      # The guest root Tier D runs in: a statically linked aarch64 busybox and nothing else.
-      # The full Alpine tree is hundreds of megabytes and only matters for CPython; this is
-      # what makes a shell command work.
-      - path: PocketDSH/Resources/alpine-root
-        buildPhase: resources
-        type: folder
     postBuildScripts:
       # The folder reference above is copied as a folder, but Xcode will not take a directory
       # named __pycache__ - and without it CPython compiles every module from source on a
       # read-only bundle, which costs more than twice the instructions: 239M for `import asyncio`
       # with the bytecode present, past 600M without. Copying it here is the reliable way.
-      - name: Compile Python bytecode into the bundle
+      - name: Copy the guest root and its bytecode into the bundle
         shell: /bin/bash
         inputFiles:
           - $(SRCROOT)/PocketDSH/Resources/alpine-root
         script: |
-          # Compiling here rather than in the fetch step. A clean runs between the two - the
-          # fetch wrote 585 files and the build found none - and .pyc matches a gitignore rule,
-          # so a git clean removes them and leaves the directories. Doing it as part of the build
-          # is after all of that.
-          #
-          # Why it matters: the app bundle is read-only, so without bytecode CPython compiles
-          # every import from source, and `import asyncio` costs past 600M instructions instead
-          # of 239M.
-          SRC="${SRCROOT:-}/PocketDSH/Resources/alpine-root/usr/lib/python3.12"
-          DST="${TARGET_BUILD_DIR:-}/${UNLOCALIZED_RESOURCES_FOLDER_PATH:-}/alpine-root/usr/lib/python3.12"
-          PY=""
-          for candidate in python3.12 python3; do
-            if command -v "$candidate" >/dev/null 2>&1; then PY=$(command -v "$candidate"); break; fi
-          done
-          echo "bytecode phase: python=$PY src=$SRC"
-          if [ -z "$PY" ] || [ ! -d "$SRC" ] || [ ! -d "$DST" ]; then
-            echo "bytecode phase: nothing to do"
-            exit 0
+          # The guest root is assembled by CI into $GUEST_ROOT, outside the source tree, because
+          # as a folder reference it kept disappearing between the fetch and the build. Locally
+          # it falls back to the checked-in busybox-only tree.
+          SRC="${GUEST_ROOT:-$SRCROOT/PocketDSH/Resources/alpine-root}"
+          DST="${TARGET_BUILD_DIR:-}/${UNLOCALIZED_RESOURCES_FOLDER_PATH:-}/alpine-root"
+          echo "guest root: $SRC -> $DST"
+          if [ ! -d "$SRC" ]; then echo "guest root missing"; exit 0; fi
+          rm -rf "$DST"
+          mkdir -p "$DST"
+          ditto "$SRC" "$DST" 2>/dev/null || cp -a "$SRC/." "$DST/"
+          # Bytecode, compiled here so it is after any clean and matches the interpreter that
+          # will load it. Without it CPython compiles every import from source on a read-only
+          # bundle: 239M instructions for `import asyncio` with it, past 600M without.
+          LIB="$DST/usr/lib/python3.12"
+          if [ -d "$LIB" ]; then
+            PY=""
+            for c in python3.12 python3; do
+              if command -v "$c" >/dev/null 2>&1; then PY=$(command -v "$c"); break; fi
+            done
+            if [ -n "$PY" ]; then
+              "$PY" -m compileall -q -j 4 "$LIB" 2>&1 | head -3 || true
+            fi
+            echo "bytecode in the bundle: $(find "$LIB" -name '*.pyc' 2>/dev/null | wc -l | tr -d ' ')"
+          else
+            echo "no standard library in the guest root"
           fi
-          # The 3.12 magic number is what matters, not the patch version: bytecode from 3.12.3
-          # loads in 3.12.13, verified against the guest.
-          echo "bytecode phase: src exists=$([ -d "$SRC" ] && echo yes || echo no) py files=$(find "$SRC" -name '*.py' 2>/dev/null | wc -l | tr -d ' ')"
-          echo "bytecode phase: dst exists=$([ -d "$DST" ] && echo yes || echo no)"
-          "$PY" -m compileall -q -j 4 "$SRC" 2>&1 | head -5 || true
-          echo "bytecode phase: after compileall, pyc=$(find "$SRC" -name '*.pyc' 2>/dev/null | wc -l | tr -d ' ')"
-          n=0
-          find "$SRC" -type d -name __pycache__ -print0 | while IFS= read -r -d '' dir; do
-            rel="${dir#$SRC/}"
-            mkdir -p "$DST/$rel"
-            cp -f "$dir"/*.pyc "$DST/$rel/" 2>/dev/null || true
-          done
-          echo "bytecode in the bundle: $(find "$DST" -name '*.pyc' 2>/dev/null | wc -l | tr -d ' ')"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.pocketdsh
