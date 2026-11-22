@@ -138,6 +138,14 @@ if [ -x "$DEST/usr/bin/python3.12" ]; then
         "$PY" -m compileall -q -j 4 "$DEST/usr/lib/python3"* || \
             echo "  (compileall reported an error; the guest will compile on import)"
         echo "bytecode written: $(find "$DEST/usr/lib" -name '*.pyc' 2>/dev/null | wc -l | tr -d ' ')"
+        # Renamed away from __pycache__ deliberately. Something between this step and the build
+        # removes those directories - 585 files written here, zero found two minutes later in the
+        # same tree - and a name nothing prunes is easier than finding what prunes it. The build
+        # phase renames them back as it copies.
+        find "$DEST/usr/lib" -type d -name __pycache__ -print0 | while IFS= read -r -d '' d; do
+            mv "$d" "${d%__pycache__}pycache" 2>/dev/null || true
+        done
+        echo "renamed for transport: $(find "$DEST/usr/lib" -type d -name pycache | wc -l | tr -d ' ')"
     else
         echo "precompiling skipped: no python3.12 on the build host"
     fi
