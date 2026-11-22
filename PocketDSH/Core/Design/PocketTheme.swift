@@ -28,6 +28,11 @@ enum PocketTheme {
     /// The fill behind the composer and the small controls.
     static let field = dynamic(light: "#F4F5F7", dark: "#202124")
 
+    /// What to draw on top of `accent`. White, because the accent is a mid blue in both
+    /// appearances; the old send arrow used a dark green left over from the previous palette and
+    /// was almost invisible on it.
+    static let onAccent = Color.white
+
     // MARK: Surfaces
 
     static let canvas = dynamic(light: "#FFFFFF", dark: "#0E0F11")
@@ -73,10 +78,10 @@ enum PocketTheme {
     /// Chinese heavily. `displayFont(size:)` falls back to the system face when
     /// the interface language is Chinese.
     static func displayFont(size: CGFloat) -> Font {
-        if PocketTheme.isChineseInterface {
-            return .system(size: size, weight: .semibold)
-        }
-        return .system(size: size, weight: .medium, design: .serif)
+        // The system face, in both languages. The serif was chosen to flatter Latin headings and
+        // it did, but next to a chat transcript it read as a document title, and the interface
+        // no longer has any of those.
+        .system(size: size, weight: .semibold)
     }
 
     /// Section headers are uppercased and letterspaced, which is a Latin idiom.

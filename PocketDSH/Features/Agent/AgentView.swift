@@ -447,7 +447,7 @@ struct AgentView: View {
                 } label: {
                     Image(systemName: "arrow.up")
                         .font(.system(size: 17, weight: .bold))
-                        .foregroundStyle(Color(hex: "#062018"))
+                        .foregroundStyle(PocketTheme.onAccent)
                         .frame(width: 44, height: 44)
                         .background(Circle().fill(PocketTheme.accent))
                         .opacity(canSend ? 1 : 0.35)

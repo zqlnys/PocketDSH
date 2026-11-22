@@ -44,7 +44,7 @@ struct OnboardingView: View {
                     .frame(width: 54, height: 54)
                 Image(systemName: "chevron.left.forwardslash.chevron.right")
                     .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(PocketTheme.onAccent)
             }
 
             Text("Connect the model")

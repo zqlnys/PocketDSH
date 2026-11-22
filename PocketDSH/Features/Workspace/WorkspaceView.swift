@@ -68,7 +68,7 @@ struct WorkspaceView: View {
                     .frame(width: 30, height: 30)
                 Text(String(session.project.name.prefix(1)))
                     .font(PocketTheme.displayFont(size: 15))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(PocketTheme.onAccent)
             }
 
             VStack(alignment: .leading, spacing: 1) {

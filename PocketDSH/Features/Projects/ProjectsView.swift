@@ -105,7 +105,7 @@ struct ProjectsView: View {
                     .frame(width: 28, height: 28)
                 Image(systemName: "chevron.left.forwardslash.chevron.right")
                     .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(PocketTheme.onAccent)
             }
 
             Text("POCKETDSH / LOCAL")

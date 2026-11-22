@@ -1,37 +1,27 @@
 import SwiftUI
 
-/// Card surface used for grouped content.
+/// The grouped surface.
 ///
-/// `radius: 0` on the shadow used to draw nothing at all, so cards were held
-/// apart from the canvas by a hairline and nothing else. The shadow below is
-/// deliberately soft - it should register as weight, not as a drop shadow.
+/// Flat: a soft fill and a hairline, with no shadow. The shadow was there to give cards weight
+/// on a cream canvas; on white, next to a chat transcript, it made every group look like a
+/// floating panel and the screen read as a dashboard rather than a conversation.
 struct PocketCardModifier: ViewModifier {
     var padding: CGFloat
     var raised: Bool
 
-    private var radius: CGFloat { raised ? PocketRadius.xl : PocketRadius.lg }
-    private var shadowColor: Color {
-        raised ? PocketTheme.raisedShadowColor : PocketTheme.cardShadowColor
-    }
-    private var shadowRadius: CGFloat {
-        raised ? PocketTheme.raisedShadowRadius : PocketTheme.cardShadowRadius
-    }
-    private var shadowY: CGFloat {
-        raised ? PocketTheme.raisedShadowY : PocketTheme.cardShadowY
-    }
+    private var radius: CGFloat { 16 }
 
     func body(content: Content) -> some View {
         content
             .padding(padding)
             .background {
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(PocketTheme.surface)
+                    .fill(raised ? PocketTheme.surface : PocketTheme.field)
             }
             .overlay {
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .stroke(PocketTheme.cardStroke, lineWidth: 1)
+                    .stroke(PocketTheme.stroke, lineWidth: raised ? 1 : 0)
             }
-            .shadow(color: shadowColor, radius: shadowRadius, x: 0, y: shadowY)
     }
 }
 
@@ -98,19 +88,16 @@ struct SecondaryButtonStyle: ButtonStyle {
 struct SectionLabel: View {
     let title: String
 
-    // Kept as computed properties rather than locals inside `body`, so the
-    // view builder sees plain expressions and the optional case is unambiguous.
-    private var letterspacing: CGFloat {
-        PocketTheme.isChineseInterface ? 0.2 : 1.0
-    }
+    // Sentence case in both languages. The uppercased letterspaced caption was a deliberate
+    // choice and it looked like a section header in a form; a chat app labels groups the way it
+    // labels everything else.
+    private var letterspacing: CGFloat { 0 }
 
-    private var casing: Text.Case? {
-        PocketTheme.isChineseInterface ? nil : Text.Case.uppercase
-    }
+    private var casing: Text.Case? { nil }
 
     var body: some View {
         Text(NSLocalizedString(title, comment: ""))
-            .font(.caption.weight(.semibold))
+            .font(.footnote.weight(.semibold))
             .tracking(letterspacing)
             .textCase(casing)
             .foregroundStyle(PocketTheme.secondaryText)
