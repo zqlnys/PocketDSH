@@ -132,5 +132,11 @@ struct WorkspaceView: View {
                 .tabItem { Label("Settings", systemImage: "gearshape") }
                 .tag(WorkspaceTab.settings)
         }
+        // One tint for the whole shell. The bar and the screens were being chosen separately and
+        // had drifted apart: a system-grey bar above a white page reads as two applications
+        // stacked, which is the sort of thing nobody names and everybody notices.
+        .tint(PocketTheme.accent)
+        .toolbarBackground(PocketTheme.surface, for: .tabBar)
+        .toolbarBackground(.visible, for: .tabBar)
     }
 }
