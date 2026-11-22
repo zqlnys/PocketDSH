@@ -49,6 +49,9 @@ public struct PluginManifest: Codable, Hashable, Sendable {
     public var author: String?
     public var apiVersion: Int
     public var entry: String
+    /// Which runtime executes this plugin: "lua" (the default, and what every existing plugin
+    /// is) or "python", which runs in the guest CPython that Tier D provides.
+    public var runtime: String?
     public var permissions: [String]
     public var tools: [PluginToolManifest]
     public var config: [PluginConfigField]
@@ -61,6 +64,7 @@ public struct PluginManifest: Codable, Hashable, Sendable {
         author: String? = nil,
         apiVersion: Int = 1,
         entry: String = "main.lua",
+        runtime: String? = nil,
         permissions: [String] = [],
         tools: [PluginToolManifest] = [],
         config: [PluginConfigField] = []
@@ -72,6 +76,7 @@ public struct PluginManifest: Codable, Hashable, Sendable {
         self.author = author
         self.apiVersion = apiVersion
         self.entry = entry
+        self.runtime = runtime
         self.permissions = permissions
         self.tools = tools
         self.config = config

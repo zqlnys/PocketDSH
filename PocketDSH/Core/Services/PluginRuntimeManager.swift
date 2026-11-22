@@ -38,13 +38,34 @@ final class PluginRuntimeManager: ObservableObject {
                 store.setError(message, for: id)
                 continue
             }
-            // Say so plainly. The only runtime here is Lua, and a plugin written in anything else
-            // used to be fed to the Lua one, which failed with a parse error somewhere in a file
-            // that was never Lua - a message pointing at the wrong layer entirely.
-            guard entry.pathExtension.lowercased() == "lua" else {
-                let message = """
-                Plugins run in the embedded Lua runtime, so the entry must be a .lua file;                 this one is \(plugin.manifest.entry). Other languages would need their own                 runtime, which this build does not include.
-                """
+            // A Python plugin goes to the guest CPython. Everything else still goes to Lua, and
+            // says so rather than being parsed as Lua and failing somewhere unhelpful.
+            let runtimeKind = (plugin.manifest.runtime ?? "lua").lowercased()
+            if runtimeKind == "python" {
+                guard let executor = pythonExecutor else {
+                    let message = "This plugin runs on Python, which needs Tier D. Start Tier D, "
+                        + "or install the Lua version."
+                    loadErrors[id] = message
+                    store.setError(message, for: id)
+                    continue
+                }
+                let py = PythonPluginRuntime(identifier: id, executor: executor)
+                do {
+                    try py.load(entryURL: entry)
+                    pythonRuntimes[id] = py
+                    loadedPluginIDs.insert(id)
+                    store.clearError(for: id)
+                    registerTools(for: plugin, id: id)
+                } catch {
+                    let message = error.localizedDescription
+                    loadErrors[id] = message
+                    store.setError(message, for: id)
+                }
+                continue
+            }
+            guard runtimeKind == "lua" else {
+                let message = "This plugin asks for the \"\(runtimeKind)\" runtime. This build "
+                    + "runs Lua plugins and Python plugins; nothing else."
                 loadErrors[id] = message
                 store.setError(message, for: id)
                 continue
@@ -67,25 +88,7 @@ final class PluginRuntimeManager: ObservableObject {
                 loadedPluginIDs.insert(id)
                 store.clearError(for: id)
 
-                for tool in plugin.manifest.tools {
-                    let composite = Self.compositeToolName(
-                        pluginID: id,
-                        toolName: tool.name
-                    )
-                    routes[composite] = Route(
-                        pluginID: id,
-                        originalToolName: tool.name
-                    )
-                    toolSpecs.append(
-                        LLMToolSpec(
-                            function: .init(
-                                name: composite,
-                                description: "[Plugin: \(plugin.manifest.name)] \(tool.description)",
-                                parameters: tool.parameters
-                            )
-                        )
-                    )
-                }
+                registerTools(for: plugin, id: id)
             } catch {
                 let message = error.localizedDescription
                 loadErrors[id] = message
@@ -96,12 +99,51 @@ final class PluginRuntimeManager: ObservableObject {
         toolSpecs.sort { $0.function.name < $1.function.name }
     }
 
+    /// One place that turns a manifest's tools into routes and specs, for every runtime.
+    private func registerTools(for plugin: PluginRecord, id: String) {
+        for tool in plugin.manifest.tools {
+            let composite = Self.compositeToolName(pluginID: id, toolName: tool.name)
+            routes[composite] = Route(pluginID: id, originalToolName: tool.name)
+            toolSpecs.append(
+                LLMToolSpec(
+                    function: .init(
+                        name: composite,
+                        description: "[Plugin: \(plugin.manifest.name)] \(tool.description)",
+                        parameters: tool.parameters
+                    )
+                )
+            )
+        }
+    }
+
     func invoke(
         toolName: String,
         argumentsJSON: String
     ) async -> ToolExecutionResult? {
-        guard let route = routes[toolName],
-              let runtime = runtimes[route.pluginID] else {
+        guard let route = routes[toolName] else { return nil }
+        // A Python plugin runs a guest process, so its result arrives later; a Lua plugin calls
+        // straight into the embedded interpreter.
+        if let pythonRuntime = pythonRuntimes[route.pluginID] {
+            guard let arguments = decodeArguments(argumentsJSON) else {
+                return .failure("Plugin tool arguments must be a JSON object.")
+            }
+            if Task.isCancelled {
+                return .failure("Cancelled before plugin execution.")
+            }
+            let encoded = (try? JSONEncoder().encode(arguments)).flatMap {
+                String(data: $0, encoding: .utf8)
+            } ?? "{}"
+            let outcome = await pythonRuntime.invoke(
+                tool: route.originalToolName,
+                argumentsJSON: encoded
+            )
+            if outcome.isError {
+                store.log(pluginID: route.pluginID, level: "error", message: outcome.content)
+                return .failure(outcome.content)
+            }
+            return .success(outcome.content)
+        }
+        guard let runtime = runtimes[route.pluginID] else {
             return nil
         }
         guard let arguments = decodeArguments(argumentsJSON) else {

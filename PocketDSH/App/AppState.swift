@@ -112,6 +112,10 @@ final class AppState: ObservableObject {
         systemActions = SystemActionStore()
         linuxRuntime = LinuxRuntime()
         e2Runtime = E2Runtime()
+        // Python plugins run in the guest CPython, so the executor is only useful once Tier D is
+        // there to run it. Handing it over unconditionally is right: it reports the reason when
+        // Tier D is unavailable, which is better than the plugin silently not loading.
+        pluginRuntime.pythonExecutor = E2PythonPluginExecutor(runtime: e2Runtime)
         luaEngine = LuaEngine()
         sessionSubscription = linuxRuntime.$state
             .map { $0 == .active }

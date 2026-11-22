@@ -101,6 +101,10 @@ final class E2Runtime: ObservableObject {
 
     /// Finds the guest root inside the app bundle, unpacking it on first use if it ships as
     /// an archive rather than a directory tree.
+    /// The guest root, for callers that need to reach into it - the Python plugin executor does,
+    /// to name the interpreter.
+    var resolvedRootfsPath: String? { prepareRootfs()?.path }
+
     private func prepareRootfs() -> URL? {
         if let cached = rootfsURL, FileManager.default.fileExists(atPath: cached.path) {
             return cached
