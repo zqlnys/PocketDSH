@@ -525,6 +525,49 @@ static void test_simd_matches_a_real_run(void) {
     e2_machine_destroy(&m);
 }
 
+static void test_permutes_match_a_real_run(void) {
+    printf("UZP, TRN, ZIP, XTN, LD1R and SHL match what the hardware produced\n");
+    // UZP was implemented as an interleave and ZIP as a concatenation - exactly swapped - and it
+    // survived because nothing compared them. A program that gathers even bytes and reads them
+    // back gets plausible values either way; only the order shows, and the order always matters.
+    e2_machine m;
+    e2_machine_init(&m, 0, 1 << 20);
+    FILE *f = fopen("tests/guest/permute.elf", "rb");
+    CHECK(f != NULL, "permute.elf missing - run make first");
+    if (f == NULL) { e2_machine_destroy(&m); return; }
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    uint8_t *image = (uint8_t *)malloc((size_t)size);
+    CHECK(image != NULL, "out of memory");
+    if (image == NULL) { fclose(f); e2_machine_destroy(&m); return; }
+    if (fread(image, 1, (size_t)size, f) != (size_t)size) { /* short read still usable */ }
+    fclose(f);
+
+    e2_loaded_image info = {0};
+    e2_load_result lr = e2_load_elf_full(&m, image, (size_t)size, true, &info);
+    CHECK(lr == E2_LOAD_OK, "load: %s", e2_load_result_name(lr));
+    if (lr == E2_LOAD_OK) {
+        capture cap = {0};
+        e2_syscall_env env = {.exit = capture_exit, .files = &test_files, .ctx = &cap};
+        e2_status st = run_program(&m, &env, 2000000);
+        CHECK(st == E2_HALTED, "expected halt, got %s", e2_status_name(st));
+        // Every even byte first, then every odd: an interleave would give these the other way
+        // round, which is the mistake this was written to catch.
+        CHECK(strstr(cap.out, "0e0c0a0806040200") != NULL, "UZP1 wrong: %.120s", cap.out);
+        CHECK(strstr(cap.out, "0f0d0b0907050301") != NULL, "UZP2 wrong: %.120s", cap.out);
+        CHECK(strstr(cap.out, "1606140412021000") != NULL, "TRN1 wrong: %.120s", cap.out);
+        CHECK(strstr(cap.out, "1707150513031101") != NULL, "TRN2 wrong: %.120s", cap.out);
+        CHECK(strstr(cap.out, "1303120211011000") != NULL, "ZIP1 wrong: %.120s", cap.out);
+        CHECK(strstr(cap.out, "1b0b1a0a19091808") != NULL, "ZIP2 wrong: %.120s", cap.out);
+        CHECK(strstr(cap.out, "44332211f0bc7834") != NULL, "XTN wrong: %.120s", cap.out);
+        CHECK(strstr(cap.out, "5a5a5a5a5a5a5a5a") != NULL, "LD1R wrong: %.120s", cap.out);
+        CHECK(strstr(cap.out, "0000008040201008") != NULL, "SHL wrong: %.120s", cap.out);
+    }
+    free(image);
+    e2_machine_destroy(&m);
+}
+
 static void test_ldp_stp_match_a_real_run(void) {
     printf("LDP/STP with pre- and post-index match what the hardware produced\n");
     // Expected values came from running the same ELF under qemu-aarch64. The CALL path in
@@ -1706,6 +1749,7 @@ int main(void) {
     test_bitwise_select_matches_a_real_run();
     test_ldp_stp_match_a_real_run();
     test_simd_matches_a_real_run();
+    test_permutes_match_a_real_run();
     test_bitfield_matches_a_real_run();
     test_ushll2_widens_from_the_upper_half();
     test_movi_64bit_immediate();
