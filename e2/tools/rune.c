@@ -22,6 +22,7 @@
 // three are needed for shell pipelines to see EOF correctly.
 #define _GNU_SOURCE
 #include <errno.h>
+#include <poll.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -652,10 +653,27 @@ static long fs_readlink(void *ctx, const char *path, char *out, size_t outlen) {
 // are, and a pipe with data pending is too, which covers every case this
 // sandbox produces. A poll implementation that returns ENOSYS is worse than this
 // approximation: a shell's `while read` loop simply never runs.
+// Which of `events` this descriptor would satisfy right now.
+//
+// Reporting every event for every descriptor made poll useless: CPython's subprocess parent
+// polls its error pipe for EOF and was told the pipe was always ready, so it spun - 200 seconds
+// of it, to the instruction cap. A descriptor's real state is one byte away, so ask for it.
 static int fs_pollable(void *c, int fd, int events) {
-    (void)c;
     if (fd < 0 || fd >= E2_MAX_FDS) return 0;
-    return events;
+    if (!TAB(c)[fd].used) return -9;   // EBADF
+    const int host = TAB(c)[fd].host;
+    int ready = 0;
+    if (events & 0x001) {   // POLLIN
+        struct pollfd probe = {.fd = host, .events = POLLIN, .revents = 0};
+        const int r = poll(&probe, 1, 0);
+        if (r > 0) ready |= 0x001;
+    }
+    if (events & 0x004) {   // POLLOUT
+        struct pollfd probe = {.fd = host, .events = POLLOUT, .revents = 0};
+        const int r = poll(&probe, 1, 0);
+        if (r > 0) ready |= 0x004;
+    }
+    return ready;
 }
 
 // Filesystem mutations, resolved under the guest root. Without these mkdir, rm,

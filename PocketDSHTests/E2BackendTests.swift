@@ -171,10 +171,37 @@ final class E2BackendTests: XCTestCase {
         XCTAssertTrue(output.contains("child 7"), output)
     }
 
-    // subprocess has no case here on purpose. fork, exec and wait each pass on a device, so
-    // the syscalls under it work; subprocess itself does not finish, and a run that reaches the
-    // instruction cap leaves interpreter state behind for the tests that follow - a case that
-    // skips is still a case that ran. It is exercised by the command-line suites instead.
+    /// subprocess, both without and with captured streams.
+    ///
+    /// This failed on the device for several rounds while fork, exec and wait all passed under
+    /// it. The cause was poll: fs_pollable reported every event for every descriptor, so
+    /// CPython's subprocess parent was told its error pipe was always ready, never saw EOF, and
+    /// spun to the instruction cap. Each call is capped here so a regression fails in seconds
+    /// rather than in two minutes.
+    func testPythonSubprocess() throws {
+        let root = try guestRoot()
+        let python = root.appendingPathComponent("usr/bin/python3.12").path
+        try XCTSkipUnless(FileManager.default.fileExists(atPath: python),
+                          "this build's guest root has no CPython")
+
+        let script = root.appendingPathComponent("tmp/e2-sub.py")
+        try? FileManager.default.createDirectory(at: script.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: script) }
+        try """
+        import subprocess
+        print("call", subprocess.call(["/bin/busybox", "echo", "nocap-ran"]))
+        r = subprocess.run(["/bin/busybox", "echo", "cap"], capture_output=True, text=True)
+        print("capture", r.returncode, r.stdout.strip())
+        """.write(to: script, atomically: true, encoding: .utf8)
+
+        let (status, output) = try runGuest(python, ["/tmp/e2-sub.py"], cap: "250000000")
+        XCTAssertFalse(output.contains("instruction cap"),
+                       "subprocess did not finish: \(output.suffix(200))")
+        XCTAssertEqual(status, 0, "python exited \(status); output was <<<\(output)>>>")
+        XCTAssertTrue(output.contains("nocap-ran"), output)
+        XCTAssertTrue(output.contains("capture 0 cap"), output)
+    }
 
     /// fork, exec and wait, without subprocess's imports.
     ///
