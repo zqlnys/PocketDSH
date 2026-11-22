@@ -62,6 +62,25 @@ targets:
       - path: PocketDSH/Resources/alpine-root
         buildPhase: resources
         type: folder
+    postBuildScripts:
+      # The folder reference above is copied as a folder, but Xcode will not take a directory
+      # named __pycache__ - and without it CPython compiles every module from source on a
+      # read-only bundle, which costs more than twice the instructions: 239M for `import asyncio`
+      # with the bytecode present, past 600M without. Copying it here is the reliable way.
+      - name: Copy precompiled Python bytecode into the bundle
+        shell: /bin/bash
+        script: |
+          set -euo pipefail
+          SRC="$SRCROOT/PocketDSH/Resources/alpine-root/usr/lib/python3.12"
+          DST="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/alpine-root/usr/lib/python3.12"
+          if [ -d "$DST" ] && compgen -G "$SRC/*/__pycache__" > /dev/null; then
+            ( cd "$SRC" && find . -type d -name __pycache__ -print0 | \
+                while IFS= read -r -d '' d; do
+                  mkdir -p "$DST/$d"
+                  cp -f "$SRC/$d"/*.pyc "$DST/$d/" 2>/dev/null || true
+                done )
+            echo "copied $(find "$DST" -name '*.pyc' | wc -l | tr -d ' ') bytecode files"
+          fi
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.pocketdsh
