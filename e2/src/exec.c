@@ -277,7 +277,16 @@ int e2_deliver_pending_signal(e2_machine *machine) {
     return 0;
 }
 
+/// Every instruction any machine has run, for the harness's ceiling.
+///
+/// The per-machine counter is not enough: a process that pumps a child runs the child's
+/// instructions on the child's machine, and a child that never finishes then burns wall time
+/// without advancing the counter the ceiling is watching. That is a hang with the cap never
+/// reached, and it is what threading.Thread().start() did with E2_THREADS on.
+unsigned long long g_total_instructions = 0;
+
 e2_status e2_step(e2_machine *machine) {
+    g_total_instructions++;
     e2_cpu *cpu = &machine->cpu;
 
     uint32_t insn = 0;

@@ -49,6 +49,7 @@ static char g_cur_cmdline[512];
 // Length of the NUL-separated argv image, including the trailing NUL.
 static size_t g_cur_cmdline_len;
 extern int g_dbg_pid;
+extern unsigned long long g_total_instructions;
 
 typedef struct {
     int fdtab;
@@ -1590,9 +1591,16 @@ static int pump_children_for_tab(int tab) {
         // landed wherever it liked.
         const long outer_budget = g_proc_budget;
         g_proc_budget = proc_quantum();
+        const uint64_t before = c->m.instructions;
         run_proc(i);
         g_proc_budget = outer_budget;
-        ran++;
+        // Counted only if it actually ran something. A child that yields immediately - which a
+        // thread does on its first futex - leaves the counter where it was, and counting it
+        // anyway tells the caller "somebody made progress, try again", which is an infinite
+        // loop in the caller with no instructions in it and no ceiling that can see it.
+        if (c->m.instructions != before) {
+            ran++;
+        }
     }
     return ran;
 }
@@ -1992,7 +2000,12 @@ static int run_proc(int idx) {
             const char *e = getenv("E2_CAP");
             cap = e ? atol(e) : 60000000L;
         }
-        if (++guard > cap) {
+        // Counted from the machine, not from a local. `guard` is reset every time run_proc is
+        // entered, and with threads the main one yields on almost every futex, so run_proc is
+        // entered thousands of times and the cap never fires - which is a hang that looks like a
+        // guest loop and is really a counter in the wrong place.
+        guard++;
+        if (g_total_instructions > (uint64_t)cap) {
             snprintf(g_reason, sizeof(g_reason), "instruction cap");
             g_fault = 1;
             // Where it was spinning. A cap reached says only that something will not finish;
