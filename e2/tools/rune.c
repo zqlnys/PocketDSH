@@ -391,12 +391,15 @@ static int fs_open(void *c, const char *path, int fl, int m) {
 // stack after a few seconds names the loop directly.
 static unsigned g_watch_regions = 0;
 
+static void watchdog_dump_procs(void);
+
 static void watchdog_dump(int sig) {
     (void)sig;
     void *frames[32];
     const int n = backtrace(frames, 32);
     fprintf(stderr, "[watchdog] stalled; %d frames, regions=%u/%u, total instructions=%llu\n",
             n, g_watch_regions, E2_MAX_REGIONS, g_total_instructions);
+    watchdog_dump_procs();
     backtrace_symbols_fd(frames, n, 2);
     _exit(97);
 }
@@ -1597,6 +1600,20 @@ static void note_write_error(int tab, int err) {
 /// not just children: in `ls | wc -l` the reader has no children of its own, and
 /// returning "none to run" there means reporting end-of-file on a pipe that the
 /// sibling is about to write to.
+// Every live process, with its pc and how far it has got. A thread that never ends and a parent
+// waiting for it look the same from outside; this tells them apart and says where the thread is.
+static void watchdog_dump_procs(void) {
+    for (int i = 0; i < E2_MAX_PROCS; i++) {
+        const proc_t *q = &procs[i];
+        if (!q->used || !q->alive) continue;
+        fprintf(stderr, "[watchdog] proc %d pc=0x%llx insn=%llu%s%s\n",
+                q->pid, (unsigned long long)q->m.cpu.pc,
+                (unsigned long long)q->m.instructions,
+                q->futex_waiting ? " parked-futex" : "",
+                q->thread_of ? " thread" : "");
+    }
+}
+
 static int pump_children_for_tab(int tab) {
     int ran = 0;
     for (int i = 0; i < E2_MAX_PROCS; i++) {
