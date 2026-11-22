@@ -279,7 +279,6 @@ int e2_deliver_pending_signal(e2_machine *machine) {
 
 e2_status e2_step(e2_machine *machine) {
     e2_cpu *cpu = &machine->cpu;
-    machine->ctx.pc = cpu->pc;
 
     uint32_t insn = 0;
     // Fast path first: a fetch almost always lands in the region the previous one did.
