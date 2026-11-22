@@ -11,6 +11,7 @@ import PocketDSHCore
 /// One process per call is the simple design and it is a deliberate one: keeping a guest alive
 /// between calls needs a request loop, framing, and a way to notice the guest died, none of which
 /// earns its complexity until a plugin is slow enough for the startup to show.
+@MainActor
 final class E2PythonPluginExecutor: PythonPluginExecuting {
     private let runtime: E2Runtime
 
