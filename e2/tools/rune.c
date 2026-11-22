@@ -693,10 +693,25 @@ static int fs_socketpair(void *c, int domain, int type, int protocol, int fds[2]
         return -1;
     }
     (void)protocol;
+    // The guest's SOCK_CLOEXEC and SOCK_NONBLOCK are not the host's. Linux puts them at 0x80000
+    // and 0x800, macOS at 0x1000000 and 0x4 - so passing the guest's value straight through is an
+    // invalid type on macOS and socketpair fails with EINVAL. asyncio builds its self-pipe here,
+    // so that one mismatch stopped the event loop from being created at all.
+    const int base_type = type & 0xF;             // SOCK_STREAM / DGRAM / SEQPACKET / RAW
+    const int want_cloexec = (type & 0x80000) != 0;
+    const int want_nonblock = (type & 0x800) != 0;
     int host[2] = {-1, -1};
-    if (socketpair(domain, type, protocol, host) != 0) {
+    if (socketpair(domain, base_type, protocol, host) != 0) {
         if (err) *err = errno;
         return -1;
+    }
+    if (want_cloexec) {
+        fcntl(host[0], F_SETFD, FD_CLOEXEC);
+        fcntl(host[1], F_SETFD, FD_CLOEXEC);
+    }
+    if (want_nonblock) {
+        fcntl(host[0], F_SETFL, fcntl(host[0], F_GETFL, 0) | O_NONBLOCK);
+        fcntl(host[1], F_SETFL, fcntl(host[1], F_GETFL, 0) | O_NONBLOCK);
     }
     const int a = fd_alloc_tab(((const procctx *)c)->fdtab, host[0]);
     const int b = fd_alloc_tab(((const procctx *)c)->fdtab, host[1]);
