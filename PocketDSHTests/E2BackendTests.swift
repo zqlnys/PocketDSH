@@ -207,7 +207,7 @@ final class E2BackendTests: XCTestCase {
 
         setenv("E2_TRACE_POLL", "1", 1)
         defer { unsetenv("E2_TRACE_POLL") }
-        let (_, output) = try runGuest(python, ["/tmp/e2-polltrace.py"], cap: "40000000")
+        let (_, output) = try runGuest(python, ["/tmp/e2-polltrace.py"], cap: "400000000")
         let lines = output.split(separator: "\n").filter { $0.contains("[poll]") }
         print("POLLTRACE count=\(lines.count)")
         for line in lines.prefix(12) { print("POLLTRACE \(line)") }
