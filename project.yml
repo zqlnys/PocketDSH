@@ -108,6 +108,10 @@ targets:
         # Shipped target: bridging header exposes only the original probe, so no
         # GPL-licensed headers are even reachable.
         SWIFT_OBJC_BRIDGING_HEADER: TierCProbe/RuntimeOnly-Bridging-Header.h
+        # The guest root is read by a script phase from a directory CI assembles outside the source
+        # tree. Declaring that path for the sandbox did not work: inputFiles does not expand the
+        # setting that names it, and a denied read produces an empty copy with no error.
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
         # Tier D only. Tier C is the Lab build's flag and pulls in iSH; E2 needs neither.
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) TIER_D_AVAILABLE"
         HEADER_SEARCH_PATHS:
