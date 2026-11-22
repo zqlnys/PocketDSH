@@ -2005,7 +2005,12 @@ static int run_proc(int idx) {
         // entered thousands of times and the cap never fires - which is a hang that looks like a
         // guest loop and is really a counter in the wrong place.
         guard++;
-        if (g_total_instructions > (uint64_t)cap) {
+        // The process's own count, which is what a cap is meant to bound - a subprocess doing
+        // real work legitimately runs instructions the parent never does. The global one is a
+        // backstop for the case the own count cannot see: a child pumped from inside a syscall
+        // that never finishes, which burns time without the parent advancing at all.
+        if (p->m.instructions > (uint64_t)cap ||
+            g_total_instructions > (uint64_t)cap * 4) {
             snprintf(g_reason, sizeof(g_reason), "instruction cap");
             g_fault = 1;
             // Where it was spinning. A cap reached says only that something will not finish;
