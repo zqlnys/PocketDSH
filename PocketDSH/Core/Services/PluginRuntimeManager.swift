@@ -11,6 +11,12 @@ final class PluginRuntimeManager: ObservableObject {
     private let store: PluginStore
     private let workspace: WorkspaceFileSystem
     private var runtimes: [String: LuaPluginRuntime] = [:]
+    /// Python plugins, kept apart from the Lua ones: their calls are asynchronous and go through
+    /// a guest process rather than into an embedded interpreter.
+    private var pythonRuntimes: [String: PythonPluginRuntime] = [:]
+    /// Supplied by the app when Tier D is available. Absent means Python plugins cannot load,
+    /// which is stated rather than being a mystery failure.
+    weak var pythonExecutor: PythonPluginExecuting?
     private var routes: [String: Route] = [:]
 
     init(store: PluginStore, workspace: WorkspaceFileSystem) {
