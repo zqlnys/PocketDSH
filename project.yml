@@ -63,7 +63,11 @@ targets:
       # with the bytecode present, past 600M without. Copying it here is the reliable way.
       - name: Copy the guest root and its bytecode into the bundle
         shell: /bin/bash
+        # Both locations: GUEST_ROOT when CI assembled one outside the tree, and the checked-in
+        # tree for a local build. The build sandbox denies anything not declared here, and a
+        # denied read of the source produced an empty copy with no error worth reading.
         inputFiles:
+          - $(GUEST_ROOT)
           - $(SRCROOT)/PocketDSH/Resources/alpine-root
         script: |
           # The guest root is assembled by CI into $GUEST_ROOT, outside the source tree, because
