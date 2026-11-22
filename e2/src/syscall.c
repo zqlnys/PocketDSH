@@ -844,6 +844,14 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             }
             E2_RETURN(0);
         }
+        case 133: {  // rt_sigsuspend
+            // Where a thread parks waiting for a signal that would unblock it. Nothing here
+            // delivers signals asynchronously, so the honest answer is to yield: the scheduler
+            // gets its turn, and a process that really should block will find its condition met
+            // by whoever else runs.  Leaving this unimplemented made the caller fall through to
+            // a host wait, and /proc showed the whole harness asleep in sigsuspend.
+            E2_RETURN(-4);   // EINTR
+        }
         case 135:  // rt_sigprocmask
             // The mask is not modelled: delivery happens between instructions and the
             // guest is single-threaded, so there is no window a mask would protect.

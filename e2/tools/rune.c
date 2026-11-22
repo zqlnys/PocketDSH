@@ -22,6 +22,9 @@
 // three are needed for shell pipelines to see EOF correctly.
 #define _GNU_SOURCE
 #include <errno.h>
+#include <execinfo.h>
+#include <signal.h>
+#include <unistd.h>
 #include <poll.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
@@ -381,9 +384,35 @@ static int fs_open(void *c, const char *path, int fl, int m) {
     }
     return guest;
 }
+// Where the harness is when it stops making progress.
+//
+// A spin that runs no guest instructions cannot be caught by an instruction counter, and the
+// process is in R state, so /proc says nothing useful either. A watchdog that dumps the host
+// stack after a few seconds names the loop directly.
+static unsigned g_watch_regions = 0;
+
+static void watchdog_dump(int sig) {
+    (void)sig;
+    void *frames[32];
+    const int n = backtrace(frames, 32);
+    fprintf(stderr, "[watchdog] stalled; %d frames, regions=%u/%u, total instructions=%llu\n",
+            n, g_watch_regions, E2_MAX_REGIONS, g_total_instructions);
+    backtrace_symbols_fd(frames, n, 2);
+    _exit(97);
+}
+
 static long fs_read(void *c, int fd, void *b, size_t n, long long o) {
     if (fd < 0 || fd >= E2_MAX_FDS || !TAB(c)[fd].used) return -EBADF;
+    // A ceiling on the retry loop. It exists so a pipe that nobody can ever fill returns an
+    // error the guest can see, instead of spinning the whole harness where no instruction
+    // counter can notice.
+    long spins = 0;
     for (;;) {
+        if (++spins > 2000000) {
+            fprintf(stderr, "[spin] fs_read gave up fd=%d tab=%d after %ld turns\n",
+                    fd, ((const procctx *)c)->fdtab, spins);
+            return -EAGAIN;
+        }
         ssize_t r = o < 0 ? read(TAB(c)[fd].host, b, n) : pread(TAB(c)[fd].host, b, n, o);
         if (r >= 0) {
             if (getenv("E2_TRACE_RZERO") && r == 0)
@@ -2005,6 +2034,7 @@ static int run_proc(int idx) {
         // entered thousands of times and the cap never fires - which is a hang that looks like a
         // guest loop and is really a counter in the wrong place.
         guard++;
+        g_watch_regions = p->m.mem.count;
         // The process's own count, which is what a cap is meant to bound - a subprocess doing
         // real work legitimately runs instructions the parent never does. The global one is a
         // backstop for the case the own count cannot see: a child pumped from inside a syscall
@@ -3080,6 +3110,10 @@ void e2_set_root(const char *path) {
 
 #ifndef E2_AS_LIBRARY
 int main(int argc, char **argv) {
+    if (getenv("E2_WATCHDOG")) {
+        signal(SIGALRM, watchdog_dump);
+        alarm((unsigned)atoi(getenv("E2_WATCHDOG")));
+    }
 #else
 int e2_rune_main(int argc, char **argv) {
 #endif
