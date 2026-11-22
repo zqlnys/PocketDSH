@@ -75,7 +75,9 @@ targets:
           if [ ! -d "$SRC" ]; then echo "guest root missing"; exit 0; fi
           rm -rf "$DST"
           mkdir -p "$DST"
-          ditto "$SRC" "$DST" 2>/dev/null || cp -a "$SRC/." "$DST/"
+          ditto "$SRC" "$DST" || cp -a "$SRC/." "$DST/"
+          echo "after copy: $(find "$DST" -type f 2>/dev/null | wc -l | tr -d ' ') files, $(du -sh "$DST" 2>/dev/null | cut -f1)"
+          echo "after copy: usr exists=$([ -d "$DST/usr" ] && echo yes || echo no) bin exists=$([ -d "$DST/bin" ] && echo yes || echo no)"
           # Bytecode, compiled here so it is after any clean and matches the interpreter that
           # will load it. Without it CPython compiles every import from source on a read-only
           # bundle: 239M instructions for `import asyncio` with it, past 600M without.
