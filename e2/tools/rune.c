@@ -1697,6 +1697,7 @@ static int run_proc(int idx) {
         if (!resolved) {
             resolved = 1;
             g_hist_on = getenv("E2_TRACE_HIST") != NULL;
+    (void)0;
         }
     }
     // The callbacks read the ids from ctx, so they have to be current for this turn.
