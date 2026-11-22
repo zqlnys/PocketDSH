@@ -248,6 +248,37 @@ final class E2BackendTests: XCTestCase {
         XCTAssertTrue(output.contains("[0, 2, 4, 6]"), output)
     }
 
+    /// subprocess, both without and with captured streams.
+    ///
+    /// It failed on a device for many rounds for two reasons, neither of them in the interpreter:
+    /// the bundle carried no precompiled bytecode, so every import was compiled from source and
+    /// the run never finished; and socketpair's SOCK_CLOEXEC bit means different things on Linux
+    /// and macOS. Both are fixed, so this is worth asserting again.
+    func testPythonSubprocess() throws {
+        let root = try guestRoot()
+        let python = root.appendingPathComponent("usr/bin/python3.12").path
+        try XCTSkipUnless(FileManager.default.isReadableFile(atPath: python),
+                          "this build's guest root has no CPython")
+
+        let script = root.appendingPathComponent("tmp/e2-sub.py")
+        try? FileManager.default.createDirectory(at: script.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: script) }
+        try """
+        import subprocess
+        print("call", subprocess.call(["/bin/busybox", "echo", "nocap"]))
+        print("capture", subprocess.run(["/bin/busybox", "echo", "cap"],
+                                        capture_output=True, text=True).stdout.strip())
+        """.write(to: script, atomically: true, encoding: .utf8)
+
+        let (status, output) = try runGuest(python, ["/tmp/e2-sub.py"], cap: "400000000")
+        XCTAssertFalse(output.contains("instruction cap"),
+                       "subprocess did not finish: \(output.suffix(200))")
+        XCTAssertEqual(status, 0, "python exited \(status); output was <<<\(output)>>>")
+        XCTAssertTrue(output.contains("nocap"), output)
+        XCTAssertTrue(output.contains("capture cap"), output)
+    }
+
     /// A file the guest writes has to show up on disk, because the workspace mount depends on
     /// it.
     func testGuestWritesAFile() throws {
