@@ -279,6 +279,32 @@ final class E2BackendTests: XCTestCase {
         XCTAssertTrue(output.contains("capture cap"), output)
     }
 
+    /// A command that fails has to say so.
+    ///
+    /// The runtime only checked for a negative status, so `exit 3` and a missing command both
+    /// came back as success with the output attached. That is the same mistake the smoke test
+    /// made: trusting an indirect signal instead of what the program actually reported.
+    @MainActor
+    func testNonZeroExitIsReportedAsFailure() async throws {
+        let root = try guestRoot()
+        try XCTSkipUnless(FileManager.default.isReadableFile(
+                            atPath: root.appendingPathComponent("bin/busybox").path),
+                          "needs a readable busybox in the guest root")
+
+        let runtime = E2Runtime()
+        let failed = await runtime.run(command: "exit 3")
+        XCTAssertTrue(failed.isError, "exit 3 was reported as success: \(failed.content)")
+        XCTAssertTrue(failed.content.contains("3"), failed.content)
+
+        let missing = await runtime.run(command: "no-such-command-here")
+        XCTAssertTrue(missing.isError, "a missing command was reported as success")
+
+        // And a command that succeeds is still a success, so the check is not simply strict.
+        let ok = await runtime.run(command: "echo fine")
+        XCTAssertFalse(ok.isError, ok.content)
+        XCTAssertTrue(ok.content.contains("fine"), ok.content)
+    }
+
     /// A file the guest writes has to show up on disk, because the workspace mount depends on
     /// it.
     func testGuestWritesAFile() throws {

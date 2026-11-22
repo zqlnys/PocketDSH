@@ -92,6 +92,18 @@ final class E2Runtime: ObservableObject {
         }
         state = .active
         let trimmed = output.trimmingCharacters(in: .newlines)
+
+        // A non-zero status is a failure, and only `status < 0` used to count. `sh -c 'exit 3'`
+        // and a command that does not exist both came back as success, which is the same mistake
+        // the smoke test made one layer up: trusting an indirect signal instead of the one the
+        // program actually produced.
+        if status != 0 {
+            let body = trimmed.isEmpty ? "(no output)" : trimmed
+            let how = status > 128
+                ? "was killed by signal \(status - 128)"
+                : "exited \(status)"
+            return .failure("The command \(how).\n\(body)")
+        }
         return .success(trimmed.isEmpty ? "(no output)" : trimmed)
     }
 
