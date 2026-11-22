@@ -184,35 +184,12 @@ final class E2BackendTests: XCTestCase {
     // anything. Both of the things that fail there are the ones that block in poll, and both
     // are covered by the command-line suites.
 
-    /// A diagnostic, not a test: what poll is asked and what it answers, on a device.
-    ///
-    /// asyncio and subprocess both block in poll, both work on the command line, and both fail
-    /// here. Nothing so far has shown what poll does on the device, so this run prints it and
-    /// deliberately stops early - the point is the trace, not the program.
-    func testPollTraceDiagnostic() throws {
-        let root = try guestRoot()
-        let python = root.appendingPathComponent("usr/bin/python3.12").path
-        try XCTSkipUnless(FileManager.default.fileExists(atPath: python),
-                          "this build's guest root has no CPython")
-
-        let script = root.appendingPathComponent("tmp/e2-polltrace.py")
-        try? FileManager.default.createDirectory(at: script.deletingLastPathComponent(),
-                                                 withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: script) }
-        try """
-        import asyncio
-        loop = asyncio.new_event_loop()
-        print("loop built")
-        """.write(to: script, atomically: true, encoding: .utf8)
-
-        setenv("E2_TRACE_POLL", "1", 1)
-        defer { unsetenv("E2_TRACE_POLL") }
-        let (_, output) = try runGuest(python, ["/tmp/e2-polltrace.py"], cap: "400000000")
-        let lines = output.split(separator: "\n").filter { $0.contains("[poll]") }
-        print("POLLTRACE count=\(lines.count)")
-        for line in lines.prefix(12) { print("POLLTRACE \(line)") }
-        print("POLLTRACE tail=\(output.suffix(300))")
-    }
+    // No poll-trace diagnostic here. It existed to answer one question - what poll does on a
+    // device - and it did: nothing, because the 40M cap it was given cannot even finish
+    // asyncio's import at 239M. Re-running it at 400M answered nothing further and ran long
+    // enough to hit the cap, which leaves interpreter state behind for the next test. That is
+    // the third time a case like this has done that, and the pattern is now the lesson: a test
+    // that reaches the instruction cap damages the tests after it.
 
     /// A file the guest writes has to show up on disk, because the workspace mount depends on
     /// it.
