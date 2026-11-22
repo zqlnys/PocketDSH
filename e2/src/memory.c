@@ -70,6 +70,11 @@ static const e2_region *find(const e2_memory *mem, uint64_t addr, size_t len) {
 }
 
 /// Region containing `addr` regardless of length, or NULL.
+// Tried and measured, so it does not have to be tried again: a 64-slot direct-mapped hint table
+// keyed on the address, on the theory that CPython's startup walking a hundred-odd regions makes
+// the linear scan below expensive. Three runs before and three after gave 2.98-3.01 s and
+// 2.99-3.11 s - no change. Startup runs at about 76 ns per instruction against the benchmark's 46,
+// and that is the guest's own code and data being cold, which a lookup hint cannot touch.
 static const e2_region *region_at(const e2_memory *mem, uint64_t addr) {
     // Try the previously resolved region first. The cast only writes a cache hint, so the
     // const contract holds; a hint that no longer matches simply fails the containment
