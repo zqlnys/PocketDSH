@@ -93,7 +93,10 @@ targets:
           fi
           # The 3.12 magic number is what matters, not the patch version: bytecode from 3.12.3
           # loads in 3.12.13, verified against the guest.
-          "$PY" -m compileall -q -j 4 "$SRC" || echo "bytecode phase: compileall reported an error"
+          echo "bytecode phase: src exists=$([ -d "$SRC" ] && echo yes || echo no) py files=$(find "$SRC" -name '*.py' 2>/dev/null | wc -l | tr -d ' ')"
+          echo "bytecode phase: dst exists=$([ -d "$DST" ] && echo yes || echo no)"
+          "$PY" -m compileall -q -j 4 "$SRC" 2>&1 | head -5 || true
+          echo "bytecode phase: after compileall, pyc=$(find "$SRC" -name '*.pyc' 2>/dev/null | wc -l | tr -d ' ')"
           n=0
           find "$SRC" -type d -name __pycache__ -print0 | while IFS= read -r -d '' dir; do
             rel="${dir#$SRC/}"
