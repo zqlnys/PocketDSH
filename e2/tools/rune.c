@@ -1735,6 +1735,10 @@ static int run_proc(int idx) {
     unsigned hist_at = 0, hist_n = 0;
     long syscalls_seen = 0;
     long guard = 0;
+    // Sampled pc histogram: 256 direct-mapped slots, one sample every 4096 instructions. Cheap
+    // enough to leave off unless asked for, and enough to name a loop.
+    static unsigned long long pc_hist[256], pc_hist_pc[256];
+    long sample_at = 0;
     while (p->alive) {
         // A parked process yields whatever its budget says: the top-level process runs with no
         // budget at all, so keying this on the budget alone left join() spinning forever.
@@ -1960,6 +1964,22 @@ static int run_proc(int idx) {
         if (++guard > cap) {
             snprintf(g_reason, sizeof(g_reason), "instruction cap");
             g_fault = 1;
+            // Where it was spinning. A cap reached says only that something will not finish;
+            // the addresses say which loop, and a module's load bias turns that into a function.
+            if (getenv("E2_PC_HIST")) {
+                // Every sample taken during the run, most frequent first. A cap reached says
+                // only that something will not finish; the addresses say which loop.
+                for (int h = 0; h < 12; h++) {
+                    int best = -1; unsigned long long bestn = 0;
+                    for (int i = 0; i < 256; i++) {
+                        if (pc_hist[i] > bestn) { bestn = pc_hist[i]; best = i; }
+                    }
+                    if (best < 0 || bestn == 0) break;
+                    fprintf(stderr, "[pchist] 0x%llx  %llu samples\n",
+                            (unsigned long long)pc_hist_pc[best], bestn);
+                    pc_hist[best] = 0;
+                }
+            }
             if (getenv("E2_TRACE_HIST")) {
                 fprintf(stderr, "[hist] loop body:\n");
                 for (unsigned k = 0; k < hist_n; k++) {
@@ -2684,6 +2704,12 @@ static int run_proc(int idx) {
                 return 0;   // the default action for an unhandled signal
             }
             if (delivered > 0) continue;
+        }
+        if (guard >= sample_at) {
+            const unsigned slot = (unsigned)((p->m.cpu.pc >> 2) & 0xFF);
+            pc_hist[slot]++;
+            pc_hist_pc[slot] = p->m.cpu.pc;
+            sample_at = guard + 4096;
         }
         e2_status st = e2_step(&p->m);
         // A chdir inside the step changed env.cwd; keep the process copy in step so

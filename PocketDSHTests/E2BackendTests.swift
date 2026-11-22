@@ -236,11 +236,17 @@ final class E2BackendTests: XCTestCase {
         print("D-closed", flush=True)
         """.write(to: script, atomically: true, encoding: .utf8)
 
-        let (_, output) = try runGuest(python, ["/tmp/e2-asy-diag.py"], cap: "500000000")
+        // A smaller ceiling and a sampled pc histogram: the question is where it spins, not how
+        // long it spins for, and 60M is reached in a fraction of the time 500M takes.
+        setenv("E2_PC_HIST", "1", 1)
+        defer { unsetenv("E2_PC_HIST") }
+        let (_, output) = try runGuest(python, ["/tmp/e2-asy-diag.py"], cap: "60000000")
         let marks = output.split(separator: "\n").filter { $0.hasPrefix("A-") || $0.hasPrefix("B-")
             || $0.hasPrefix("C-") || $0.hasPrefix("D-") }
         print("ASYNCIO-MARK \(marks.joined(separator: " "))")
-        print("ASYNCIO-TAIL \(output.suffix(240))")
+        for line in output.split(separator: "\n").filter({ $0.contains("[pchist]") }).prefix(8) {
+            print("ASYNCIO-PC \(line)")
+        }
     }
 
     /// A file the guest writes has to show up on disk, because the workspace mount depends on
