@@ -485,6 +485,46 @@ static void test_bitwise_select_matches_a_real_run(void) {
     e2_machine_destroy(&m);
 }
 
+static void test_simd_matches_a_real_run(void) {
+    printf("CNT, ADDV, REV, EXT, TBL, DUP, UMOV and SMOV match what the hardware produced\n");
+    // Eight instructions added long after the backend first worked, each verified against
+    // qemu-aarch64 running the same ELF. They are the kind that look right and are not: a byte
+    // reverse that reverses the wrong half, a table lookup that uses the wrong index register,
+    // a lane read that returns the low half of the vector regardless of the lane asked for.
+    e2_machine m;
+    e2_machine_init(&m, 0, 1 << 20);
+    FILE *f = fopen("tests/guest/simdext.elf", "rb");
+    CHECK(f != NULL, "simdext.elf missing - run make first");
+    if (f == NULL) { e2_machine_destroy(&m); return; }
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    uint8_t *image = (uint8_t *)malloc((size_t)size);
+    CHECK(image != NULL, "out of memory");
+    if (image == NULL) { fclose(f); e2_machine_destroy(&m); return; }
+    if (fread(image, 1, (size_t)size, f) != (size_t)size) { /* short read still usable */ }
+    fclose(f);
+
+    e2_loaded_image info = {0};
+    e2_load_result lr = e2_load_elf_full(&m, image, (size_t)size, true, &info);
+    CHECK(lr == E2_LOAD_OK, "load: %s", e2_load_result_name(lr));
+    if (lr == E2_LOAD_OK) {
+        capture cap = {0};
+        e2_syscall_env env = {.exit = capture_exit, .files = &test_files, .ctx = &cap};
+        e2_status st = run_program(&m, &env, 2000000);
+        CHECK(st == E2_HALTED, "expected halt, got %s", e2_status_name(st));
+        CHECK(strstr(cap.out, "0101040404040404") != NULL, "CNT wrong: %.80s", cap.out);
+        CHECK(strstr(cap.out, "000000000000007e") != NULL, "ADDV wrong: %.80s", cap.out);
+        CHECK(strstr(cap.out, "0011223344556677") != NULL, "REV64 wrong: %.80s", cap.out);
+        CHECK(strstr(cap.out, "ffeeddccbbaa9988") != NULL, "EXT wrong: %.80s", cap.out);
+        CHECK(strstr(cap.out, "4455667700112233") != NULL, "TBL wrong: %.80s", cap.out);
+        CHECK(strstr(cap.out, "8001aa558001aa55") != NULL, "DUP wrong: %.80s", cap.out);
+        CHECK(strstr(cap.out, "0000000000000011") != NULL, "UMOV/SMOV wrong: %.80s", cap.out);
+    }
+    free(image);
+    e2_machine_destroy(&m);
+}
+
 static void test_ldp_stp_match_a_real_run(void) {
     printf("LDP/STP with pre- and post-index match what the hardware produced\n");
     // Expected values came from running the same ELF under qemu-aarch64. The CALL path in
@@ -1665,6 +1705,7 @@ int main(void) {
     test_jump_table_matches_a_real_run();
     test_bitwise_select_matches_a_real_run();
     test_ldp_stp_match_a_real_run();
+    test_simd_matches_a_real_run();
     test_bitfield_matches_a_real_run();
     test_ushll2_widens_from_the_upper_half();
     test_movi_64bit_immediate();
