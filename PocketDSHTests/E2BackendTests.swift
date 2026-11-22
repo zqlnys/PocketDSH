@@ -191,6 +191,26 @@ final class E2BackendTests: XCTestCase {
     // the third time a case like this has done that, and the pattern is now the lesson: a test
     // that reaches the instruction cap damages the tests after it.
 
+    /// The same path the app's own smoke test takes: E2Runtime, not the bridge underneath it.
+    ///
+    /// Every other case here calls e2_bridge_run directly, so none of them exercised the runtime's
+    /// own guard - and that guard asked isExecutableFile for a file iOS installs read-only. The
+    /// whole feature was unusable on a device while these tests were green.
+    @MainActor
+    func testE2RuntimeRunsACommand() async throws {
+        let root = try guestRoot()
+        try XCTSkipUnless(FileManager.default.isReadableFile(
+                            atPath: root.appendingPathComponent("bin/busybox").path),
+                          "needs a readable busybox in the guest root")
+
+        let runtime = E2Runtime()
+        let result = await runtime.run(command: "echo runtime-ok")
+        XCTAssertFalse(result.isError, result.content)
+        XCTAssertTrue(result.content.contains("runtime-ok"),
+                      "output was <<<\(result.content)>>>")
+        XCTAssertTrue(runtime.isSessionActive, "the runtime should report a live session")
+    }
+
     /// A file the guest writes has to show up on disk, because the workspace mount depends on
     /// it.
     func testGuestWritesAFile() throws {
