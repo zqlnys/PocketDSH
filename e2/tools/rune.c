@@ -263,14 +263,13 @@ static const char *host_device(const char *p) {
 // host can write; /tmp is left alone because it resolves inside the root, which is what a
 // program that ships its own temporary files expects.
 static const char *guest_tmp(void) {
-    static const char *cached = NULL;
-    static int looked = 0;
-    if (!looked) {
-        looked = 1;
-        cached = getenv("E2_WORKSPACE");
-        if (cached != NULL && cached[0] == '\0') cached = NULL;
-    }
-    return cached;
+    // Read every time, not once. The value is a pointer into the environment block, so caching it
+    // is free but wrong the moment the caller changes it - and the bridge does exactly that, once
+    // per command, to point /workspace at the project being asked about. A cached scratch
+    // directory meant every command after the first looked at the wrong folder.
+    const char *value = getenv("E2_WORKSPACE");
+    if (value != NULL && value[0] == '\0') return NULL;
+    return value;
 }
 
 static void host_path(char *out, size_t n, const char *p) {
