@@ -56,16 +56,16 @@ static void e2_configure_environment(void) {
     // is compiled from source: 239 million instructions for `import asyncio` with the cache
     // present, past 600 million without. The bundle now ships precompiled bytecode as well;
     // this is what lets a module compiled at run time be reused on the next one.
-    // A writable directory for guest /tmp. The bundle is read-only, so a program writing a
+    // A writable directory at guest /workspace. The bundle is read-only, so a program writing a
     // scratch file failed with "Operation not permitted" and the smoke test still called it a
     // pass. This is the app's own temporary directory, which is writable and is cleared by the
     // system.
-    if (getenv("E2_TMP") == NULL) {
+    if (getenv("E2_WORKSPACE") == NULL) {
         const char *tmp = getenv("TMPDIR");
-        static char guest_tmp[1024];
-        snprintf(guest_tmp, sizeof(guest_tmp), "%s/e2-guest-tmp", tmp != NULL ? tmp : "/tmp");
-        mkdir(guest_tmp, 0700);
-        setenv("E2_TMP", guest_tmp, 0);
+        static char workspace[1024];
+        snprintf(workspace, sizeof(workspace), "%s/e2-workspace", tmp != NULL ? tmp : "/tmp");
+        mkdir(workspace, 0700);
+        setenv("E2_WORKSPACE", workspace, 0);
     }
     if (getenv("PYTHONPYCACHEPREFIX") == NULL) {
         const char *tmp = getenv("TMPDIR");

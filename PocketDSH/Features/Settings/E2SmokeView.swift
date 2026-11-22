@@ -42,14 +42,16 @@ struct E2SmokeView: View {
     /// 2. Arithmetic goes through the shell's own evaluator, so more instructions run.
     /// 3. A pipe is synthesised by the harness rather than the host, which is the part most
     ///    likely to behave differently inside a sandbox.
-    /// 4. A guest write has to land on disk where the host can read it back.
+    /// 4. A guest write has to land on disk where the host can read it back. /workspace is the
+    ///    one writable directory: everything else resolves inside a read-only bundle.
     private func runSmokeTest() async {
         var lines: [String] = []
         let checks: [(String, String, String)] = [
             ("applet dispatch", "echo tier-d-ok", "tier-d-ok"),
             ("shell arithmetic", "echo $((6*7))", "42"),
             ("pipe", "echo hello | tr a-z A-Z", "HELLO"),
-            ("guest write", "echo written > /tmp/e2-smoke.txt && cat /tmp/e2-smoke.txt", "written")
+            ("guest write", "echo written > /workspace/e2-smoke.txt && cat /workspace/e2-smoke.txt",
+             "written")
         ]
 
         // Each check has an expected fragment, and a check passes only when the output contains

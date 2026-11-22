@@ -254,17 +254,19 @@ static const char *host_device(const char *p) {
     }
     return NULL;
 }
-// A writable directory for guest /tmp.
+// A writable directory for guest /workspace.
 //
 // Inside an app bundle the root is read-only, and a program that writes a temporary file - which
 // is most of them, and every shell script that uses a scratch file - fails with "Operation not
-// permitted" no matter what it was asked to do. E2_TMP points /tmp somewhere the host can write.
+// permitted" no matter what it was asked to do. E2_WORKSPACE points /workspace somewhere the
+// host can write; /tmp is left alone because it resolves inside the root, which is what a
+// program that ships its own temporary files expects.
 static const char *guest_tmp(void) {
     static const char *cached = NULL;
     static int looked = 0;
     if (!looked) {
         looked = 1;
-        cached = getenv("E2_TMP");
+        cached = getenv("E2_WORKSPACE");
         if (cached != NULL && cached[0] == '\0') cached = NULL;
     }
     return cached;
@@ -287,8 +289,8 @@ static void host_path(char *out, size_t n, const char *p) {
             else snprintf(absolute, sizeof(absolute), "%s/%s", g_cur_cwd, p);
             want = absolute;
         }
-        if (strncmp(want, "/tmp", 4) == 0 && (want[4] == '/' || want[4] == '\0')) {
-            snprintf(out, n, "%s%.1790s", tmp, want + 4);
+        if (strncmp(want, "/workspace", 10) == 0 && (want[10] == '/' || want[10] == '\0')) {
+            snprintf(out, n, "%s%.1790s", tmp, want + 10);
             return;
         }
     }
