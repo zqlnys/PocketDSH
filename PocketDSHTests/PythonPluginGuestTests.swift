@@ -35,7 +35,8 @@ final class PythonPluginGuestTests: XCTestCase {
 
         let command = "python3.12 \"/workspace/\(script.lastPathComponent)\" "
             + "greet \"{\\\"name\\\":\\\"ada\\\"}\""
-        let result = await runtime.run(command: command)
+        let result = await runtime.run(command: command,
+                                       workspace: script.deletingLastPathComponent())
         XCTAssertFalse(result.isError, result.content)
         XCTAssertTrue(result.content.contains("\"tool\": \"greet\""), result.content)
         XCTAssertTrue(result.content.contains("hello ada"), result.content)

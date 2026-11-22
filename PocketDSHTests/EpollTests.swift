@@ -33,7 +33,11 @@ final class EpollTests: XCTestCase {
         s.close()
         """.write(to: script, atomically: true, encoding: .utf8)
 
-        let result = await runtime.run(command: "python3.12 /workspace/\(script.lastPathComponent)")
+        // The workspace is passed explicitly rather than assumed to be wherever the bridge put
+        // its scratch directory: the test knows where it wrote, and saying so removes the only
+        // thing that could disagree.
+        let result = await runtime.run(command: "python3.12 /workspace/\(script.lastPathComponent)",
+                                       workspace: script.deletingLastPathComponent())
         XCTAssertFalse(result.isError, result.content)
         XCTAssertTrue(result.content.contains("selector EpollSelector"),
                       "fell back: \(result.content)")
