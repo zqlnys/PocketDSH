@@ -38,6 +38,17 @@ final class PluginRuntimeManager: ObservableObject {
                 store.setError(message, for: id)
                 continue
             }
+            // Say so plainly. The only runtime here is Lua, and a plugin written in anything else
+            // used to be fed to the Lua one, which failed with a parse error somewhere in a file
+            // that was never Lua - a message pointing at the wrong layer entirely.
+            guard entry.pathExtension.lowercased() == "lua" else {
+                let message = """
+                Plugins run in the embedded Lua runtime, so the entry must be a .lua file;                 this one is \(plugin.manifest.entry). Other languages would need their own                 runtime, which this build does not include.
+                """
+                loadErrors[id] = message
+                store.setError(message, for: id)
+                continue
+            }
 
             let runtime = LuaPluginRuntime(identifier: id)
             let host = PluginWorkspaceHost(
