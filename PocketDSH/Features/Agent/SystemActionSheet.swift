@@ -182,7 +182,7 @@ private struct MessageComposer: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: MFMessageComposeViewController, context: Context) {}
 
     final class Coordinator: NSObject, MFMessageComposeViewControllerDelegate {
-        let onFinish: () -> Void
+        let onFinish: (MessageComposeResult) -> Void
 
         init(onFinish: @escaping (MessageComposeResult) -> Void) {
             self.onFinish = onFinish
