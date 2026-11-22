@@ -1899,6 +1899,50 @@ not_a_shift:;
         return E2_OK;
     }
 
+    // --- SIMD: ADDV (add across vector) ---
+    // `addv b0, v0.8b` sums every byte into one. musl pairs it with cnt to count matching
+    // bytes, so the two arrived together: os.cpu_count() walks into both.
+    if ((insn & 0xBF3FFC00u) == 0x0E31B800u) {
+        const bool q = BIT(insn, 30) != 0;
+        const unsigned size = BITS(insn, 23, 22);
+        const unsigned rn2 = BITS(insn, 9, 5);
+        const unsigned rd = BITS(insn, 4, 0);
+        const unsigned esize = 8u << size;
+        const unsigned lanes = (q ? 128u : 64u) / esize;
+        uint64_t sum = 0;
+        for (unsigned lane = 0; lane < lanes; lane++) {
+            sum += e2_v_get(cpu, rn2, esize, lane);
+        }
+        cpu->v[rd][0] = sum & ((esize >= 64) ? ~0ULL : ((1ULL << esize) - 1));
+        cpu->v[rd][1] = 0;
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
+    // --- SIMD: CNT (population count per byte) ---
+    // `cnt v0.8b, v0.8b` counts the set bits of each byte. musl reaches it while scanning for
+    // something in a string, and its absence surfaced the moment os.cpu_count() was called -
+    // as an unimplemented instruction, three frames down from anything that mentions counting.
+    if ((insn & 0xBF3FFC00u) == 0x0E205800u) {
+        const bool q = BIT(insn, 30) != 0;
+        const unsigned rn2 = BITS(insn, 9, 5);
+        const unsigned rd = BITS(insn, 4, 0);
+        const unsigned halves = q ? 2u : 1u;
+        for (unsigned h = 0; h < halves; h++) {
+            const uint64_t src = cpu->v[rn2][h];
+            uint64_t out = 0;
+            for (unsigned byte = 0; byte < 8; byte++) {
+                const unsigned value = (unsigned)((src >> (byte * 8)) & 0xFF);
+                out |= (uint64_t)(unsigned)__builtin_popcount(value) << (byte * 8);
+            }
+            cpu->v[rd][h] = out;
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     // --- SIMD: LD1 / ST1 single structure, post-indexed ---
     // `ld1 {v0.16b}, [x], #16` loads a whole register and advances the pointer. It is the
     // shape a block copy takes, and it was missing: a fast path that copies 16 bytes a pass
