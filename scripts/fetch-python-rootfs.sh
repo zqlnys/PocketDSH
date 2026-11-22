@@ -135,8 +135,9 @@ if [ -x "$DEST/usr/bin/python3.12" ]; then
     if [ -z "$PY" ]; then PY=$(command -v python3 2>/dev/null || true); fi
     if [ -n "$PY" ]; then
         echo "precompiling the standard library with $PY"
-        "$PY" -m compileall -q -j 4 "$DEST/usr/lib/python3"* 2>/dev/null || \
-            echo "  (compileall failed; the guest will compile on import)"
+        "$PY" -m compileall -q -j 4 "$DEST/usr/lib/python3"* || \
+            echo "  (compileall reported an error; the guest will compile on import)"
+        echo "bytecode written: $(find "$DEST/usr/lib" -name '*.pyc' 2>/dev/null | wc -l | tr -d ' ')"
     else
         echo "precompiling skipped: no python3.12 on the build host"
     fi
