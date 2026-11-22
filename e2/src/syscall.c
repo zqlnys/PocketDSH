@@ -486,7 +486,8 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
                 }
                 // clone's child starts at the return address on the new stack: x30 holds the
                 // entry point for a fresh thread, and a0 is the top of its stack.
-                E2_RETURN(env->thread(env->ctx, m, m->cpu.x[30], a1));
+                E2_RETURN(env->thread(env->ctx, m, m->cpu.x[30], a1, m->cpu.x[4],
+                                      a2, a3, a0));
             }
             if (env->fork == NULL) {
                 E2_RETURN(-E2_ENOSYS);

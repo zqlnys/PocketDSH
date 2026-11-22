@@ -1344,7 +1344,8 @@ static void p_exit(void *ctx, int status) {
     p->exit_status = status;
 }
 
-static long p_thread(void *ctx, const e2_machine *parent, uint64_t pc, uint64_t sp) {
+static long p_thread(void *ctx, const e2_machine *parent, uint64_t pc, uint64_t sp,
+                     uint64_t tls, uint64_t ptid, uint64_t ctid, uint64_t flags) {
     proc_t *self = ctx;
     const int slot = proc_slot();
     if (slot < 0) return -11;   // EAGAIN: no free slot
@@ -1358,6 +1359,10 @@ static long p_thread(void *ctx, const e2_machine *parent, uint64_t pc, uint64_t 
     t->m.cpu.sp = sp;
     t->m.cpu.x[0] = 0;          // the new thread sees clone() return 0
     t->m.cpu.x[30] = 0;
+    // The thread pointer. musl's pthread_create passes its TLS block here and the child's first
+    // errno or stack-protector access reads through it; leaving it inherited from the creator
+    // gives the new thread the parent's TLS, which is worse than none.
+    t->m.cpu.tpidr_el0 = tls;
     t->m.ctx.reason = NULL;
     t->m.ctx.fault_addr = 0;
 
@@ -1370,6 +1375,17 @@ static long p_thread(void *ctx, const e2_machine *parent, uint64_t pc, uint64_t 
     t->alive = 1;
     t->used = 1;
     t->exit_status = 0;
+
+    // The tid writes the kernel owes. musl's pthread_create asks for both and then waits for the
+    // child to signal readiness; without them it waits forever, which is exactly what
+    // threading.Thread().start() did - one line of output and then nothing.
+    const int32_t tid = (int32_t)t->pid;
+    if ((flags & 0x00200000ULL) && ptid != 0) {          // CLONE_PARENT_SETTID
+        e2_memory_write(&self->m.mem, ptid, &tid, sizeof(tid));
+    }
+    if ((flags & 0x00100000ULL) && ctid != 0) {          // CLONE_CHILD_SETTID
+        e2_memory_write(&t->m.mem, ctid, &tid, sizeof(tid));
+    }
     return t->pid;
 }
 

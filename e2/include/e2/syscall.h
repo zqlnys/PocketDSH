@@ -147,7 +147,12 @@ typedef struct {
     /// Creates a thread: same address space, new CPU state, entry at `pc`, stack at `sp`.
     /// Returns the new thread's id for the child, or a negative errno. Optional - a host
     /// that cannot run threads simply leaves it NULL and clone() reports EINVAL as before.
-    long (*thread)(void *ctx, const e2_machine *parent, uint64_t pc, uint64_t sp);
+    /// Creates a thread. `tls` is clone's TL argument and becomes the new thread's
+    /// TPIDR_EL0 - musl's pthread_create passes one and the thread cannot run without it.
+    /// `ptid` and `ctid` are clone's parent and child tid pointers, written when the matching
+    /// CLONE_*_SETTID flags are set. musl's pthread_create sets both and waits on the result.
+    long (*thread)(void *ctx, const e2_machine *parent, uint64_t pc, uint64_t sp, uint64_t tls,
+                   uint64_t ptid, uint64_t ctid, uint64_t flags);
     /// FUTEX_WAIT: returns 0 when the caller should block, -EAGAIN when the word no longer
     /// holds `val`. A host that blocks must also end the current turn itself; `*yield` is set
     /// when it has done so.
