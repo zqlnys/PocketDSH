@@ -125,4 +125,21 @@ find "$DEST" -type l -xtype l -delete 2>/dev/null || true
 
 mkdir -p "$DEST/tmp"
 
+# Precompile the standard library. An app bundle is read-only, so CPython cannot write
+# __pycache__ there and every import is compiled from source - which costs more than twice the
+# instructions of loading a .pyc. Measured on the same program: 239M instructions with these
+# files present, past 600M without.
+if [ -x "$DEST/usr/bin/python3.12" ]; then
+    PY=${HOST_PYTHON_FOR_BYTECODE:-}
+    if [ -z "$PY" ]; then PY=$(command -v python3.12 2>/dev/null || true); fi
+    if [ -z "$PY" ]; then PY=$(command -v python3 2>/dev/null || true); fi
+    if [ -n "$PY" ]; then
+        echo "precompiling the standard library with $PY"
+        "$PY" -m compileall -q -j 4 "$DEST/usr/lib/python3"* 2>/dev/null || \
+            echo "  (compileall failed; the guest will compile on import)"
+    else
+        echo "precompiling skipped: no python3.12 on the build host"
+    fi
+fi
+
 echo "root is $(du -sh "$DEST" | cut -f1)"

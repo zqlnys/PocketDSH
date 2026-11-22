@@ -51,6 +51,16 @@ static void e2_configure_environment(void) {
     if (getenv("LANG") == NULL) {
         setenv("LANG", "C.UTF-8", 0);
     }
+    // Where CPython may put __pycache__. The bundle is read-only, so without this every import
+    // is compiled from source: 239 million instructions for `import asyncio` with the cache
+    // present, past 600 million without. The bundle now ships precompiled bytecode as well;
+    // this is what lets a module compiled at run time be reused on the next one.
+    if (getenv("PYTHONPYCACHEPREFIX") == NULL) {
+        const char *tmp = getenv("TMPDIR");
+        static char pycache[1024];
+        snprintf(pycache, sizeof(pycache), "%s/e2-pycache", tmp != NULL ? tmp : "/tmp");
+        setenv("PYTHONPYCACHEPREFIX", pycache, 0);
+    }
 }
 
 /// Runs the harness with `argv` and captures stdout into `out_path`.

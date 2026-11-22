@@ -211,42 +211,41 @@ final class E2BackendTests: XCTestCase {
         XCTAssertTrue(runtime.isSessionActive, "the runtime should report a live session")
     }
 
-    /// Where asyncio stops on a device, as markers rather than a guess.
+    /// asyncio, which needs the standard library precompiled.
     ///
-    /// Named to sort last: if it reaches the instruction cap, everything after it in the same
-    /// process inherits the state, and the three earlier failures of that kind are enough.
-    func testZZAsyncioDiagnostic() throws {
+    /// It failed on a device for many rounds. The cause was not in the interpreter: an app bundle
+    /// is read-only, so CPython cannot write __pycache__ and compiles every module from source -
+    /// 239M instructions with the cache present, past 600M without, for the same program. The
+    /// guest root now ships precompiled bytecode and the bridge points PYTHONPYCACHEPREFIX
+    /// somewhere writable, so a module compiled at run time is reused next time.
+    func testPythonAsyncio() throws {
         let root = try guestRoot()
         let python = root.appendingPathComponent("usr/bin/python3.12").path
         try XCTSkipUnless(FileManager.default.isReadableFile(atPath: python),
                           "this build's guest root has no CPython")
 
-        let script = root.appendingPathComponent("tmp/e2-asy-diag.py")
+        let script = root.appendingPathComponent("tmp/e2-asyncio.py")
         try? FileManager.default.createDirectory(at: script.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: script) }
         try """
-        import sys
-        print("A-start", flush=True)
         import asyncio
-        print("B-imported", flush=True)
-        loop = asyncio.new_event_loop()
-        print("C-loop", flush=True)
-        loop.close()
-        print("D-closed", flush=True)
+
+        async def work(n):
+            await asyncio.sleep(0)
+            return n * 2
+
+        async def main():
+            print("gathered", await asyncio.gather(*(work(i) for i in range(4))))
+
+        asyncio.run(main())
         """.write(to: script, atomically: true, encoding: .utf8)
 
-        // A smaller ceiling and a sampled pc histogram: the question is where it spins, not how
-        // long it spins for, and 60M is reached in a fraction of the time 500M takes.
-        setenv("E2_PC_HIST", "1", 1)
-        defer { unsetenv("E2_PC_HIST") }
-        let (_, output) = try runGuest(python, ["/tmp/e2-asy-diag.py"], cap: "60000000")
-        let marks = output.split(separator: "\n").filter { $0.hasPrefix("A-") || $0.hasPrefix("B-")
-            || $0.hasPrefix("C-") || $0.hasPrefix("D-") }
-        print("ASYNCIO-MARK \(marks.joined(separator: " "))")
-        for line in output.split(separator: "\n").filter({ $0.contains("[pchist]") }).prefix(8) {
-            print("ASYNCIO-PC \(line)")
-        }
+        let (status, output) = try runGuest(python, ["/tmp/e2-asyncio.py"], cap: "400000000")
+        XCTAssertFalse(output.contains("instruction cap"),
+                       "asyncio did not finish: \(output.suffix(200))")
+        XCTAssertEqual(status, 0, "python exited \(status); output was <<<\(output)>>>")
+        XCTAssertTrue(output.contains("[0, 2, 4, 6]"), output)
     }
 
     /// A file the guest writes has to show up on disk, because the workspace mount depends on

@@ -1979,6 +1979,12 @@ static int run_proc(int idx) {
                             (unsigned long long)pc_hist_pc[best], bestn);
                     pc_hist[best] = 0;
                 }
+                // The mappings that turn those addresses into modules.
+                for (unsigned r = 0; r < p->m.mem.count; r++) {
+                    fprintf(stderr, "[pcmod] 0x%llx + 0x%llx\n",
+                            (unsigned long long)p->m.mem.regions[r].base,
+                            (unsigned long long)p->m.mem.regions[r].size);
+                }
             }
             if (getenv("E2_TRACE_HIST")) {
                 fprintf(stderr, "[hist] loop body:\n");
