@@ -306,6 +306,10 @@ e2_status e2_step(e2_machine *machine) {
     // above these are about 59% of a real run's instructions.
     if ((insn & 0x1F000000u) == 0x11000000u) goto addsub_imm;
     if ((insn & 0x7E000000u) == 0x34000000u) goto cbz_cbnz;
+    // Logical shifted (6.7% once the 32- and 64-bit forms are counted together) and the
+    // unconditional branch, which is small on its own but is the second half of every call.
+    if ((insn & 0x1F000000u) == 0x0A000000u) goto logical_shifted;
+    if ((insn & 0x7C000000u) == 0x14000000u) goto b_imm;
 
     // --- ADR / ADRP ---
     if ((insn & 0x1F000000u) == 0x10000000u) {
@@ -504,6 +508,7 @@ addsub_imm:
 
     // --- Logical (shifted register): AND / ORR / EOR / ANDS ---
     // Also covers MOV (register), which assemblers emit as ORR Xd, XZR, Xm.
+logical_shifted:
     if ((insn & 0x1F000000u) == 0x0A000000u) {
         const bool invert = BIT(insn, 21) != 0;
         const unsigned opc = BITS(insn, 30, 29);
@@ -2682,6 +2687,7 @@ not_a_shift:;
     }
 
     // --- B / BL ---
+b_imm:
     if ((insn & 0x7C000000u) == 0x14000000u) {
         const bool link = BIT(insn, 31) != 0;
         const int64_t offset = (int64_t)sign_extend(BITS(insn, 25, 0), 26) << 2;
