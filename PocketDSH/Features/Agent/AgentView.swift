@@ -55,6 +55,19 @@ struct AgentView: View {
                 composer
             }
             .background(PocketTheme.background)
+            // A conversation that exists but could not be loaded has to be visible, because the
+            // alternative looks exactly like a fresh workspace - and the person would have no way
+            // to know their history is still on disk and no longer being written to.
+            .safeAreaInset(edge: .top) {
+                if let problem = agent.conversationLoadError {
+                    Text(problem)
+                        .font(.caption)
+                        .foregroundStyle(PocketTheme.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(PocketSpacing.md)
+                        .background(PocketTheme.field)
+                }
+            }
             .navigationTitle("Agent")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(embedded ? .hidden : .visible, for: .navigationBar)

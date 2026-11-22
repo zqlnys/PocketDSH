@@ -434,6 +434,7 @@ final class AgentRunner: ObservableObject {
     }
 
     private func save() {
+        guard !writesBlocked else { return }
         do {
             try FileManager.default.createDirectory(
                 at: conversationURL.deletingLastPathComponent(),
@@ -456,11 +457,31 @@ final class AgentRunner: ObservableObject {
         }
     }
 
+    /// Set when a saved conversation exists but could not be used. Saving stops, because the
+    /// alternative is writing over the file that could not be read.
+    private(set) var conversationLoadError: String?
+    private var writesBlocked = false
+
     private func load() {
-        guard let data = try? Data(contentsOf: conversationURL) else { return }
+        // A conversation that cannot be read or decoded is not the same as one that does not
+        // exist, and both used to return here silently. The difference matters because the next
+        // save writes whatever is in memory: an unreadable file that quietly became an empty
+        // conversation would be overwritten by the first thing the user typed.
+        guard FileManager.default.fileExists(atPath: conversationURL.path) else { return }
+        guard let data = try? Data(contentsOf: conversationURL) else {
+            conversationLoadError = "The saved conversation could not be read. It has been left "
+                + "on disk; new messages go to a fresh one."
+            writesBlocked = true
+            return
+        }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         guard let conversation = try? decoder.decode(AgentConversation.self, from: data) else {
+            // Kept rather than discarded: a decode failure is the one case where the file is
+            // worth more than what we would replace it with.
+            conversationLoadError = "The saved conversation could not be decoded, so it was not "
+                + "loaded and will not be overwritten."
+            writesBlocked = true
             return
         }
         messages = conversation.messages
