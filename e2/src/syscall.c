@@ -182,7 +182,48 @@ static long sys_poll(e2_machine *m, e2_syscall_env *env, uint64_t fds_addr, uint
             ready++;
         }
     }
-    (void)timeout_ms;
+    if (ready == 0 && timeout_ms != 0 && env->files != NULL &&
+        env->files->wait_for_progress != NULL) {
+        // Nothing is ready. Poll is supposed to wait, and there is nothing to wait on but the
+        // guest's own other processes: run them, then look again. A bounded number of turns
+        // keeps a genuinely idle poll from becoming an infinite loop, and a negative timeout
+        // means wait indefinitely, which here means until a turn produces something.
+        for (int turn = 0; turn < 64; turn++) {
+            if (!env->files->wait_for_progress(env->ctx)) {
+                break;   // nobody left who could write
+            }
+            long again = 0;
+            for (uint64_t i = 0; i < nfds; i++) {
+                struct {
+                    int32_t fd;
+                    int16_t events;
+                    int16_t revents;
+                } entry;
+                const uint64_t at = fds_addr + i * sizeof(entry);
+                if (e2_memory_read(&m->mem, at, &entry, sizeof(entry)) != 0) {
+                    return -E2_EFAULT;
+                }
+                int revents = 0;
+                if (entry.fd >= 0) {
+                    const int r = env->files->pollable(env->ctx, (int)entry.fd, (int)entry.events);
+                    if (r < 0) {
+                        return r;
+                    }
+                    revents = r;
+                }
+                entry.revents = (int16_t)revents;
+                if (e2_memory_write(&m->mem, at, &entry, sizeof(entry)) != 0) {
+                    return -E2_EFAULT;
+                }
+                if (revents != 0) {
+                    again++;
+                }
+            }
+            if (again != 0) {
+                return again;
+            }
+        }
+    }
     return ready;
 }
 

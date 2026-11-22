@@ -660,6 +660,11 @@ static long fs_readlink(void *ctx, const char *path, char *out, size_t outlen) {
 // Reporting every event for every descriptor made poll useless: CPython's subprocess parent
 // polls its error pipe for EOF and was told the pipe was always ready, so it spun - 200 seconds
 // of it, to the instruction cap. A descriptor's real state is one byte away, so ask for it.
+// Lets poll wait: run whoever could write, and say whether anyone did.
+static int fs_wait_for_progress(void *c) {
+    return pump_children_for_tab(((const procctx *)c)->fdtab) > 0;
+}
+
 static long fs_set_nonblock(void *c, int fd, int nonblocking) {
     if (fd < 0 || fd >= E2_MAX_FDS || !TAB(c)[fd].used) return -9;   // EBADF
     const int host = TAB(c)[fd].host;
@@ -874,7 +879,8 @@ static const e2_file_ops FS = {
     .opendir = fs_opendir, .readdir = fs_readdir, .clock_ns = fs_clock, .pipe = fs_pipe,
     .dup3 = fs_dup3, .fcntl = fs_fcntl, .readlink = fs_readlink, .pollable = fs_pollable,
     .socketpair = fs_socketpair, .set_nonblock = fs_set_nonblock,
-    .bytes_available = fs_bytes_available, .pathop = fs_pathop, .truncate_file = fs_truncate,
+    .bytes_available = fs_bytes_available, .wait_for_progress = fs_wait_for_progress,
+    .pathop = fs_pathop, .truncate_file = fs_truncate,
     .statfs_of = fs_statfs, .seek = fs_seek, .stat_path = fs_stat_path,
 };
 

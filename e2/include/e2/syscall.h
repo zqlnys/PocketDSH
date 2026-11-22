@@ -98,6 +98,12 @@ typedef struct {
     long (*set_nonblock)(void *ctx, int fd, int nonblocking);
     /// Bytes readable right now, or a negative errno. FIONREAD.
     long (*bytes_available)(void *ctx, int fd);
+    /// Runs whatever could make progress and reports whether anything did.
+    ///
+    /// poll must be able to wait: a guest that polls a descriptor nothing has written yet would
+    /// otherwise be told "nothing ready" immediately and call again, forever. This is the
+    /// scheduler's turn to run children, the same way a blocking read yields.
+    int (*wait_for_progress)(void *ctx);
     /// Filesystem mutations that do not go through an open descriptor, selected
     /// by `op` (see E2_PATHOP_*). `a` and `b` are guest-relative paths, `mode`
     /// is a permission or timestamp. Returns 0 or a negative errno. Optional:
