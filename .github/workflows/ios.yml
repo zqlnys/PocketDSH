@@ -29,7 +29,6 @@ env:
   SCHEME: PocketDSH
   BUNDLE_ID: com.example.pocketdsh
   DERIVED_DATA: ${{ github.workspace }}/build/DerivedData
-  GUEST_ROOT: ${{ runner.temp }}/alpine-root
   ARTIFACTS_DIR: ${{ github.workspace }}/artifacts
   LOG_DIR: ${{ github.workspace }}/artifacts/logs
 
@@ -88,6 +87,8 @@ jobs:
           # Assembled outside the source tree on purpose. XcodeGen scans the tree it is given
           # and the guest root was disappearing between one step and the next when it lived
           # under PocketDSH/; as a build input under $RUNNER_TEMP nothing scans it.
+          GUEST_ROOT="$RUNNER_TEMP/alpine-root"
+          echo "GUEST_ROOT=$GUEST_ROOT" >> "$GITHUB_ENV"
           rm -rf "$GUEST_ROOT"
           scripts/fetch-python-rootfs.sh "$GUEST_ROOT" --minimal \
             2>&1 | tee "$LOG_DIR/fetch-rootfs.log"
