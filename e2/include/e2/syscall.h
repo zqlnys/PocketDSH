@@ -98,6 +98,21 @@ typedef struct {
     long (*set_nonblock)(void *ctx, int fd, int nonblocking);
     /// Bytes readable right now, or a negative errno. FIONREAD.
     long (*bytes_available)(void *ctx, int fd);
+
+    // epoll, as a layer over the same readiness question poll asks.
+    //
+    // Python's selectors module prefers it and asyncio inherits that preference; without it the
+    // loop silently falls back to PollSelector, which works but is not what the program asked
+    // for. These three are all the surface a selector uses.
+    /// Creates an epoll instance and returns its descriptor, or a negative errno.
+    long (*epoll_create)(void *ctx, int flags);
+    /// op is 1 add, 2 delete, 3 modify. Returns 0 or a negative errno.
+    long (*epoll_ctl)(void *ctx, int epfd, int op, int fd, uint32_t events,
+                      uint64_t data);
+    /// Fills at most max entries and returns how many, or a negative errno. Each entry is
+    /// { uint32 events, uint64 data } laid out as the guest expects.
+    long (*epoll_wait)(void *ctx, int epfd, uint32_t *events_out, uint64_t *data_out,
+                       int max, long timeout_ms);
     /// Runs whatever could make progress and reports whether anything did.
     ///
     /// poll must be able to wait: a guest that polls a descriptor nothing has written yet would

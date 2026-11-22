@@ -844,6 +844,58 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             }
             E2_RETURN(0);
         }
+        case 20:    // epoll_create1
+        case 281: { // epoll_create (obsolete, but some binaries still call it)
+            if (env->files == NULL || env->files->epoll_create == NULL) {
+                E2_RETURN(-38);   // ENOSYS
+            }
+            E2_RETURN(env->files->epoll_create(env->ctx, (int)a0));
+        }
+        case 21: {  // epoll_ctl(epfd, op, fd, struct epoll_event *)
+            if (env->files == NULL || env->files->epoll_ctl == NULL) {
+                E2_RETURN(-38);
+            }
+            // The guest's struct starts with the event mask; data is opaque to the kernel, so
+            // only the mask is read here and the copies the guest made are its business.
+            // The guest's data field is opaque to a kernel and must come back untouched: a
+            // selector stores the descriptor there and identifies the ready one by it. Returning
+            // zero for every event makes every event look like descriptor zero.
+            struct { uint32_t events; uint64_t data; } __attribute__((packed)) record;
+            memset(&record, 0, sizeof(record));
+            if (a3 != 0 && e2_memory_read(&m->mem, a3, &record, sizeof(record)) != 0) {
+                E2_RETURN(-E2_EFAULT);
+            }
+            E2_RETURN(env->files->epoll_ctl(env->ctx, (int)a0, (int)a1, (int)a2,
+                                            record.events, record.data));
+        }
+        case 22: {  // epoll_pwait(epfd, events, maxevents, timeout, sigmask, sigsetsize)
+            if (env->files == NULL || env->files->epoll_wait == NULL) {
+                E2_RETURN(-38);
+            }
+            const int max = (int)a2;
+            if (max <= 0 || max > 1024) {
+                E2_RETURN(-22);   // EINVAL
+            }
+            uint32_t ev[1024];
+            uint64_t data[1024];
+            const long got = env->files->epoll_wait(env->ctx, (int)a0, ev, data, max,
+                                                    (long)(int32_t)a3);
+            if (got < 0) {
+                E2_RETURN(got);
+            }
+            for (long i = 0; i < got; i++) {
+                // struct epoll_event on aarch64 is a packed 12-byte record: mask then data. The
+                // guest declares it as 16 with padding; writing 12 at the guest's stride of 16
+                // leaves the padding alone, which is what the kernel does.
+                struct { uint32_t events; uint64_t data; } __attribute__((packed)) record;
+                record.events = ev[i];
+                record.data = data[i];
+                if (e2_memory_write(&m->mem, a1 + (uint64_t)i * 16, &record, sizeof(record)) != 0) {
+                    E2_RETURN(-E2_EFAULT);
+                }
+            }
+            E2_RETURN(got);
+        }
         case 133: {  // rt_sigsuspend
             // Where a thread parks waiting for a signal that would unblock it. Nothing here
             // delivers signals asynchronously, so the honest answer is to yield: the scheduler

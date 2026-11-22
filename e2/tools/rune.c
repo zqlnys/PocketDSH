@@ -749,6 +749,102 @@ static long fs_bytes_available(void *c, int fd) {
     return avail;
 }
 
+// epoll, kept as a small table of instances over the same readiness question poll asks.
+//
+// Python's selectors prefers epoll and asyncio inherits that; without these the loop falls back
+// to PollSelector, which works and is not what the program asked for.
+#define E2_MAX_EPOLL 8
+#define E2_EPOLL_MAX_WATCH 64
+
+typedef struct {
+    int used;
+    int fdtab;
+    int count;
+    struct { int fd; uint32_t events; uint64_t data; } watch[E2_EPOLL_MAX_WATCH];
+} epoll_instance;
+
+static int fs_pollable(void *c, int fd, int events);
+
+static epoll_instance g_epoll[E2_MAX_EPOLL];
+
+static long fs_epoll_create(void *c, int flags) {
+    (void)flags;
+    for (int i = 0; i < E2_MAX_EPOLL; i++) {
+        if (g_epoll[i].used) continue;
+        g_epoll[i].used = 1;
+        g_epoll[i].fdtab = ((const procctx *)c)->fdtab;
+        g_epoll[i].count = 0;
+        return 1000 + i;   // a handle that cannot collide with a real descriptor
+    }
+    return -24;            // EMFILE
+}
+
+static epoll_instance *find_epoll(void *c, int epfd) {
+    if (epfd < 1000 || epfd >= 1000 + E2_MAX_EPOLL) return NULL;
+    epoll_instance *e = &g_epoll[epfd - 1000];
+    if (!e->used || e->fdtab != ((const procctx *)c)->fdtab) return NULL;
+    return e;
+}
+
+static long fs_epoll_ctl(void *c, int epfd, int op, int fd, uint32_t events,
+                         uint64_t data) {
+    epoll_instance *e = find_epoll(c, epfd);
+    if (e == NULL) return -9;
+    if (fd < 0 || fd >= E2_MAX_FDS || !TAB(c)[fd].used) return -9;
+    int at = -1;
+    for (int i = 0; i < e->count; i++) {
+        if (e->watch[i].fd == fd) { at = i; break; }
+    }
+    if (op == 1) {
+        if (at >= 0) return -17;
+        if (e->count >= E2_EPOLL_MAX_WATCH) return -28;
+        e->watch[e->count].fd = fd;
+        e->watch[e->count].events = events;
+        e->watch[e->count].data = data;
+        e->count++;
+        return 0;
+    }
+    if (op == 2) {
+        if (at < 0) return -2;
+        e->watch[at] = e->watch[e->count - 1];
+        e->count--;
+        return 0;
+    }
+    if (op == 3) {
+        if (at < 0) return -2;
+        e->watch[at].events = events;
+        e->watch[at].data = data;
+        return 0;
+    }
+    return -22;
+}
+
+static long fs_epoll_wait(void *c, int epfd, uint32_t *events_out, uint64_t *data_out,
+                          int max, long timeout_ms) {
+    epoll_instance *e = find_epoll(c, epfd);
+    if (e == NULL) return -9;
+    for (int turn = 0; turn < 64; turn++) {
+        long got = 0;
+        for (int i = 0; i < e->count && got < max; i++) {
+            const int r = fs_pollable(c, e->watch[i].fd, (int)e->watch[i].events);
+            if (r <= 0) continue;
+            uint32_t mapped = 0;
+            if (r & 1) mapped |= 0x001;      // POLLIN  -> EPOLLIN
+            if (r & 4) mapped |= 0x004;      // POLLOUT -> EPOLLOUT
+            if (r & 16) mapped |= 0x010;     // POLLHUP -> EPOLLHUP
+            if (r & 8) mapped |= 0x008;      // POLLERR -> EPOLLERR
+            if (mapped == 0) continue;
+            events_out[got] = mapped;
+            data_out[got] = e->watch[i].data;
+            got++;
+        }
+        if (got > 0) return got;
+        if (timeout_ms == 0) return 0;
+        if (pump_children_for_tab(((const procctx *)c)->fdtab) <= 0) return 0;
+    }
+    return 0;
+}
+
 // AF_UNIX socketpair, backed by a real one.
 //
 // asyncio's event loop builds a self-pipe from socketpair in its constructor, so without this
@@ -961,7 +1057,9 @@ static const e2_file_ops FS = {
     .opendir = fs_opendir, .readdir = fs_readdir, .clock_ns = fs_clock, .pipe = fs_pipe,
     .dup3 = fs_dup3, .fcntl = fs_fcntl, .readlink = fs_readlink, .pollable = fs_pollable,
     .socketpair = fs_socketpair, .set_nonblock = fs_set_nonblock,
-    .bytes_available = fs_bytes_available, .wait_for_progress = fs_wait_for_progress,
+    .bytes_available = fs_bytes_available,
+    .epoll_create = fs_epoll_create, .epoll_ctl = fs_epoll_ctl,
+    .epoll_wait = fs_epoll_wait, .wait_for_progress = fs_wait_for_progress,
     .pathop = fs_pathop, .truncate_file = fs_truncate,
     .statfs_of = fs_statfs, .seek = fs_seek, .stat_path = fs_stat_path,
 };
