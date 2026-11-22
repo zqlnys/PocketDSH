@@ -105,6 +105,17 @@ final class E2Runtime: ObservableObject {
     /// to name the interpreter.
     var resolvedRootfsPath: String? { prepareRootfs()?.path }
 
+    /// The host directory the guest sees as /workspace.
+    ///
+    /// It has to be the same one the bridge chooses, and the bridge chooses it from TMPDIR. A
+    /// caller that picked its own directory wrote a file the guest could not open, which is a
+    /// confusing way to learn that they disagreed.
+    var resolvedWorkspacePath: String {
+        let tmp = ProcessInfo.processInfo.environment["TMPDIR"]
+            ?? NSTemporaryDirectory()
+        return (tmp as NSString).appendingPathComponent("e2-workspace")
+    }
+
     private func prepareRootfs() -> URL? {
         if let cached = rootfsURL, FileManager.default.fileExists(atPath: cached.path) {
             return cached

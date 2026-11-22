@@ -19,8 +19,11 @@ final class PythonPluginGuestTests: XCTestCase {
         try XCTSkipUnless(FileManager.default.isReadableFile(atPath: python),
                           "this build's guest root has no CPython")
 
-        // The same directory the app hands the guest as /workspace.
-        let workspace = FileManager.default.temporaryDirectory
+        // The same directory the bridge hands the guest as /workspace, asked for rather than
+        // assumed: writing to TMPDIR instead put the script one level above where /workspace
+        // points, and the guest reported the file missing.
+        let workspace = URL(fileURLWithPath: runtime.resolvedWorkspacePath)
+        try? FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
         let script = workspace.appendingPathComponent("plugin-\(UUID().uuidString).py")
         defer { try? FileManager.default.removeItem(at: script) }
         try """
