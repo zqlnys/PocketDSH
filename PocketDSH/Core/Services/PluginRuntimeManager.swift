@@ -100,7 +100,7 @@ final class PluginRuntimeManager: ObservableObject {
     }
 
     /// One place that turns a manifest's tools into routes and specs, for every runtime.
-    private func registerTools(for plugin: PluginRecord, id: String) {
+    private func registerTools(for plugin: InstalledPlugin, id: String) {
         for tool in plugin.manifest.tools {
             let composite = Self.compositeToolName(pluginID: id, toolName: tool.name)
             routes[composite] = Route(pluginID: id, originalToolName: tool.name)
