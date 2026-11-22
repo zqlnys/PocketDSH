@@ -48,8 +48,21 @@ final class E2Runtime: ObservableObject {
         }
 
         let busybox = rootfs.appendingPathComponent("bin/busybox").path
-        guard FileManager.default.isExecutableFile(atPath: busybox) else {
-            sessionError = "Tier D needs \(rootfs.path)/bin/busybox. Reinstall the build."
+        // Readable, not executable. E2 loads the ELF itself - nothing is exec'd - and Xcode's
+        // resource copy does not preserve the executable bit, so requiring it failed on every
+        // device with a message saying the file was missing when it was right there.
+        guard FileManager.default.isReadableFile(atPath: busybox) else {
+            // Say what is actually there. "Reinstall the build" is unhelpful when the file is
+            // present but unreadable, and this check has already been wrong once.
+            let bin = rootfs.appendingPathComponent("bin")
+            let present = (try? FileManager.default.contentsOfDirectory(atPath: bin.path))?
+                .sorted().prefix(8).joined(separator: " ") ?? "(no bin directory)"
+            let exists = FileManager.default.fileExists(atPath: busybox)
+            sessionError = """
+            Tier D cannot read \(busybox).
+            file exists: \(exists)
+            bin contains: \(present)
+            """
             state = .failed(sessionError)
             return .failure(sessionError)
         }

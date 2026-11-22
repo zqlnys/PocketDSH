@@ -58,8 +58,8 @@ final class E2BackendTests: XCTestCase {
     func testBusyboxRunsInTheApp() throws {
         let root = try guestRoot()
         let busybox = root.appendingPathComponent("bin/busybox").path
-        XCTAssertTrue(FileManager.default.fileExists(atPath: busybox),
-                      "Tier D's guest root has no bin/busybox")
+        XCTAssertTrue(FileManager.default.isReadableFile(atPath: busybox),
+                      "Tier D's guest root has no readable bin/busybox")
 
         let (status, output) = try runGuest(busybox, ["sh", "-c", "echo tier-d-ok"])
         // The bridge captures stderr as well, so a failure here carries the interpreter's own
