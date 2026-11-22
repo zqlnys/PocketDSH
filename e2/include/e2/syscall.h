@@ -88,6 +88,10 @@ typedef struct {
     /// Optional: without it, poll reports every open descriptor as ready, which
     /// is correct for regular files and for pipes that hold data.
     int (*pollable)(void *ctx, int fd, int events);
+    /// AF_UNIX socketpair, for the self-pipe every asyncio event loop builds in its
+    /// constructor. Optional: a host without it leaves clone-adjacent code paths intact and
+    /// socketpair reports EAFNOSUPPORT.
+    int (*socketpair)(void *ctx, int domain, int type, int protocol, int fds[2], int *err);
     /// Filesystem mutations that do not go through an open descriptor, selected
     /// by `op` (see E2_PATHOP_*). `a` and `b` are guest-relative paths, `mode`
     /// is a permission or timestamp. Returns 0 or a negative errno. Optional:

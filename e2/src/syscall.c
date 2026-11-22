@@ -715,6 +715,36 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             memcpy(dst, &ts, sizeof(ts));
             E2_RETURN(0);
         }
+        case 199: {  // socketpair
+            if (env->files == NULL || env->files->socketpair == NULL) {
+                E2_RETURN(-97);   // EAFNOSUPPORT
+            }
+            int fds[2] = {-1, -1};
+            int err = 0;
+            const int rc = env->files->socketpair(env->ctx, (int)a0, (int)a1, (int)a2, fds, &err);
+            if (rc != 0) {
+                E2_RETURN(err != 0 ? -err : -22);
+            }
+            if (e2_memory_write(&m->mem, a3, fds, sizeof(fds)) != 0) {
+                E2_RETURN(-E2_EFAULT);
+            }
+            E2_RETURN(0);
+        }
+        case 114: {  // clock_getres
+            // CPython asks for the resolution of the monotonic clock while constructing an
+            // asyncio event loop; without this it raises OSError ENOSYS and asyncio cannot start
+            // at all. Reporting a nanosecond is the honest answer for a clock the host reads
+            // directly, and it is what makes get_clock_info return rather than raise.
+            struct { int64_t sec; int64_t nsec; } ts = {0, 1};
+            uint8_t *dst = e2_memory_host_ptr(&m->mem, a1, sizeof(ts), E2_PROT_WRITE);
+            if (dst == NULL) {
+                E2_RETURN(-E2_EFAULT);
+            }
+            memcpy(dst, &ts, sizeof(ts));
+            E2_RETURN(0);
+        }
+        case 115:  // clock_nanosleep: the scheduler has no sleeping, so say it slept
+            E2_RETURN(0);
         case 96:  // set_tid_address
             E2_RETURN(1);
         case 172:  // getpid

@@ -23,6 +23,7 @@
 #define _GNU_SOURCE
 #include <errno.h>
 #include <poll.h>
+#include <sys/socket.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -658,6 +659,35 @@ static long fs_readlink(void *ctx, const char *path, char *out, size_t outlen) {
 // Reporting every event for every descriptor made poll useless: CPython's subprocess parent
 // polls its error pipe for EOF and was told the pipe was always ready, so it spun - 200 seconds
 // of it, to the instruction cap. A descriptor's real state is one byte away, so ask for it.
+// AF_UNIX socketpair, backed by a real one.
+//
+// asyncio's event loop builds a self-pipe from socketpair in its constructor, so without this
+// nothing that starts a loop can even be created - it fails with an AttributeError about a
+// missing _ssock, which says nothing about sockets.
+static int fs_socketpair(void *c, int domain, int type, int protocol, int fds[2], int *err) {
+    if (domain != 1) {            // only AF_UNIX; AF_INET would promise networking
+        if (err) *err = 97;       // EAFNOSUPPORT
+        return -1;
+    }
+    (void)protocol;
+    int host[2] = {-1, -1};
+    if (socketpair(domain, type, protocol, host) != 0) {
+        if (err) *err = errno;
+        return -1;
+    }
+    const int a = fd_alloc_tab(((const procctx *)c)->fdtab, host[0]);
+    const int b = fd_alloc_tab(((const procctx *)c)->fdtab, host[1]);
+    if (a < 0 || b < 0) {
+        close(host[0]); close(host[1]);
+        if (a >= 0) { TAB(c)[a].used = 0; }
+        if (b >= 0) { TAB(c)[b].used = 0; }
+        if (err) *err = 24;       // EMFILE
+        return -1;
+    }
+    fds[0] = a; fds[1] = b;
+    return 0;
+}
+
 static int fs_pollable(void *c, int fd, int events) {
     if (fd < 0 || fd >= E2_MAX_FDS) return 0;
     if (!TAB(c)[fd].used) return -9;   // EBADF
@@ -817,10 +847,17 @@ static int fs_stat_path(void *c, const char *path, void *out, size_t outlen, int
     return 0;
 }
 
-static const e2_file_ops FS = {fs_open, fs_read, fs_write, fs_close, fs_stat,
-                               fs_opendir, fs_readdir, fs_clock, fs_pipe, fs_dup3,
-                               fs_fcntl, fs_readlink, fs_pollable, fs_pathop, fs_truncate,
-                               fs_statfs, fs_seek, fs_stat_path};
+// All designated. The struct has a socketpair field between pollable and pathop, and a
+// positional list put every field after it one slot out of place - which the compiler caught as
+// a dozen incompatible-pointer warnings, and which would have been silent if the signatures
+// happened to line up.
+static const e2_file_ops FS = {
+    .open = fs_open, .read = fs_read, .write = fs_write, .close = fs_close, .stat = fs_stat,
+    .opendir = fs_opendir, .readdir = fs_readdir, .clock_ns = fs_clock, .pipe = fs_pipe,
+    .dup3 = fs_dup3, .fcntl = fs_fcntl, .readlink = fs_readlink, .pollable = fs_pollable,
+    .socketpair = fs_socketpair, .pathop = fs_pathop, .truncate_file = fs_truncate,
+    .statfs_of = fs_statfs, .seek = fs_seek, .stat_path = fs_stat_path,
+};
 
 
 
