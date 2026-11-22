@@ -96,6 +96,12 @@ if [ "$crashed" -eq 1 ]; then
     exit 0
 fi
 
-echo "NOT CAUGHT  (the test passed against a broken implementation)"
+# NOT CAUGHT means the suite did not notice. That is usually a missing test, and sometimes it is
+# not: some edits cannot change behaviour, because the value they alter is discarded or masked
+# again by the caller. The 32-bit mask in apply_load_opc is one - write_reg already truncates for
+# a W destination, and an X destination never reaches that branch. A mutant nobody can observe is
+# equivalent, not uncovered, and the two call for opposite responses: one wants a test, the other
+# wants nothing.
+echo "NOT CAUGHT  (either a missing test, or an edit that cannot change behaviour - check which)"
 printf '%s\n' "$out" | tail -2
 exit 1

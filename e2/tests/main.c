@@ -606,6 +606,44 @@ static void test_division_and_shifts_match_a_real_run(void) {
     e2_machine_destroy(&m);
 }
 
+static void test_signed_loads_match_a_real_run(void) {
+    printf("LDRSB, LDRSH, LDRSW and their unsigned forms match what the hardware produced\n");
+    // A mutation of the 32-bit truncation in apply_load_opc reported NOT CAUGHT: nothing
+    // distinguished an X destination from a W one, and that difference is the whole point of
+    // having both ldrsb forms.
+    e2_machine m;
+    e2_machine_init(&m, 0, 1 << 20);
+    FILE *f = fopen("tests/guest/loadsig.elf", "rb");
+    CHECK(f != NULL, "loadsig.elf missing - run make first");
+    if (f == NULL) { e2_machine_destroy(&m); return; }
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    uint8_t *image = (uint8_t *)malloc((size_t)size);
+    CHECK(image != NULL, "out of memory");
+    if (image == NULL) { fclose(f); e2_machine_destroy(&m); return; }
+    if (fread(image, 1, (size_t)size, f) != (size_t)size) { /* short read still usable */ }
+    fclose(f);
+
+    e2_loaded_image info = {0};
+    e2_load_result lr = e2_load_elf_full(&m, image, (size_t)size, true, &info);
+    CHECK(lr == E2_LOAD_OK, "load: %s", e2_load_result_name(lr));
+    if (lr == E2_LOAD_OK) {
+        capture cap = {0};
+        e2_syscall_env env = {.exit = capture_exit, .files = &test_files, .ctx = &cap};
+        e2_status st = run_program(&m, &env, 2000000);
+        CHECK(st == E2_HALTED, "expected halt, got %s", e2_status_name(st));
+        CHECK(strstr(cap.out, "ffffffffffffff80") != NULL, "LDRSB x wrong: %.160s", cap.out);
+        CHECK(strstr(cap.out, "00000000ffffff80") != NULL, "LDRSB w wrong: %.160s", cap.out);
+        CHECK(strstr(cap.out, "ffffffffffff8000") != NULL, "LDRSH x wrong: %.160s", cap.out);
+        CHECK(strstr(cap.out, "00000000ffff8000") != NULL, "LDRSH w wrong: %.160s", cap.out);
+        CHECK(strstr(cap.out, "ffffffff80000000") != NULL, "LDRSW wrong: %.160s", cap.out);
+        CHECK(strstr(cap.out, "0000000080000000") != NULL, "LDR w wrong: %.160s", cap.out);
+    }
+    free(image);
+    e2_machine_destroy(&m);
+}
+
 static void test_ldp_stp_match_a_real_run(void) {
     printf("LDP/STP with pre- and post-index match what the hardware produced\n");
     // Expected values came from running the same ELF under qemu-aarch64. The CALL path in
@@ -1789,6 +1827,7 @@ int main(void) {
     test_simd_matches_a_real_run();
     test_permutes_match_a_real_run();
     test_division_and_shifts_match_a_real_run();
+    test_signed_loads_match_a_real_run();
     test_bitfield_matches_a_real_run();
     test_ushll2_widens_from_the_upper_half();
     test_movi_64bit_immediate();
