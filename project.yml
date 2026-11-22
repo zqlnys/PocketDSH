@@ -74,18 +74,18 @@ targets:
         inputFiles:
           - $(SRCROOT)/PocketDSH/Resources/alpine-root
         script: |
-          set -euo pipefail
-          SRC="$SRCROOT/PocketDSH/Resources/alpine-root/usr/lib/python3.12"
-          DST="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/alpine-root/usr/lib/python3.12"
+          # Every variable gets a fallback and nothing is set -u: under set -u an unset Xcode
+          # variable ends the script before its first line of output, which is what happened.
+          SRC="${SRCROOT:-}/PocketDSH/Resources/alpine-root/usr/lib/python3.12"
+          DST="${TARGET_BUILD_DIR:-}/${UNLOCALIZED_RESOURCES_FOLDER_PATH:-}/alpine-root/usr/lib/python3.12"
+          echo "bytecode phase: src=$SRC"
+          echo "bytecode phase: dst=$DST"
           have=$(find "$SRC" -name '*.pyc' 2>/dev/null | wc -l | tr -d ' ')
           echo "bytecode in the source tree: $have"
-          echo "destination exists: $([ -d "$DST" ] && echo yes || echo no)"
           if [ "$have" = "0" ] || [ ! -d "$DST" ]; then
-            echo "nothing to copy"
+            echo "bytecode phase: nothing to copy"
             exit 0
           fi
-          # find, not a glob: the top-level __pycache__ is not under a subdirectory, and a
-          # pattern that required one silently matched nothing.
           find "$SRC" -type d -name __pycache__ -print0 | while IFS= read -r -d '' dir; do
             rel="${dir#$SRC/}"
             mkdir -p "$DST/$rel"
