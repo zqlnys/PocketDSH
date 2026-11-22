@@ -1,5 +1,6 @@
 import Foundation
-import PocketDSHKit
+import LuaRuntime
+import PocketDSHCore
 
 /// Runs a Python plugin in the guest CPython that Tier D provides.
 ///

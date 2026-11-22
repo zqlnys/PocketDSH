@@ -1,4 +1,6 @@
 import XCTest
+import LuaRuntime
+import PocketDSHCore
 @testable import PocketDSH
 
 /// The Python plugin runtime, exercised against a stub executor.
