@@ -10,6 +10,7 @@
 #include "e2/exec.h"
 #include "e2/loader.h"
 #include "e2/syscall.h"
+#include "e2/waitstatus.h"
 
 #include <stdlib.h>
 
@@ -604,6 +605,22 @@ static void test_division_and_shifts_match_a_real_run(void) {
     }
     free(image);
     e2_machine_destroy(&m);
+}
+
+static void test_wait_status_encoding(void) {
+    printf("a wait status puts an exit code in bits 8-15 and a signal number in the low seven\n");
+    // A mutation that shifted the signal into the exit position survived both suites, because
+    // nothing could reach the encoding: it lived inside the harness, which the unit tests do not
+    // link. It is a pure function now, and this is the shell's own arithmetic done by hand.
+    CHECK(e2_wait_status_encode(0, 0) == 0x0000, "exit 0");
+    CHECK(e2_wait_status_encode(3, 0) == 0x0300, "exit 3");
+    CHECK(e2_wait_status_encode(255, 0) == 0xFF00, "exit 255");
+    CHECK(e2_wait_status_encode(0, 9) == 0x0009, "SIGKILL");
+    CHECK(e2_wait_status_encode(0, 15) == 0x000F, "SIGTERM");
+    // WIFEXITED is (status & 0x7F) == 0, WEXITSTATUS is (status >> 8) & 0xFF. A shell that sees
+    // 0x8F00 for a SIGTERM reports exit 143 by luck of the low byte and 0x8F for the high one.
+    CHECK((e2_wait_status_encode(3, 0) & 0x7F) == 0, "an exit is not a signal");
+    CHECK((e2_wait_status_encode(0, 15) & 0x7F) == 15, "a signal is in the low bits");
 }
 
 static void test_signed_loads_match_a_real_run(void) {
@@ -1828,6 +1845,7 @@ int main(void) {
     test_permutes_match_a_real_run();
     test_division_and_shifts_match_a_real_run();
     test_signed_loads_match_a_real_run();
+    test_wait_status_encoding();
     test_bitfield_matches_a_real_run();
     test_ushll2_widens_from_the_upper_half();
     test_movi_64bit_immediate();

@@ -895,6 +895,13 @@ printf '%s|%5.2f|%%\n' ab 3.14159
 printf 'x\n' | awk '{ "echo A; echo B" | getline v; print v }'
 echo 'x' | tr 'a-z' 'n-za-m'
 printf '1\n2\n3\n' | awk 'NR>1{print prev}{prev=$0}'
+# A signal death is not covered here. `kill $$` inside the command kills whichever shell the
+# runner put around it, and the two runners enclose it differently, so the case measured the
+# harness rather than the implementation. It is covered by the unit suite instead, where the wait
+# status can be constructed directly and compared with the encoding a shell expects.
+
+# sh: a child that exits 3, so the plain exit path is covered beside the signal one
+sh -c 'sh -c "exit 3"; echo "status=$?"'
 sh /tmp/dtreal2.sh
 sh /tmp/dtstress.sh
 sh /tmp/dtlnk.sh

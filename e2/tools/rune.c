@@ -42,6 +42,7 @@
 #include "e2/exec.h"
 #include "e2/loader.h"
 #include "e2/syscall.h"
+#include "e2/waitstatus.h"
 
 static const char *ROOT = "/tmp/alpine-root";
 // One descriptor table per process: fork must copy it and exec must keep it, so
@@ -1811,10 +1812,7 @@ static long p_wait4(void *ctx, int pid, uint64_t status_ptr, int options) {
                 g_proc_budget = saved_budget2;
             }
         }
-        const int code = c->exit_status & 0xFF;
-        const uint32_t status = (c->killed_by != 0)
-                                    ? (uint32_t)(c->killed_by & 0x7F)
-                                    : (uint32_t)(code << 8);
+        const uint32_t status = e2_wait_status_encode(c->exit_status, c->killed_by);
         uint8_t *dst = e2_memory_host_ptr(&self->m.mem, status_ptr, 4, E2_PROT_WRITE);
         if (dst) memcpy(dst, &status, 4);
         if (getenv("E2_TRACE_WAIT"))
@@ -3398,5 +3396,9 @@ env_done:
            (long)procs[1].m.instructions, procs[1].m.mem.count, E2_MAX_REGIONS,
            g_fault ? " FAULT reason=" : "", g_fault ? g_reason : "");
 #endif
-    return 0;
+    // The guest's own exit status, so a caller can branch on it. Returning zero always made every
+    // run look successful: `rune busybox sh -c 'exit 3'` answered 0, which is invisible in a
+    // script and lethal in a test suite that shells out.
+    if (g_fault) return 1;
+    return procs[1].exit_status & 0xFF;
 }
