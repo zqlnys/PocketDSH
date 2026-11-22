@@ -90,8 +90,13 @@ int e2_bridge_run_in(const char *rootfs, const char *workspace, const char *out_
                      int argc, char **argv) {
     // A caller that named a workspace wins over the scratch directory: the guest's /workspace is
     // then the project the command was about, not a temporary folder nothing else can see.
+    // Set every call, including when there is no workspace: the variable outlives this function,
+    // and leaving a previous caller's project mounted would make the next command see files it was
+    // never told about. Clearing it lets the default scratch directory apply below.
     if (workspace != NULL && workspace[0] != '\0') {
         setenv("E2_WORKSPACE", workspace, 1);
+    } else {
+        unsetenv("E2_WORKSPACE");
     }
     if (rootfs != NULL) {
         e2_set_root(rootfs);
