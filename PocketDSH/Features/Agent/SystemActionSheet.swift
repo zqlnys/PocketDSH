@@ -43,7 +43,20 @@ struct SystemActionSheet: View {
                     MessageComposer(
                         recipient: recipient,
                         body: body
-                    ) {
+                    ) { result in
+                        // Cancelling and failing to send used to look the same as sending: the
+                        // composer closed and nothing was said. Only one of those three outcomes
+                        // means the message left.
+                        switch result {
+                        case .sent:
+                            systemActions.lastOutcome = "Message sent."
+                        case .cancelled:
+                            systemActions.lastOutcome = "Message cancelled; nothing was sent."
+                        case .failed:
+                            systemActions.lastOutcome = "The message could not be sent."
+                        @unknown default:
+                            systemActions.lastOutcome = "The message composer finished."
+                        }
                         systemActions.clear()
                         dismiss()
                     }
@@ -129,17 +142,30 @@ struct SystemActionSheet: View {
 
     private func openDialer(_ number: String) {
         let cleaned = number.filter { $0.isNumber || $0 == "+" }
-        guard let url = URL(string: "tel://\(cleaned)") else { return }
-        UIApplication.shared.open(url)
-        systemActions.clear()
-        dismiss()
+        guard let url = URL(string: "tel://\(cleaned)") else {
+            systemActions.lastOutcome = "That number could not be turned into a phone link."
+            dismiss()
+            return
+        }
+        // The completion handler is the whole point: a device with no dialer - an iPad, a
+        // simulator, a sandbox that refuses the open - reports failure here and nowhere else, and
+        // the sheet used to close regardless. The button worked, so the call must have happened.
+        UIApplication.shared.open(url, options: [:]) { opened in
+            Task { @MainActor in
+                systemActions.lastOutcome = opened
+                    ? "Opening the dialer for \(cleaned)."
+                    : "This device has no dialer, so nothing was opened."
+                systemActions.clear()
+                dismiss()
+            }
+        }
     }
 }
 
 private struct MessageComposer: UIViewControllerRepresentable {
     let recipient: String
     let body: String
-    let onFinish: () -> Void
+    let onFinish: (MessageComposeResult) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(onFinish: onFinish)
@@ -158,7 +184,7 @@ private struct MessageComposer: UIViewControllerRepresentable {
     final class Coordinator: NSObject, MFMessageComposeViewControllerDelegate {
         let onFinish: () -> Void
 
-        init(onFinish: @escaping () -> Void) {
+        init(onFinish: @escaping (MessageComposeResult) -> Void) {
             self.onFinish = onFinish
         }
 
@@ -167,7 +193,7 @@ private struct MessageComposer: UIViewControllerRepresentable {
             didFinishWith result: MessageComposeResult
         ) {
             controller.dismiss(animated: true)
-            onFinish()
+            onFinish(result)
         }
     }
 }
