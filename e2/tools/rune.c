@@ -254,11 +254,43 @@ static const char *host_device(const char *p) {
     }
     return NULL;
 }
+// A writable directory for guest /tmp.
+//
+// Inside an app bundle the root is read-only, and a program that writes a temporary file - which
+// is most of them, and every shell script that uses a scratch file - fails with "Operation not
+// permitted" no matter what it was asked to do. E2_TMP points /tmp somewhere the host can write.
+static const char *guest_tmp(void) {
+    static const char *cached = NULL;
+    static int looked = 0;
+    if (!looked) {
+        looked = 1;
+        cached = getenv("E2_TMP");
+        if (cached != NULL && cached[0] == '\0') cached = NULL;
+    }
+    return cached;
+}
+
 static void host_path(char *out, size_t n, const char *p) {
     const char *dev = host_device(p);
     if (dev != NULL) {
         snprintf(out, n, "%s", dev);
         return;
+    }
+    const char *tmp = guest_tmp();
+    if (tmp != NULL) {
+        // The path as written, or resolved against the cwd first - a relative name in /tmp is
+        // still a path in /tmp.
+        char absolute[2048];
+        const char *want = p;
+        if (p[0] != '/') {
+            if (strcmp(p, ".") == 0) snprintf(absolute, sizeof(absolute), "%s", g_cur_cwd);
+            else snprintf(absolute, sizeof(absolute), "%s/%s", g_cur_cwd, p);
+            want = absolute;
+        }
+        if (strncmp(want, "/tmp", 4) == 0 && (want[4] == '/' || want[4] == '\0')) {
+            snprintf(out, n, "%s%.1790s", tmp, want + 4);
+            return;
+        }
     }
     if (p[0] == '/') {
         snprintf(out, n, "%s%s", ROOT, p);

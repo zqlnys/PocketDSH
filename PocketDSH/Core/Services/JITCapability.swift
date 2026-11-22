@@ -148,6 +148,23 @@ final class RuntimeCapabilityStore: ObservableObject {
         return .tierA
     }
 
+    /// What the settings screen should say the backend is.
+    ///
+    /// `activeTier` answers "which one has proved itself", which is the right rule for the label
+    /// but reads as a contradiction when D is selected and has simply not run yet: the screen
+    /// said "Active backend: Tier A" under a slider set to D, and the note below it had to
+    /// explain the discrepancy. This says what the user is actually going to get.
+    var backendSummary: String {
+        switch preferredTier {
+        case .tierD where !e2Available:
+            return "Tier D · ready for its first command"
+        case .tierC where !linuxAvailable:
+            return "Tier C · ready for its first command"
+        default:
+            return activeTier.title
+        }
+    }
+
     var wantsTierC: Bool {
         preferredTier == .tierC
     }

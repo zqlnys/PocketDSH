@@ -371,14 +371,14 @@ struct SettingsView: View {
             // actually run, so the screen never claims a backend it has not seen work. That
             // rule is right, and it is confusing without being stated.
             if runtime.preferredTier == .tierD && !runtime.e2Available {
-                Text("D is selected but has not run yet, so the active backend still reads Tier A. Run the smoke test above, or have the agent call run_linux.")
+                Text("Tier D becomes active the first time it runs a command. Run the smoke test above, or have the agent call run_linux.")
                     .font(.caption)
                     .foregroundStyle(PocketTheme.secondaryText)
             }
 
             LabeledContent("JIT probe", value: runtime.jit.entitlementSummary)
                 .font(.caption)
-            LabeledContent("Active backend", value: runtime.activeTier.title)
+            LabeledContent("Active backend", value: runtime.backendSummary)
                 .font(.caption)
             LabeledContent("Linux session", value: runtime.linuxAvailable ? "running" : "not running")
                 .font(.caption)

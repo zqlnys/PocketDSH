@@ -45,21 +45,25 @@ struct E2SmokeView: View {
     /// 4. A guest write has to land on disk where the host can read it back.
     private func runSmokeTest() async {
         var lines: [String] = []
-        let checks: [(String, String)] = [
-            ("applet dispatch", "echo tier-d-ok"),
-            ("shell arithmetic", "echo $((6*7))"),
-            ("pipe", "echo hello | tr a-z A-Z"),
-            ("guest write", "echo written > /tmp/e2-smoke.txt; cat /tmp/e2-smoke.txt")
+        let checks: [(String, String, String)] = [
+            ("applet dispatch", "echo tier-d-ok", "tier-d-ok"),
+            ("shell arithmetic", "echo $((6*7))", "42"),
+            ("pipe", "echo hello | tr a-z A-Z", "HELLO"),
+            ("guest write", "echo written > /tmp/e2-smoke.txt && cat /tmp/e2-smoke.txt", "written")
         ]
 
+        // Each check has an expected fragment, and a check passes only when the output contains
+        // it. Reporting on the exit status alone called a run a success when the guest had just
+        // said "can't create /tmp/e2-smoke.txt: Operation not permitted" - the shell carried on
+        // to the next command and exited 0.
         var failures = 0
-        for (name, command) in checks {
+        for (name, command, expected) in checks {
             let result = await appState.e2Runtime.run(command: command)
-            if result.isError {
+            let text = result.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            if result.isError || !text.contains(expected) {
                 failures += 1
-                lines.append("\(name): FAILED\n  \(result.content)")
+                lines.append("\(name): FAILED (wanted \"\(expected)\")\n  \(text)")
             } else {
-                let text = result.content.trimmingCharacters(in: .whitespacesAndNewlines)
                 lines.append("\(name): \(text)")
             }
         }
