@@ -178,6 +178,41 @@ final class E2BackendTests: XCTestCase {
     // in about six seconds underneath it. A case that cannot pass is not a test, and one that
     // runs to the cap leaves interpreter state behind for the tests that follow.
 
+    /// asyncio, which needed three syscalls and an ioctl that were missing.
+    ///
+    /// It failed for several rounds with an AttributeError about a missing attribute - the
+    /// destructor of a half-built event loop, not the real error. The construction raised
+    /// OSError ENOSYS from get_clock_info, then ENOTTY from setblocking(False) on the self-pipe.
+    func testPythonAsyncio() throws {
+        let root = try guestRoot()
+        let python = root.appendingPathComponent("usr/bin/python3.12").path
+        try XCTSkipUnless(FileManager.default.fileExists(atPath: python),
+                          "this build's guest root has no CPython")
+
+        let script = root.appendingPathComponent("tmp/e2-asyncio.py")
+        try? FileManager.default.createDirectory(at: script.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: script) }
+        try """
+        import asyncio
+
+        async def work(n):
+            await asyncio.sleep(0)
+            return n * 2
+
+        async def main():
+            print("gathered", await asyncio.gather(*(work(i) for i in range(4))))
+
+        asyncio.run(main())
+        """.write(to: script, atomically: true, encoding: .utf8)
+
+        let (status, output) = try runGuest(python, ["/tmp/e2-asyncio.py"], cap: "400000000")
+        XCTAssertFalse(output.contains("instruction cap"),
+                       "asyncio did not finish: \(output.suffix(200))")
+        XCTAssertEqual(status, 0, "python exited \(status); output was <<<\(output)>>>")
+        XCTAssertTrue(output.contains("[0, 2, 4, 6]"), output)
+    }
+
     /// A file the guest writes has to show up on disk, because the workspace mount depends on
     /// it.
     func testGuestWritesAFile() throws {

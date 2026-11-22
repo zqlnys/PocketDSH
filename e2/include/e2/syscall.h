@@ -92,6 +92,12 @@ typedef struct {
     /// constructor. Optional: a host without it leaves clone-adjacent code paths intact and
     /// socketpair reports EAFNOSUPPORT.
     int (*socketpair)(void *ctx, int domain, int type, int protocol, int fds[2], int *err);
+    /// Clears or sets the blocking flag behind a guest descriptor. socket.setblocking(False)
+    /// needs it, and asyncio calls that on its self-pipe before it does anything else.
+    /// Returns 0 or a negative errno.
+    long (*set_nonblock)(void *ctx, int fd, int nonblocking);
+    /// Bytes readable right now, or a negative errno. FIONREAD.
+    long (*bytes_available)(void *ctx, int fd);
     /// Filesystem mutations that do not go through an open descriptor, selected
     /// by `op` (see E2_PATHOP_*). `a` and `b` are guest-relative paths, `mode`
     /// is a permission or timestamp. Returns 0 or a negative errno. Optional:

@@ -24,6 +24,7 @@
 #include <errno.h>
 #include <poll.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -659,6 +660,23 @@ static long fs_readlink(void *ctx, const char *path, char *out, size_t outlen) {
 // Reporting every event for every descriptor made poll useless: CPython's subprocess parent
 // polls its error pipe for EOF and was told the pipe was always ready, so it spun - 200 seconds
 // of it, to the instruction cap. A descriptor's real state is one byte away, so ask for it.
+static long fs_set_nonblock(void *c, int fd, int nonblocking) {
+    if (fd < 0 || fd >= E2_MAX_FDS || !TAB(c)[fd].used) return -9;   // EBADF
+    const int host = TAB(c)[fd].host;
+    int flags = fcntl(host, F_GETFL, 0);
+    if (flags < 0) return -errno;
+    if (nonblocking) flags |= O_NONBLOCK; else flags &= ~O_NONBLOCK;
+    if (fcntl(host, F_SETFL, flags) != 0) return -errno;
+    return 0;
+}
+
+static long fs_bytes_available(void *c, int fd) {
+    if (fd < 0 || fd >= E2_MAX_FDS || !TAB(c)[fd].used) return -9;
+    int avail = 0;
+    if (ioctl(TAB(c)[fd].host, FIONREAD, &avail) != 0) return -errno;
+    return avail;
+}
+
 // AF_UNIX socketpair, backed by a real one.
 //
 // asyncio's event loop builds a self-pipe from socketpair in its constructor, so without this
@@ -855,7 +873,8 @@ static const e2_file_ops FS = {
     .open = fs_open, .read = fs_read, .write = fs_write, .close = fs_close, .stat = fs_stat,
     .opendir = fs_opendir, .readdir = fs_readdir, .clock_ns = fs_clock, .pipe = fs_pipe,
     .dup3 = fs_dup3, .fcntl = fs_fcntl, .readlink = fs_readlink, .pollable = fs_pollable,
-    .socketpair = fs_socketpair, .pathop = fs_pathop, .truncate_file = fs_truncate,
+    .socketpair = fs_socketpair, .set_nonblock = fs_set_nonblock,
+    .bytes_available = fs_bytes_available, .pathop = fs_pathop, .truncate_file = fs_truncate,
     .statfs_of = fs_statfs, .seek = fs_seek, .stat_path = fs_stat_path,
 };
 

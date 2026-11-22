@@ -905,11 +905,33 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             }
             E2_RETURN(0);
         }
-        case 29:  // ioctl
-            // ENOTTY, not ENOTSUP: callers test specifically for ENOTTY to mean
-            // "not a terminal" and fall back to a default width. Any other error
-            // is treated as fatal and aborts the command.
+        case 29: {  // ioctl
+            // ENOTTY, not ENOTSUP: callers test specifically for ENOTTY to mean "not a
+            // terminal" and fall back to a default width. But it is also what a socket gets
+            // for FIONBIO, and socket.setblocking(False) turns that into an exception - which
+            // is how asyncio's event loop stopped dead in its constructor.
+            if (env->files != NULL) {
+                if (a1 == 0x5421 && env->files->set_nonblock != NULL) {   // FIONBIO
+                    int on = 0;
+                    if (e2_memory_read(&m->mem, a2, &on, sizeof(on)) != 0) {
+                        E2_RETURN(-E2_EFAULT);
+                    }
+                    E2_RETURN(env->files->set_nonblock(env->ctx, (int)a0, on != 0));
+                }
+                if (a1 == 0x541B && env->files->bytes_available != NULL) { // FIONREAD
+                    const long avail = env->files->bytes_available(env->ctx, (int)a0);
+                    if (avail < 0) {
+                        E2_RETURN(avail);
+                    }
+                    const int n = (int)avail;
+                    if (e2_memory_write(&m->mem, a2, &n, sizeof(n)) != 0) {
+                        E2_RETURN(-E2_EFAULT);
+                    }
+                    E2_RETURN(0);
+                }
+            }
             E2_RETURN(-25);  // ENOTTY
+        }
         case E2_SYS_brk: {
             // Back the break with a real mapping. Returning a plausible address
             // without mapping it makes every later store fault, which is exactly
