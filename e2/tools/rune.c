@@ -475,7 +475,9 @@ static int fs_open(void *c, const char *path, int fl, int m) {
 // A spin that runs no guest instructions cannot be caught by an instruction counter, and the
 // process is in R state, so /proc says nothing useful either. A watchdog that dumps the host
 // stack after a few seconds names the loop directly.
-static unsigned g_watch_regions = 0;
+// The watchdog needs the region count only when it fires, and it can read it from the process it
+// already has. It used to be a store per instruction, for a value nothing read until a stall.
+static unsigned watchdog_region_count(void);
 
 static void watchdog_dump_procs(void);
 
@@ -484,7 +486,8 @@ static void watchdog_dump(int sig) {
     void *frames[32];
     const int n = backtrace(frames, 32);
     fprintf(stderr, "[watchdog] stalled; %d frames, regions=%u/%u, total instructions=%llu\n",
-            n, g_watch_regions, E2_MAX_REGIONS, g_total_instructions);
+            n, watchdog_region_count(), E2_MAX_REGIONS,
+            g_total_instructions);
     watchdog_dump_procs();
     backtrace_symbols_fd(frames, n, 2);
     _exit(97);
@@ -1827,6 +1830,13 @@ static void note_write_error(int tab, int err) {
 /// sibling is about to write to.
 // Every live process, with its pc and how far it has got. A thread that never ends and a parent
 // waiting for it look the same from outside; this tells them apart and says where the thread is.
+static unsigned watchdog_region_count(void) {
+    for (int i = 0; i < E2_MAX_PROCS; i++) {
+        if (procs[i].used && procs[i].alive) return procs[i].m.mem.count;
+    }
+    return 0;
+}
+
 static void watchdog_dump_procs(void) {
     // Every mapping, so an address below the app's base can be named rather than guessed at.
     for (int i = 0; i < E2_MAX_PROCS; i++) {
@@ -2290,7 +2300,6 @@ static int run_proc(int idx) {
         // entered thousands of times and the cap never fires - which is a hang that looks like a
         // guest loop and is really a counter in the wrong place.
         guard++;
-        g_watch_regions = p->m.mem.count;
         // Checked every 65536 instructions: often enough that cancelling a long command stops it
         // in well under a second, rare enough to cost nothing.
         if ((guard & 0xFFFF) == 0 && g_cancel_requested) {
