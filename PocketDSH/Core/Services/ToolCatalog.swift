@@ -160,7 +160,7 @@ enum ToolCatalog {
         ),
         tool(
             name: ToolNames.runLinux,
-            description: "Experimental Tier C: run one command in the bundled Alpine Linux rootfs through the embedded iSH interpreter. No JIT. It cannot see the project workspace yet; use file tools for project files. One command per app launch.",
+            description: "Run one shell command in a real Alpine Linux rootfs, interpreted on the device with no JIT and no subprocess. /bin/sh, the busybox applets, and CPython 3.12 with its standard library are available. The project is mounted at /workspace, so commands read and write the same files the file tools do. Output and exit status are returned, and a non-zero exit is reported as a failure with its output. Each call starts a fresh rootfs session, so nothing persists between calls except what reaches /workspace.",
             properties: [
                 "command": property("string", "Shell command to run in Alpine Linux")
             ],
