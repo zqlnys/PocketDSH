@@ -38,7 +38,9 @@ final class LinuxToolTests: XCTestCase {
         try "tool-layer".write(to: project.appendingPathComponent("note.txt"),
                                atomically: true, encoding: .utf8)
 
-        let executor = makeExecutor(root: root, tier: .tierD)
+        // The executor's workspace is the project, not the guest root. Passing the bundle root
+        // here made the tool mount its own alpine-root as /workspace, and the note was not in it.
+        let executor = makeExecutor(root: project, tier: .tierD)
         let result = await executor.execute(
             name: ToolNames.runLinux,
             argumentsJSON: #"{"command":"cat /workspace/note.txt"}"#
@@ -63,7 +65,7 @@ final class LinuxToolTests: XCTestCase {
         try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: project) }
 
-        let executor = makeExecutor(root: root, tier: .tierD)
+        let executor = makeExecutor(root: project, tier: .tierD)
         let result = await executor.execute(
             name: ToolNames.runLinux,
             argumentsJSON: #"{"command":"cat /workspace/absent.txt"}"#
