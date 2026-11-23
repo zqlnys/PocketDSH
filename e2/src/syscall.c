@@ -144,8 +144,21 @@ static long sys_readv(e2_machine *m, e2_syscall_env *env, int fd, uint64_t iov_a
 /// this stayed unnoticed.
 // The ceiling E2_HEAP_MB names, shared by every guest in this process: it limits how much the app
 // may allocate, not a per-process quota.
+//
+// Read afresh rather than cached: the value was cached on first use, so a caller that changed it
+// afterwards was ignored - which on a device meant the first run's budget governed every later one,
+// and a test asking for 64 MB got the app's 1024.
 static long chunk_bytes = -1;
 static uint64_t cap_bytes = 0;
+
+static void refresh_heap_limits(void) {
+    const char *c = getenv("E2_HEAP_CHUNK_MB");
+    const char *t = getenv("E2_HEAP_MB");
+    const long chunk_mb = c ? strtol(c, NULL, 0) : 0;
+    const long cap_mb = t ? strtol(t, NULL, 0) : 0;
+    chunk_bytes = (chunk_mb > 0 ? chunk_mb : 16) << 20;
+    cap_bytes = (uint64_t)(cap_mb > 0 ? cap_mb : 0) << 20;
+}
 
 static long sys_poll(e2_machine *m, e2_syscall_env *env, uint64_t fds_addr, uint64_t nfds,
                      long timeout_ms) {
@@ -1102,15 +1115,8 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             //
             // E2_HEAP_CHUNK_MB sets the chunk size; E2_HEAP_MB caps the total, so a program
             // that never asks for much never costs much.
+            refresh_heap_limits();
             if (m->brk_base == 0) {
-                if (chunk_bytes < 0) {
-                    const char *c = getenv("E2_HEAP_CHUNK_MB");
-                    const char *t = getenv("E2_HEAP_MB");
-                    const long chunk_mb = c ? strtol(c, NULL, 0) : 0;
-                    const long cap_mb = t ? strtol(t, NULL, 0) : 0;
-                    chunk_bytes = (chunk_mb > 0 ? chunk_mb : 16) << 20;
-                    cap_bytes = (uint64_t)(cap_mb > 0 ? cap_mb : 0) << 20;
-                }
                 const uint64_t base = 0x20000000ULL;
                 if (e2_memory_map_at(&m->mem, base, (size_t)chunk_bytes,
                                     E2_PROT_READ | E2_PROT_WRITE) != 0) {
@@ -1164,6 +1170,7 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             // The same ceiling as brk. musl serves a large allocation from mmap rather than from
             // the break, so a cap enforced only on brk left `bytearray(24 * 1024 * 1024)` free to
             // succeed inside an eight-megabyte budget.
+            refresh_heap_limits();
             if (cap_bytes != 0) {
                 uint64_t mapped_total = 0;
                 for (unsigned i = 0; i < m->mem.count; i++) {
