@@ -372,6 +372,47 @@ final class E2BackendTests: XCTestCase {
                       "sleep did not wait: \(result.content)")
     }
 
+    /// A guest that exhausts its budget gets MemoryError, not a silent death.
+    ///
+    /// E2_HEAP_MB was read and discarded with a (void), so a guest could grow until iOS killed the
+    /// app - and that arrives as a crash with no message rather than as the error CPython raises
+    /// when a limit holds. This is the case that matters on a phone, where the alternative is the
+    /// process disappearing.
+    @MainActor
+    func testGuestHeapLimitIsEnforced() async throws {
+        let root = try guestRoot()
+        let python = root.appendingPathComponent("usr/bin/python3.12").path
+        try XCTSkipUnless(FileManager.default.isReadableFile(atPath: python),
+                          "this build's guest root has no CPython")
+
+        let workspace = URL(fileURLWithPath: E2Runtime().resolvedWorkspacePath)
+        try? FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        let script = workspace.appendingPathComponent("heap-\(UUID().uuidString).py")
+        defer { try? FileManager.default.removeItem(at: script) }
+        try """
+        try:
+            x = bytearray(96 * 1024 * 1024)
+            print("allocated", len(x))
+        except MemoryError:
+            print("memoryerror")
+        """.write(to: script, atomically: true, encoding: .utf8)
+
+        // A budget far below the request, so one of the two outcomes must happen and both are
+        // checked: either the allocation is refused, or it succeeded and the budget is not a
+        // budget. Silence is not an acceptable third.
+        setenv("E2_HEAP_MB", "64", 1)
+        defer { unsetenv("E2_HEAP_MB") }
+
+        let runtime = E2Runtime()
+        let result = await runtime.run(command: "python3.12 /workspace/\(script.lastPathComponent)",
+                                       workspace: workspace)
+        XCTAssertTrue(result.content.contains("memoryerror") ||
+                      result.content.contains("allocated"),
+                      "no outcome at all: \(result.content)")
+        XCTAssertTrue(result.content.contains("memoryerror"),
+                      "96 MB allocated inside a 64 MB budget: \(result.content)")
+    }
+
     /// A command that fails has to say so.
     ///
     /// The runtime only checked for a negative status, so `exit 3` and a missing command both
