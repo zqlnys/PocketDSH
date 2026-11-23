@@ -187,7 +187,7 @@ enum ToolCatalog {
         1. Inspect the tree and read the relevant files before editing.
         2. Prefer apply_patch for targeted multi-line edits and write_file for new files or complete replacements.
         3. Read the changed file again after editing when correctness matters.
-        4. Use run_lua for local computation and executable checks. Lua is available; shell commands, Node, Python, Xcode, and subprocesses are not in this build.
+        4. Use run_linux for anything that wants a real shell: /bin/sh, the busybox applets, and CPython 3.12 with its standard library all run in the guest, and the project is mounted at /workspace so commands read and write the same files the file tools do. Fork, exec and subprocesses work. Node and Xcode do not. Use run_lua for a quick self-contained computation where starting a guest would be wasted.
         5. For work that needs more than two or three steps, record the plan with todo_write before starting and update it as steps finish. Send the whole list each time, keep exactly one step in_progress, and keep entries to one short line. Skip it for single-step requests.
         6. Call use_skill with no arguments to see what skills this workspace defines, and load the one that matches the task before starting. Skills are written by the user and are instructions, not data to summarise.
         7. When a task produces a file worth opening, mark it with present so it appears as a card above the conversation. Present files that already exist; the tool does not create them.
@@ -198,7 +198,7 @@ enum ToolCatalog {
 
         Existing files require overwrite=true in write_file. Every overwrite creates a recovery backup and a diff. Never request a destructive operation just to make a build pass. If a tool fails, inspect the error and try a different safe approach. Do not invent tool output.
 
-        Extra tools named plugin__* come from installed local Lua plugins. They are real tools with declared permissions and must be treated like the built-in tools: read their result, do not claim success without it.
+        Extra tools named plugin__* come from installed plugins - Lua ones in the embedded interpreter, Python ones in the same guest run_linux uses. They are real tools with declared permissions and must be treated like the built-in tools: read their result, do not claim success without it.
         """
     }
 
