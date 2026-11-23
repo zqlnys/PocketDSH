@@ -123,5 +123,27 @@ check "rmdir-nonempty"     'mkdir -p /workspace/ne/x; rmdir /workspace/ne 2>/dev
 # The descriptor table does not leak across many opens.
 check "many-opens"         'i=0; while [ $i -lt 80 ]; do cat /workspace/t.txt >/dev/null; i=$((i+1)); done; echo done' done
 
+echo "argv and -c"
+
+# Copied into the workspace so the guest can run it; the cases pass arguments to it rather than
+# trying to escape an argument inside a command string.
+cp tools/argv-probe.sh "$WORK/probe.sh" 2>/dev/null || true
+
+check "argv-short"     'sh /workspace/probe.sh a b' 'argc=2'
+check "argv-values"    'sh /workspace/probe.sh a b' 'arg1: len=1 value=[b]'
+check "argv-empty"     'sh /workspace/probe.sh ""' 'arg0: len=0 value=[]'
+check "argv-with-space" 'sh /workspace/probe.sh "a b c"' 'value=[a b c]'
+check "argv-many"      'sh /workspace/probe.sh 1 2 3 4 5 6 7 8 9' 'argc=9'
+check "argv-unicode"   'sh /workspace/probe.sh "中文" ' 'value=[中文]'
+
+# A long argument: the corruption this backend carried truncated anything past a few characters.
+long=$(printf '%0200d' 0)
+check "argv-long"      "sh /workspace/probe.sh $long" 'arg0: len=200'
+
+# -c itself, which is where the truncation was first seen.
+check "dash-c-short"   'busybox sh -c "echo ok"' ok
+check "dash-c-unicode" 'busybox sh -c "echo 中文测试"' '中文测试'
+check "dash-c-long"    'busybox sh -c "echo 0123456789012345678901234567890123456789"' 0123456789012345678901234567890123456789
+
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
