@@ -158,6 +158,7 @@ static long proc_quantum(void) {
     return q;
 }
 static long g_proc_budget = -1;
+static int g_sw_thread = -1;
 /// Whether the instruction-history ring is maintained. It exists for post-mortem dumps and
 /// used to be filled on every instruction - seven stores per step, which profiling put at
 /// about a fifth of the entire run.
@@ -1808,9 +1809,9 @@ static void watchdog_dump_procs(void) {
     for (int i = 0; i < E2_MAX_PROCS; i++) {
         const proc_t *q = &procs[i];
         if (!q->used || !q->alive) continue;
-        fprintf(stderr, "[watchdog] proc %d pc=0x%llx insn=%llu%s%s\n",
+        fprintf(stderr, "[watchdog] proc %d pc=0x%llx insn=%llu regions=%u%s%s\n",
                 q->pid, (unsigned long long)q->m.cpu.pc,
-                (unsigned long long)q->m.instructions,
+                (unsigned long long)q->m.instructions, q->m.mem.count,
                 q->futex_waiting ? " parked-futex" : "",
                 q->thread_of ? " thread" : "");
     }
@@ -2275,6 +2276,18 @@ static int run_proc(int idx) {
                         if (pc_hist[i] > bestn) { bestn = pc_hist[i]; best = i; }
                     }
                     if (best < 0 || bestn == 0) break;
+                    // Name the mapping the hottest pc lives in: an address alone says nothing,
+                    // and a pc below the app's load address looks like a wild pointer.
+                    for (unsigned r = 0; r < p->m.mem.count; r++) {
+                        const e2_region *rg = &p->m.mem.regions[r];
+                        if (pc_hist_pc[best] >= rg->base &&
+                            pc_hist_pc[best] < rg->base + rg->size) {
+                            fprintf(stderr, "[pchist]   region base=0x%llx size=0x%llx prot=%d\n",
+                                    (unsigned long long)rg->base,
+                                    (unsigned long long)rg->size, rg->prot);
+                            break;
+                        }
+                    }
                     fprintf(stderr, "[pchist] 0x%llx  %llu samples\n",
                             (unsigned long long)pc_hist_pc[best], bestn);
                     pc_hist[best] = 0;
@@ -3020,7 +3033,9 @@ static int run_proc(int idx) {
         e2_status st = e2_step(&p->m);
         // Gated. This is what showed the thread advancing normally after the scheduler fixes,
         // where reading its pc at run_proc's entry made it look like it repeated one instruction.
-        if (getenv("E2_TRACE_THREAD") && p->thread_of) {
+        // env_once, not getenv: reading the environment per instruction took the benchmark from
+        // 52 ns to 108, which is the same mistake this file has already corrected three times.
+        if (p->thread_of && env_once("E2_TRACE_THREAD", &g_sw_thread)) {
             static int shown = 0;
             if (shown++ < 200) {
                 fprintf(stderr, "[tstep] st=%d pc=0x%llx sp=0x%llx reason=%s\n", (int)st,
