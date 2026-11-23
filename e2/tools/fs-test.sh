@@ -190,5 +190,25 @@ else
     echo "  (no CPython in this root; skipping)"
 fi
 
+# A wider sweep: thirty standard-library modules that a real script reaches for - compression,
+# number formats, structural sharing, text layout, the collections and iterators. The narrow probe
+# above found FABD hiding inside math.isclose; this one exists to find the next such thing by
+# breadth rather than by luck. Expected values came from qemu.
+if [ -x "$ROOT/usr/bin/python3.12" ]; then
+    cp tools/stdlib-wide.py "$WORK/wide_probe.py" 2>/dev/null || true
+    wide_out=$(E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" PYTHONHOME=/usr LANG=C.UTF-8 E2_CAP=400000000 \
+        timeout 180 "$RUNE" "$ROOT/usr/bin/python3.12" /workspace/wide_probe.py 2>/dev/null)
+    # Counted rather than pattern-matched: every line is either a result or an ERR, so the two
+    # numbers say whether anything failed without depending on how a value happens to print.
+    wide_lines=$(printf '%s' "$wide_out" | grep -cE '^[a-z0-9-]+ (ERR )?[^ ]')
+    wide_errs=$(printf '%s' "$wide_out" | grep -c ' ERR ')
+    if [ "$wide_errs" -eq 0 ] && [ "$wide_lines" -ge 29 ]; then
+        pass=$((pass + 1))
+    else
+        fail=$((fail + 1))
+        printf '  FAIL wide standard library: %d lines, %d errors\n' "$wide_lines" "$wide_errs"
+    fi
+fi
+
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
