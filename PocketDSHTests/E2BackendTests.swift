@@ -279,6 +279,28 @@ final class E2BackendTests: XCTestCase {
         XCTAssertTrue(output.contains("capture cap"), output)
     }
 
+    /// A command that floods is truncated rather than swallowed whole.
+    ///
+    /// The output was read with String(contentsOf:), so a command producing hundreds of megabytes
+    /// filled memory and the model's context at once, and neither failure said which command did
+    /// it. The head and tail are kept and the gap is labelled.
+    @MainActor
+    func testFloodingOutputIsCapped() async throws {
+        let root = try guestRoot()
+        try XCTSkipUnless(FileManager.default.isReadableFile(
+                            atPath: root.appendingPathComponent("bin/busybox").path),
+                          "needs a readable busybox in the guest root")
+
+        let runtime = E2Runtime()
+        let result = await runtime.run(command: "yes flooding | head -c 2000000")
+        XCTAssertFalse(result.isError, "a capped run should still succeed")
+        XCTAssertTrue(result.content.contains("bytes omitted"), "the cap did not engage")
+        XCTAssertTrue(result.content.contains("flooding"), "the head was dropped")
+        // Comfortably under what was produced, and under what a conversation can carry.
+        XCTAssertLessThan(result.content.utf8.count, 100_000,
+                          "capped output was \(result.content.utf8.count) bytes")
+    }
+
     /// The guest sees the project it was asked about.
     ///
     /// `run(command:workspace:)` accepted a workspace and ignored it, so every `run_linux` saw a

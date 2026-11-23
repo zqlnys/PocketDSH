@@ -104,7 +104,7 @@ final class E2Runtime: ObservableObject {
             return e2_bridge_run(rootfs.path, outURL.path, Int32(argv.count), buffer.baseAddress)
         }
 
-        let output = (try? String(contentsOf: outURL, encoding: .utf8)) ?? ""
+        let output = readCapped(outURL)
         if status < 0 {
             sessionError = "Tier D could not start the interpreter."
             state = .failed(sessionError)
@@ -125,6 +125,31 @@ final class E2Runtime: ObservableObject {
             return .failure("The command \(how).\n\(body)")
         }
         return .success(trimmed.isEmpty ? "(no output)" : trimmed)
+    }
+
+    /// The captured output, capped.
+    ///
+    /// Reading the whole file worked until a command produced more than a conversation can hold:
+    /// `yes` or a verbose build log filled memory and the model's context at once, and neither
+    /// failure names itself. The head and the tail are kept, because a log is usually useful at
+    /// both ends and least useful in the middle.
+    private func readCapped(_ url: URL, head: Int = 24_000, tail: Int = 8_000) -> String {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return "" }
+        defer { try? handle.close() }
+        let size = (try? handle.seekToEnd()) ?? 0
+        if size <= UInt64(head + tail) {
+            try? handle.seek(toOffset: 0)
+            let data = (try? handle.readToEnd()) ?? Data()
+            return String(decoding: data, as: UTF8.self)
+        }
+        try? handle.seek(toOffset: 0)
+        let first = (try? handle.read(upToCount: head)) ?? Data()
+        try? handle.seek(toOffset: size - UInt64(tail))
+        let last = (try? handle.read(upToCount: tail)) ?? Data()
+        let omitted = Int(size) - head - tail
+        return String(decoding: first, as: UTF8.self)
+            + "\n… \(omitted) bytes omitted …\n"
+            + String(decoding: last, as: UTF8.self)
     }
 
     func discardSession() async {
