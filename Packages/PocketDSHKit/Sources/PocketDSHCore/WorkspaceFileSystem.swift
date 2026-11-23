@@ -469,7 +469,7 @@ public struct WorkspaceFileSystem {
             guard let data = try? Data(contentsOf: base),
                   !data.contains(0),
                   let text = String(data: data, encoding: .utf8) else {
-                return []
+                return ([], false, 0)
             }
             for (index, line) in text.components(separatedBy: "\n").enumerated() {
                 guard matches.count < limit else { break }
