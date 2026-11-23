@@ -290,10 +290,12 @@ struct SettingsView: View {
             HStack(spacing: 10) {
                 IconTile(systemName: "terminal.fill", tint: PocketTheme.accent, size: 40)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Lua 5.4 · embedded")
+                    // The card described Lua alone, from before there was anything else to
+                    // describe. What is local is a choice, and the screen offers it.
+                    Text("On-device runtimes")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(PocketTheme.primaryText)
-                    Text("Runs in this app process, no JIT, no subprocess.")
+                    Text("Lua 5.4 embedded, or a real Alpine shell and CPython 3.12 interpreted in the guest. Neither uses a JIT or a host subprocess.")
                         .font(.caption)
                         .foregroundStyle(PocketTheme.secondaryText)
                 }
@@ -387,7 +389,7 @@ struct SettingsView: View {
                 Banner(
                     icon: "exclamationmark.triangle",
                     title: "Tier C is experimental",
-                    message: "The iSH Alpine backend runs a persistent shell, but Tier C is still experimental. Tier A remains the default runtime.",
+                    message: "The iSH Alpine backend is not in this build, so the agent falls back to the embedded runtime. Tier D is the one that runs a real shell here.",
                     tint: PocketTheme.amber
                 )
             }
@@ -403,7 +405,7 @@ struct SettingsView: View {
                 StatusPill(text: "Linked", tint: PocketTheme.amber)
             }
 
-            Text("iSH Alpine runs a persistent shell inside this app. run_linux executes in that shell, and the active project is mounted read-write at /workspace, so guest commands see the same files the Swift tools do. Tier C is still experimental and is not the default runtime.")
+            Text("iSH Alpine runs a persistent shell inside this app. run_linux executes in that shell, and the active project is mounted read-write at /workspace, so guest commands see the same files the Swift tools do. It is not in the shipping build: Tier D runs the shell there, with a fresh session per command.")
                 .font(.caption)
                 .foregroundStyle(PocketTheme.secondaryText)
 
