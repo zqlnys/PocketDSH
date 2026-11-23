@@ -297,7 +297,6 @@ e2_status e2_step(e2_machine *machine) {
         machine->ctx.reason = "instruction fetch outside mapped memory";
         return E2_FAULT;
     }
-    machine->ctx.instruction = insn;
 
     const bool is64 = IS64(insn);
     const unsigned rd = BITS(insn, 4, 0);

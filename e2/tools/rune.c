@@ -3038,7 +3038,8 @@ static int run_proc(int idx) {
                         (unsigned long long)g_watch_addr,
                         (unsigned long long)g_watch_prev, (unsigned long long)now,
                         (unsigned long long)pre_pc,
-                        (unsigned)p->m.ctx.instruction);
+                        (unsigned)({ uint32_t w_ = 0;
+                                     e2_memory_read(&p->m.mem, pre_pc, &w_, 4); w_; }));
                 g_watch_prev = now;
                 // The cap exists so a watchdog on a hot address does not flood stderr. It
                 // used to be 8, which silently stopped watching long before the write that
@@ -3212,7 +3213,9 @@ static int run_proc(int idx) {
                      "%s addr=0x%llx pid=%d pc=0x%llx insn=0x%08x x0=0x%llx x1=0x%llx x2=0x%llx x5=0x%llx x6=0x%llx x19=0x%llx x21=0x%llx x30=0x%llx sp=0x%llx",
                      p->m.ctx.reason ? p->m.ctx.reason : "?",
                      (unsigned long long)p->m.ctx.fault_addr, p->pid,
-                     (unsigned long long)p->m.cpu.pc, p->m.ctx.instruction,
+                     (unsigned long long)p->m.cpu.pc,
+                     (unsigned)({ uint32_t w_ = 0;
+                                  e2_memory_read(&p->m.mem, p->m.cpu.pc, &w_, 4); w_; }),
                      (unsigned long long)p->m.cpu.x[0], (unsigned long long)p->m.cpu.x[1],
                      (unsigned long long)p->m.cpu.x[2],
                      (unsigned long long)p->m.cpu.x[5], (unsigned long long)p->m.cpu.x[6],
