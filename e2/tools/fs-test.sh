@@ -232,5 +232,24 @@ for m in ("ssl", "hashlib", "bz2", "lzma", "sqlite3", "pyexpat", "decimal", "cur
     printf '  modules: %s\n' "$(printf '%s' "$mods" | tr '\n' ' ')"
 fi
 
+echo "awkward input"
+
+# Names and contents that a path-handling layer tends to get wrong, and that a real project will
+# contain sooner or later.
+check "name-with-space"   'echo hi > "/workspace/a b.txt" && cat "/workspace/a b.txt"' hi
+check "name-unicode"      'echo hi > "/workspace/中文.txt" && ls /workspace' "中文.txt"
+check "name-quotes"       'echo hi > "/workspace/q'"'"'uote.txt" && cat "/workspace/q'"'"'uote.txt"' hi
+check "name-leading-dash" 'echo hi > "/workspace/-dash.txt" && cat "/workspace/-dash.txt"' hi
+check "deep-nesting"      'mkdir -p /workspace/a/b/c/d/e && echo deep > /workspace/a/b/c/d/e/f && cat /workspace/a/b/c/d/e/f' deep
+check "dot-in-name"       'echo hi > /workspace/.hidden && cat /workspace/.hidden' hi
+
+# Binary content survives a round trip byte for byte.
+check "binary-roundtrip"  'printf "\377\376\000A" > /workspace/bin.dat && wc -c < /workspace/bin.dat' 4
+check "binary-not-text"   'printf "\000\000\000" > /workspace/z.bin && cat /workspace/z.bin | wc -c' 3
+
+# An empty file and an empty directory are not errors.
+check "empty-file"        ': > /workspace/empty && wc -c < /workspace/empty' 0
+check "empty-dir"         'mkdir -p /workspace/emptydir && ls /workspace/emptydir | wc -l' 0
+
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
