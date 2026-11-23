@@ -30,11 +30,22 @@ final class PocketDSHTests: XCTestCase {
         }
     }
 
-    func testSystemPromptStatesIPhoneWorkspaceAndNoShell() {
+    /// The prompt is the standing instruction that decides which tool the model reaches for, so
+    /// what it claims about the backend matters.
+    ///
+    /// This test used to assert that the prompt contains "shell commands" - as part of the
+    /// sentence "shell commands, Node, Python, Xcode, and subprocesses are not in this build". The
+    /// backend grew a real shell and a real CPython, the prompt kept denying them, and the test
+    /// kept the denial in place. It now asserts the opposite, which is what is true.
+    func testSystemPromptDescribesTheBackendThatExists() {
         let prompt = ToolCatalog.systemPrompt(projectName: "Demo")
         XCTAssertTrue(prompt.contains("iPhone"))
         XCTAssertTrue(prompt.contains("real files"))
-        XCTAssertTrue(prompt.contains("shell commands"))
+        XCTAssertTrue(prompt.contains("run_linux"), "the prompt should point at the shell")
+        XCTAssertTrue(prompt.contains("CPython 3.12"), "the prompt should say Python is available")
+        XCTAssertTrue(prompt.contains("/workspace"), "the prompt should say the project is mounted")
+        XCTAssertFalse(prompt.contains("are not in this build"),
+                       "the prompt still denies a tool this build has: \(prompt)")
     }
 
     @MainActor
