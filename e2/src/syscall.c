@@ -142,6 +142,11 @@ static long sys_readv(e2_machine *m, e2_syscall_env *env, int fd, uint64_t iov_a
 /// A shell's `while read` loop calls this before each line, so returning ENOSYS
 /// here does not fail loudly - the loop simply never runs its body, which is how
 /// this stayed unnoticed.
+// The ceiling E2_HEAP_MB names, shared by every guest in this process: it limits how much the app
+// may allocate, not a per-process quota.
+static long chunk_bytes = -1;
+static uint64_t cap_bytes = 0;
+
 static long sys_poll(e2_machine *m, e2_syscall_env *env, uint64_t fds_addr, uint64_t nfds,
                      long timeout_ms) {
     if (nfds > 1024) {
@@ -1098,8 +1103,6 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             // E2_HEAP_CHUNK_MB sets the chunk size; E2_HEAP_MB caps the total, so a program
             // that never asks for much never costs much.
             if (m->brk_base == 0) {
-                static long chunk_bytes = -1;
-                static uint64_t cap_bytes = 0;
                 if (chunk_bytes < 0) {
                     const char *c = getenv("E2_HEAP_CHUNK_MB");
                     const char *t = getenv("E2_HEAP_MB");
@@ -1116,10 +1119,15 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
                 m->brk_base = base;
                 m->brk_current = base;
                 m->brk_limit = base + (uint64_t)chunk_bytes;
-                (void)cap_bytes;
             }
             if (a0 == 0) {
                 E2_RETURN(m->brk_current);
+            }
+            // The cap E2_HEAP_MB names, now enforced. It was read and discarded with a (void),
+            // so a guest could grow until iOS killed the app - and that arrives as a crash with no
+            // message rather than as the MemoryError CPython raises when a limit holds.
+            if (cap_bytes != 0 && a0 > m->brk_base + cap_bytes) {
+                E2_RETURN(-12);   // ENOMEM: the request is past the ceiling this guest was given
             }
             if (a0 > m->brk_limit) {
                 // Extend until the request fits. Growth is contiguous because the guest expects
@@ -1153,6 +1161,18 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
         case E2_SYS_mmap: {
             // Anonymous mappings come from the interpreter's own address space.
             const uint64_t length = a1;
+            // The same ceiling as brk. musl serves a large allocation from mmap rather than from
+            // the break, so a cap enforced only on brk left `bytearray(24 * 1024 * 1024)` free to
+            // succeed inside an eight-megabyte budget.
+            if (cap_bytes != 0) {
+                uint64_t mapped_total = 0;
+                for (unsigned i = 0; i < m->mem.count; i++) {
+                    mapped_total += m->mem.regions[i].size;
+                }
+                if (mapped_total + length > cap_bytes) {
+                    E2_RETURN(-12);   // ENOMEM
+                }
+            }
             const uint64_t prot = a2;
             int e2_prot = 0;
             if (prot & 0x1) e2_prot |= E2_PROT_READ;
