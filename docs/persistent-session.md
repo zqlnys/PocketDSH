@@ -85,8 +85,17 @@ The thread now *runs*, which it never did. Two more fixes were needed to get tha
 The watchdog made this look like a thread spinning for 46 million instructions. That count was
 inherited: `t->m = *parent` copies the instruction counter, and the thread had executed none of it.
 
-With `E2_THREADS=1`, `start()` still does not return: the thread runs, reaches musl, and repeats
-one instruction at `pthread_create+0x768` without advancing.
+With `E2_THREADS=1`, `start()` still does not return, but the thread now goes much further than it
+ever did: `E2_TRACE_THREAD=1` shows it advancing normally through musl and into libpython
+(`0x400020512c` and beyond), with a stack of its own and `st=0` on every step.
+
+An earlier reading of this trace said the thread repeated one instruction without advancing. That
+was an artefact of sampling its pc at `run_proc`'s entry: consecutive entries each took one step, so
+the pc looked unchanged. The per-step trace above `run_proc` shows it moving.
+
+So the remaining problem is not that the thread is stuck; it is that the handshake never completes -
+the parent stays parked on its futex while the child runs Python code that should eventually set the
+word it is waiting on.
 
 Without it, the default path raises `RuntimeError: can't start new thread`, which a program can
 catch and degrade from. That has been true through all seven attempts and every regression suite

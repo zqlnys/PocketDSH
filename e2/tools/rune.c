@@ -3018,6 +3018,17 @@ static int run_proc(int idx) {
             sample_at = guard + 4096;
         }
         e2_status st = e2_step(&p->m);
+        // Gated. This is what showed the thread advancing normally after the scheduler fixes,
+        // where reading its pc at run_proc's entry made it look like it repeated one instruction.
+        if (getenv("E2_TRACE_THREAD") && p->thread_of) {
+            static int shown = 0;
+            if (shown++ < 200) {
+                fprintf(stderr, "[tstep] st=%d pc=0x%llx sp=0x%llx reason=%s\n", (int)st,
+                        (unsigned long long)p->m.cpu.pc,
+                        (unsigned long long)p->m.cpu.sp,
+                        p->m.ctx.reason ? p->m.ctx.reason : "-");
+            }
+        }
         // A chdir inside the step changed env.cwd; keep the process copy in step so
         // the change survives to the next scheduling turn.
         // Only a chdir moves it, and chdir sets the flag. Comparing the strings after every
