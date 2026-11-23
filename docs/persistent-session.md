@@ -73,9 +73,20 @@ Attempted seven times across as many rounds. Not working, but less mysterious th
 
 ## Where it stands
 
-With `E2_THREADS=1`, `threading.Thread().start()` still does not return. The watchdog shows the
-child running 46 million instructions inside musl, parked nowhere, while the parent waits on a
-futex.
+The thread now *runs*, which it never did. Two more fixes were needed to get that far:
+
+- **`pump_children_for_tab` skipped anything sharing the caller's file table**, with the comment
+  "that is us". A thread shares its creator's table by definition, so every thread was skipped.
+  Re-entry is prevented by the `running` flag, which is what that check was reaching for.
+- **A parked futex wait yielded without running anyone.** `run_proc` returned, the scheduler called
+  it again for the same process, the wait parked again, and the thread that was supposed to set
+  the word never ran. The wait now pumps first.
+
+The watchdog made this look like a thread spinning for 46 million instructions. That count was
+inherited: `t->m = *parent` copies the instruction counter, and the thread had executed none of it.
+
+With `E2_THREADS=1`, `start()` still does not return: the thread runs, reaches musl, and repeats
+one instruction at `pthread_create+0x768` without advancing.
 
 Without it, the default path raises `RuntimeError: can't start new thread`, which a program can
 catch and degrade from. That has been true through all seven attempts and every regression suite

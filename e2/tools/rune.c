@@ -1570,6 +1570,13 @@ static void p_exit(void *ctx, int status) {
 
 static long p_thread(void *ctx, const e2_machine *parent, uint64_t pc, uint64_t sp,
                      uint64_t tls, uint64_t ptid, uint64_t ctid, uint64_t flags) {
+    // Gated and kept: this line is what showed the thread being created at all, back when the
+    // assumption was that it was created and merely never scheduled.
+    if (getenv("E2_TRACE_THREAD")) {
+        fprintf(stderr, "[clone] pc=0x%llx sp=0x%llx tls=0x%llx flags=0x%llx\n",
+                (unsigned long long)pc, (unsigned long long)sp,
+                (unsigned long long)tls, (unsigned long long)flags);
+    }
     proc_t *self = ctx;
     const int slot = proc_slot();
     if (slot < 0) return -11;   // EAGAIN: no free slot
@@ -1632,6 +1639,10 @@ static long p_futex_wait(void *ctx, uint64_t addr, uint64_t val, int *yield) {
     self->futex_addr = addr;
     self->futex_val = val;
     self->futex_waiting = 1;
+    // Run the threads that could set this word before yielding. Yielding alone does nothing:
+    // run_proc returns, the scheduler calls it again for the same process, the wait parks again,
+    // and the thread that is supposed to wake it never runs.
+    pump_children_for_tab(self->pc.fdtab);
     // End this turn so the scheduler can run somebody who can make progress.
     g_proc_budget = 0;
     *yield = 1;
@@ -1810,7 +1821,12 @@ static int pump_children_for_tab(int tab) {
     for (int i = 0; i < E2_MAX_PROCS; i++) {
         proc_t *c = &procs[i];
         if (!c->used || !c->alive) continue;
-        if (c->pc.fdtab == tab) continue;   // that is us
+        // Not "anything sharing our file table": a thread shares it by definition, and skipping
+        // on that basis meant a thread was never run at all. The parent parked on a futex,
+        // nothing else was eligible, and the thread sat there with a machine copied from its
+        // parent and an instruction count to match - which made the watchdog look like a thread
+        // spinning for forty-six million instructions. Re-entry is prevented by `running` below.
+        (void)tab;
         if (c->running) continue;           // already on the stack - do not re-enter
         if (c->futex_waiting) {
             // Parked in FUTEX_WAIT. If the word it was waiting on has changed, or cannot be
