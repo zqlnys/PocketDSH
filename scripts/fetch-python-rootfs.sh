@@ -83,8 +83,12 @@ fetch_pkg musl
 # module: libssl3 and libcrypto3 give _ssl and _hashlib, libbz2 gives bz2, expat gives pyexpat.
 # mpdecimal matters for a subtler reason - without it decimal silently falls back to the
 # pure-Python implementation, which is correct and far slower.
+# The bundle, not ca-certificates: that package installs the update tooling and leaves
+# /etc/ssl/certs empty, so ssl imports and every handshake then fails with
+# CERTIFICATE_VERIFY_FAILED. ca-certificates-bundle is what actually contains
+# /etc/ssl/certs/ca-certificates.crt.
 for pkg in python3 libffi ncurses-libs readline zlib sqlite-libs xz-libs mpdecimal \
-           libssl3 libcrypto3 libbz2 expat gdbm; do
+           libssl3 libcrypto3 libbz2 expat gdbm ca-certificates-bundle; do
     fetch_pkg "$pkg" || echo "  (skipping $pkg)"
 done
 
