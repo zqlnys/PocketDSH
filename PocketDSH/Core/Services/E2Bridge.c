@@ -12,6 +12,10 @@
 #include <stdlib.h>
 
 #include "E2Bridge.h"
+
+// Declared by the harness under E2_AS_LIBRARY.
+void e2_request_cancel(void);
+void e2_clear_cancel(void);
 #include <sys/stat.h>
 #include <string.h>
 #include <unistd.h>
@@ -86,6 +90,9 @@ int e2_bridge_run(const char *rootfs, const char *out_path,
     return e2_bridge_run_in(rootfs, NULL, out_path, argc, argv);
 }
 
+/// Stops the run in progress, from any thread.
+void e2_bridge_cancel(void) { e2_request_cancel(); }
+
 int e2_bridge_run_in(const char *rootfs, const char *workspace, const char *out_path,
                      int argc, char **argv) {
     // A caller that named a workspace wins over the scratch directory: the guest's /workspace is
@@ -129,6 +136,9 @@ int e2_bridge_run_in(const char *rootfs, const char *workspace, const char *out_
     }
     close(sink);
 
+    // Cleared first: a cancellation belongs to the run that asked for it, and a stale flag would
+    // stop the next command before it began.
+    e2_clear_cancel();
     const int status = e2_rune_main(argc, argv);
 
     fflush(stdout);

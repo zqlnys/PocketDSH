@@ -157,6 +157,10 @@ final class AgentRunner: ObservableObject {
     func cancel() {
         guard isRunning else { return }
         cancelRequested = true
+        // The shell runs inside a synchronous call that cannot see a cancelled task, so it is told
+        // directly. Cancelling the task alone marked the UI cancelled while the interpreter carried
+        // on to the instruction ceiling.
+        toolExecutor.cancelInFlight()
         runTask?.cancel()
         phase = .cancelled
         appendEvent(.cancelled, title: "Task cancelled", detail: "The user stopped this run.")

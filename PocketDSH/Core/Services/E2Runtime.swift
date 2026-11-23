@@ -152,6 +152,15 @@ final class E2Runtime: ObservableObject {
             + String(decoding: last, as: UTF8.self)
     }
 
+    /// Stops the run in progress. Called from the cancel path, on any thread.
+    ///
+    /// The run happens inside one synchronous call, so a cancelled Swift task is invisible to it;
+    /// the harness checks this request every 65536 instructions and ends the run with the output it
+    /// has so far. Without it, cancelling marked the UI cancelled and the interpreter carried on.
+    nonisolated func cancelCurrentRun() {
+        e2_bridge_cancel()
+    }
+
     func discardSession() async {
         state = .idle
     }

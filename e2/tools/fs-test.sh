@@ -145,5 +145,17 @@ check "dash-c-short"   'busybox sh -c "echo ok"' ok
 check "dash-c-unicode" 'busybox sh -c "echo 中文测试"' '中文测试'
 check "dash-c-long"    'busybox sh -c "echo 0123456789012345678901234567890123456789"' 0123456789012345678901234567890123456789
 
+echo "cancellation"
+
+# A long command must stop when asked, not run to the instruction ceiling. E2_CANCEL_AFTER_MS
+# raises the same flag the UI raises, so what this exercises is the real mechanism.
+long_out=$(E2_CANCEL_AFTER_MS=300 E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" timeout 30 \
+    "$RUNE" "$BUSYBOX" sh -c 'i=0; while [ $i -lt 1000000 ]; do i=$((i+1)); done; echo finished' \
+    2>&1)
+case "$long_out" in
+    *"reason=cancelled"*) pass=$((pass + 1)) ;;
+    *) fail=$((fail + 1)); printf '  FAIL cancellation did not engage: %s\n' "$long_out" ;;
+esac
+
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

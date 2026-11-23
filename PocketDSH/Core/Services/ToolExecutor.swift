@@ -108,6 +108,14 @@ final class ToolExecutor {
         }
     }
 
+    /// Stops whatever a running tool is doing. Called from the cancel path, on any thread.
+    ///
+    /// Only the shell has something long enough to stop; the file tools finish too quickly for it
+    /// to matter, and the network calls are already cancellable through their task.
+    nonisolated func cancelInFlight() {
+        e2Runtime?.cancelCurrentRun()
+    }
+
     private func listFiles(_ arguments: [String: JSONValue]) throws -> ToolExecutionResult {
         let path = arguments["path"]?.stringValue ?? "."
         let depth = min(max(arguments["depth"]?.intValue ?? 2, 1), 6)

@@ -22,6 +22,7 @@
 // three are needed for shell pipelines to see EOF correctly.
 #define _GNU_SOURCE
 #include <errno.h>
+#include <pthread.h>
 #include <execinfo.h>
 #include <signal.h>
 #include <unistd.h>
@@ -158,6 +159,27 @@ static long proc_quantum(void) {
     return q;
 }
 static long g_proc_budget = -1;
+
+// Set from another thread when the caller wants this run to stop.
+//
+// A guest command runs inside one synchronous call and cannot observe a Swift task being
+// cancelled; without this, stopping a run marked the UI cancelled while the interpreter kept going
+// until it finished or hit the ceiling.
+static volatile int g_cancel_requested = 0;
+
+void e2_request_cancel(void) { g_cancel_requested = 1; }
+
+// A wall-clock limit, and the way the cancellation path is tested: a thread raises the same flag
+// the UI raises, so what the test exercises is the real mechanism rather than a stand-in.
+static void *cancel_after_thread(void *arg) {
+    const long ms = (long)arg;
+    struct timespec ts = { ms / 1000, (ms % 1000) * 1000000L };
+    nanosleep(&ts, NULL);
+    e2_request_cancel();
+    return NULL;
+}
+void e2_clear_cancel(void) { g_cancel_requested = 0; }
+int e2_cancelled(void) { return g_cancel_requested; }
 static int g_sw_thread = -1;
 /// Whether the instruction-history ring is maintained. It exists for post-mortem dumps and
 /// used to be filled on every instruction - seven stores per step, which profiling put at
@@ -2269,6 +2291,13 @@ static int run_proc(int idx) {
         // guest loop and is really a counter in the wrong place.
         guard++;
         g_watch_regions = p->m.mem.count;
+        // Checked every 65536 instructions: often enough that cancelling a long command stops it
+        // in well under a second, rare enough to cost nothing.
+        if ((guard & 0xFFFF) == 0 && g_cancel_requested) {
+            snprintf(g_reason, sizeof(g_reason), "cancelled");
+            g_fault = 1;
+            break;
+        }
         // The process's own count, which is what a cap is meant to bound - a subprocess doing
         // real work legitimately runs instructions the parent never does. The global one is a
         // backstop for the case the own count cannot see: a child pumped from inside a syscall
@@ -3377,6 +3406,13 @@ void e2_set_root(const char *path) {
 
 #ifndef E2_AS_LIBRARY
 int main(int argc, char **argv) {
+    if (getenv("E2_CANCEL_AFTER_MS")) {
+        pthread_t thread;
+        const long ms = atol(getenv("E2_CANCEL_AFTER_MS"));
+        if (ms > 0 && pthread_create(&thread, NULL, cancel_after_thread, (void *)ms) == 0) {
+            pthread_detach(thread);
+        }
+    }
     if (getenv("E2_WATCHDOG")) {
         signal(SIGALRM, watchdog_dump);
         alarm((unsigned)atoi(getenv("E2_WATCHDOG")));

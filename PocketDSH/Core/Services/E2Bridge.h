@@ -13,3 +13,7 @@ int e2_bridge_run_in(const char *rootfs, const char *workspace, const char *out_
                      int argc, char **argv);
 
 #endif
+
+/// Stops whatever run is in progress, from any thread. The run ends with a non-zero status and
+/// its output so far; the next call clears the request.
+void e2_bridge_cancel(void);
