@@ -271,5 +271,23 @@ else:
     esac
 fi
 
+# A hundred forks in one process. Process slots are reused when a child is reaped, and this is the
+# case that would show it if they were not - the table has thirty-two.
+if [ -x "$ROOT/usr/bin/python3.12" ]; then
+    fk_out=$(E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" PYTHONHOME=/usr LANG=C.UTF-8 E2_CAP=400000000 \
+        timeout 180 "$RUNE" "$ROOT/usr/bin/python3.12" -c \
+        'import os
+ok = 0
+for i in range(100):
+    pid = os.fork()
+    if pid == 0: os._exit(0)
+    if os.waitpid(pid, 0)[1] == 0: ok += 1
+print("reaped", ok)' 2>/dev/null)
+    case "$fk_out" in
+        *"reaped 100"*) pass=$((pass + 1)) ;;
+        *) fail=$((fail + 1)); printf '  FAIL fork reuse: %s\n' "$fk_out" ;;
+    esac
+fi
+
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
