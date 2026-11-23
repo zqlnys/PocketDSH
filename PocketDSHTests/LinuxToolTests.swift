@@ -1,4 +1,6 @@
 import XCTest
+import PocketDSHCore
+import LuaRuntime
 @testable import PocketDSH
 
 /// `run_linux` as the agent reaches it: through ToolExecutor, not through E2Runtime.
