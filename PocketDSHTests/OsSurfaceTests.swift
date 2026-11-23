@@ -13,7 +13,8 @@ final class OsSurfaceTests: XCTestCase {
 
     @MainActor
     func testTheOsSurfaceWorksInTheGuest() async throws {
-        let root = try guestRoot()
+        let root = Bundle.main.url(forResource: "alpine-root", withExtension: nil)
+            ?? URL(fileURLWithPath: "/nonexistent")
         let python = root.appendingPathComponent("usr/bin/python3.12").path
         try XCTSkipUnless(FileManager.default.isReadableFile(atPath: python),
                           "this build's guest root has no CPython")
