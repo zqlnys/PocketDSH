@@ -105,7 +105,8 @@ fetch_pkg musl
 # CERTIFICATE_VERIFY_FAILED. ca-certificates-bundle is what actually contains
 # /etc/ssl/certs/ca-certificates.crt.
 for pkg in python3 libffi ncurses-libs readline zlib sqlite-libs xz-libs mpdecimal \
-           libssl3 libcrypto3 libbz2 libexpat gdbm ca-certificates-bundle ncurses-libs; do
+           libssl3 libcrypto3 libbz2 libexpat gdbm ca-certificates-bundle libncursesw \
+           libpanelw; do
     fetch_pkg "$pkg" || echo "  (skipping $pkg)"
 done
 
