@@ -484,9 +484,14 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
                 if (env->thread == NULL) {
                     E2_RETURN(-E2_EINVAL);
                 }
-                // clone's child starts at the return address on the new stack: x30 holds the
-                // entry point for a fresh thread, and a0 is the top of its stack.
-                E2_RETURN(env->thread(env->ctx, m, m->cpu.x[30], a1, m->cpu.x[4],
+                // The child resumes at the instruction after `svc`, exactly as the parent does -
+                // `svc` does not touch x30, so passing the link register sent the new thread into
+                // whatever pthread_create was going to return to. That is why its pc sat inside
+                // pthread_create and it ran that function's remaining code as its body.
+                //
+                // exec.c has already advanced pc past the svc by the time this runs, so pc is the
+                // resume address.
+                E2_RETURN(env->thread(env->ctx, m, m->cpu.pc, a1, m->cpu.x[4],
                                       a2, a3, a0));
             }
             if (env->fork == NULL) {

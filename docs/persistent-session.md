@@ -50,3 +50,41 @@ alive, which is how the thread pumping works. So the mechanism exists.
 
 None of that is hard. All of it has to be decided before the first line, which is what went wrong
 the first time.
+
+---
+
+# Threads: what was learned, and where it stands
+
+Attempted seven times across as many rounds. Not working, but less mysterious than it was.
+
+## Fixed along the way
+
+- **The thread's entry point was the parent's link register.** `svc` does not write x30, so
+  `clone`'s child resumes at the instruction *after* the svc, exactly as the parent does. Passing
+  the LR sent the new thread into whatever `pthread_create` would have returned to - which is why
+  its pc sat inside `pthread_create` and it executed that function's remaining code as its body.
+  `exec.c` has already advanced pc past the svc when the syscall handler runs, so pc is the resume
+  address.
+- **`TL` becomes the thread's `TPIDR_EL0`.** Inheriting the creator's means the child reads the
+  parent's thread-local storage, which is worse than having none.
+- **`CLONE_PARENT_SETTID` and `CLONE_CHILD_SETTID`** write the tid into the caller's pointers, which
+  `pthread_create` waits on.
+- **`rt_sigsuspend` (133)** was unimplemented and is where a thread parks.
+
+## Where it stands
+
+With `E2_THREADS=1`, `threading.Thread().start()` still does not return. The watchdog shows the
+child running 46 million instructions inside musl, parked nowhere, while the parent waits on a
+futex.
+
+Without it, the default path raises `RuntimeError: can't start new thread`, which a program can
+catch and degrade from. That has been true through all seven attempts and every regression suite
+passes.
+
+## What to look at next
+
+The child runs a long time without reaching the start routine. musl's `__clone` child path takes a
+branch on `x0` being zero and then calls through a function pointer; either that branch is taken
+wrongly, or the pointer is not what musl stored. Instrumenting `__clone`'s child path - the pc of
+first execution and the value it branches on - is the next concrete step, and it is a better one
+than another theory.
