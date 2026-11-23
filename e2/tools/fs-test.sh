@@ -17,6 +17,14 @@ WORK=$(mktemp -d)
 TMPDIR_GUEST=$(mktemp -d)
 trap 'rm -rf "$WORK" "$TMPDIR_GUEST"' EXIT
 
+# The applets the cases below use. Linked into the guest's /bin if missing, so this works against
+# any root that has a busybox - a root assembled by hand tends to have only the handful someone
+# needed at the time, and a missing applet looks exactly like a failing syscall.
+for applet in sh ls cat tr stat chmod chown mv ln rm mkdir rmdir wc test dd df head tail cmp; do
+    if [ -e "$ROOT/bin/$applet" ]; then continue; fi
+    if [ -e "$ROOT/bin/busybox" ]; then ln -sf busybox "$ROOT/bin/$applet" 2>/dev/null || true; fi
+done
+
 pass=0
 fail=0
 
@@ -79,6 +87,41 @@ check "traversal"        'cat /workspace/../../etc/hostname 2>/dev/null | wc -c'
 check "pipe"             'echo abc | tr a-z A-Z' ABC
 check "redirect-append"  'echo x > /workspace/c.txt; echo y >> /workspace/c.txt; wc -l < /workspace/c.txt' 2
 check "dup-stderr"       'sh -c "echo err 1>&2" 2>/dev/null; echo rc=$?' rc=0
+
+# Appending and truncating: the two modes a shell uses without thinking.
+check "append-vs-truncate" 'echo a > /workspace/t.txt; echo b >> /workspace/t.txt; echo c > /workspace/t.txt; cat /workspace/t.txt' c
+check "truncate-len"       'printf abcdef > /workspace/t2.txt; : > /workspace/t2.txt; wc -c < /workspace/t2.txt' 0
+
+# Seeking: dd with a skip reads from an offset the way a real one does.
+check "seek-skip"          'printf 0123456789 > /workspace/s.txt; dd if=/workspace/s.txt bs=1 skip=5 count=2 2>/dev/null' 56
+check "seek-end"           'printf abc > /workspace/s2.txt; dd if=/workspace/s2.txt bs=1 skip=1 2>/dev/null' bc
+
+# Many files in one directory: readdir over more than the buffered chunk a naive implementation
+# returns in one go.
+check "many-files"         'mkdir -p /workspace/many && i=0; while [ $i -lt 60 ]; do : > /workspace/many/m$i; i=$((i+1)); done; ls /workspace/many | wc -l' 60
+
+# Sparse-ish writes and reads across a boundary.
+check "large-write"        'dd if=/dev/zero of=/workspace/big bs=1024 count=64 2>/dev/null; wc -c < /workspace/big' 65536
+check "large-read-back"    'dd if=/workspace/big bs=1024 count=1 2>/dev/null | wc -c' 1024
+
+# Descriptive names: none of the above should have produced an error.
+check "no-errors"          'ls /workspace/big >/dev/null && echo clean' clean
+
+# A directory used as a file fails, rather than reading something.
+check "dir-as-file"        'cat /workspace/d1 2>/dev/null || echo refused' refused
+
+# Removing a non-empty directory fails.
+check "rmdir-nonempty"     'mkdir -p /workspace/ne/x; rmdir /workspace/ne 2>/dev/null || echo refused' refused
+
+# statfs reports something, and sensible sizes.
+# df is not covered. It matches mount points to devices by st_dev, and this backend reports one
+# device for everything while /proc/mounts names /dev/root, so df answers "can't find mount
+# point". That is a real gap, not a test to write: making it work means modelling a device per
+# mount, which nothing else here needs. Recorded rather than asserted, so the case is not quietly
+# dropped and not quietly passing.
+
+# The descriptor table does not leak across many opens.
+check "many-opens"         'i=0; while [ $i -lt 80 ]; do cat /workspace/t.txt >/dev/null; i=$((i+1)); done; echo done' done
 
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
