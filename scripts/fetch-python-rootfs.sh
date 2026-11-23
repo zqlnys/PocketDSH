@@ -78,7 +78,14 @@ fetch_pkg() {
 
 # musl provides the loader every dynamically linked guest binary needs.
 fetch_pkg musl
-for pkg in python3 libffi ncurses-libs readline zlib sqlite-libs xz-libs; do
+# mpdecimal matters: without it, decimal silently falls back to the pure-Python implementation,
+# which is correct and far slower - the kind of difference nothing notices.
+#
+# openssl and expat are deliberately absent. Their package names differ between Alpine releases,
+# the guesses did not resolve, and a build that reports which modules are unavailable is worth
+# more than one that installs whatever the names happened to be this time. The check below says
+# exactly what is missing and what it costs.
+for pkg in python3 libffi ncurses-libs readline zlib sqlite-libs xz-libs mpdecimal; do
     fetch_pkg "$pkg" || echo "  (skipping $pkg)"
 done
 
@@ -127,5 +134,28 @@ mkdir -p "$DEST/tmp"
 
 # Precompiling happens in the app build, not here: a git clean runs between the two and .pyc
 # matches a gitignore rule, so files written now do not survive to the build.
+
+# Every extension Python ships must have the libraries it links against. The trim removed
+# libbz2 while keeping _bz2, so `import bz2` failed at run time with "Error loading shared library
+# libbz2.so.1" - a packaging mistake that only shows when someone imports that module.
+missing=0
+for ext in "$DEST/usr/lib/python3"*/lib-dynload/*.so; do
+    [ -f "$ext" ] || continue
+    for need in $(readelf -d "$ext" 2>/dev/null | sed -n 's/.*NEEDED.*\[\(.*\)\]/\1/p'); do
+        case "$need" in
+            libc.*|ld-musl*) continue ;;
+        esac
+        if [ ! -e "$DEST/usr/lib/$need" ] && [ ! -e "$DEST/lib/$need" ]; then
+            mod=$(basename "$ext" | sed 's/\.cpython.*//')
+            echo "  missing: $need - import $mod will fail"
+            missing=$((missing + 1))
+        fi
+    done
+done
+if [ "$missing" -gt 0 ]; then
+    echo "WARNING: $missing shared libraries are missing; those modules will fail to import"
+else
+    echo "every bundled extension has its libraries"
+fi
 
 echo "root is $(du -sh "$DEST" | cut -f1)"

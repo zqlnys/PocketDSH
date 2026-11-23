@@ -210,5 +210,27 @@ if [ -x "$ROOT/usr/bin/python3.12" ]; then
     fi
 fi
 
+# Which standard-library modules actually import. A packaging gap shows up here as an
+# ImportError naming a shared library, which is a build problem rather than an interpreter one -
+# and without this list nobody knows which modules a guest script can rely on.
+if [ -x "$ROOT/usr/bin/python3.12" ]; then
+    mods=$(E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" PYTHONHOME=/usr LANG=C.UTF-8 E2_CAP=400000000 \
+        timeout 120 "$RUNE" "$ROOT/usr/bin/python3.12" -c \
+        'import importlib
+for m in ("ssl", "hashlib", "bz2", "lzma", "sqlite3", "pyexpat", "decimal", "curses", "gdbm"):
+    try:
+        importlib.import_module(m); print(m, "ok")
+    except Exception as e:
+        print(m, "no")' 2>/dev/null)
+    ok_count=$(printf '%s' "$mods" | grep -c ' ok$')
+    if [ "$ok_count" -ge 4 ]; then
+        pass=$((pass + 1))
+    else
+        fail=$((fail + 1))
+        printf '  FAIL only %d standard modules import\n%s\n' "$ok_count" "$mods"
+    fi
+    printf '  modules: %s\n' "$(printf '%s' "$mods" | tr '\n' ' ')"
+fi
+
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
