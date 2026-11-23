@@ -22,3 +22,24 @@ if [ "$per" -gt 200 ]; then
     echo "perf-check: slower than 200 ns/instruction" >&2
     exit 1
 fi
+
+# The synthetic loop above measures dispatch, and dispatch stopped being the cost several rounds
+# ago: a front-door test now catches the common opcodes in about two comparisons per instruction.
+# This second measurement is the one that matters - a real workload, whose cost is dominated by
+# memory rather than by branching. It reports nanoseconds per instruction, which is the number to
+# watch if this ever regresses.
+if [ -x "${E2_PERF_PYTHON:-/tmp/ftest/usr/bin/python3.12}" ]; then
+    py=${E2_PERF_PYTHON:-/tmp/ftest/usr/bin/python3.12}
+    root=${E2_PERF_ROOT:-/tmp/ftest}
+    start=$(date +%s%N)
+    insns=$(E2_ROOT="$root" PYTHONHOME=/usr E2_CAP=400000000 LANG=C.UTF-8 \
+        ./tools/rune "$py" -c pass 2>&1 | sed -n 's/.*instructions=\([0-9]*\).*/\1/p')
+    end=$(date +%s%N)
+    if [ -n "$insns" ] && [ "$insns" -gt 0 ]; then
+        ms=$(( (end - start) / 1000000 ))
+        printf 'perf-check: real workload %s instructions in %s ms = %s ns/instruction\n' \
+            "$insns" "$ms" "$(( ms * 1000000 / insns ))"
+    fi
+else
+    echo "perf-check: no CPython root for the real-workload measurement"
+fi
