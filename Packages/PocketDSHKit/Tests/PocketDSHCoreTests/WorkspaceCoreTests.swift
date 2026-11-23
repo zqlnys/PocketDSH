@@ -227,6 +227,28 @@ final class WorkspaceCoreTests: XCTestCase {
         XCTAssertGreaterThan(outcome.scanned, 0)
     }
 
+    /// A skill in a subdirectory is a skill. The listing asked for one level and reported that no
+    /// skill existed - the third time a display ceiling has been used to answer an existence
+    /// question in this codebase.
+    func testNestedSkillsAreFound() throws {
+        _ = try workspace.createDirectory(path: "skills/testing")
+        _ = try workspace.write(path: "skills/top.md", content: "# Top\nDoes top things.",
+                                overwrite: false)
+        _ = try workspace.write(path: "skills/testing/http.md",
+                                content: "# HTTP\nChecks endpoints.", overwrite: false)
+
+        let deep = try workspace.listFiles(path: "skills", maxDepth: 6, includeHidden: false)
+            .filter { !$0.isDirectory && $0.path.hasSuffix(".md") }
+            .map(\.path)
+        XCTAssertEqual(Set(deep), Set(["skills/top.md", "skills/testing/http.md"]))
+
+        let shallow = try workspace.listFiles(path: "skills", maxDepth: 1, includeHidden: false)
+            .filter { !$0.isDirectory && $0.path.hasSuffix(".md") }
+            .map(\.path)
+        XCTAssertEqual(shallow, ["skills/top.md"],
+                       "the old depth is what hid the nested skill")
+    }
+
     func testIsRegularFileFindsDeepPaths() throws {
         _ = try workspace.createDirectory(path: "a/b/c/d/e/f/g")
         _ = try workspace.write(path: "a/b/c/d/e/f/g/deep.txt", content: "here", overwrite: false)

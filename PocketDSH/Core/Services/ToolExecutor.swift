@@ -301,9 +301,13 @@ final class ToolExecutor {
     private func useSkill(_ arguments: [String: JSONValue]) throws -> ToolExecutionResult {
         let requested = (arguments["name"]?.stringValue ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        // A workspace with no skills/ directory is the normal case, not an
-        // error: listing must not throw just because nobody has written one.
-        let entries = (try? workspace.listFiles(path: "skills", maxDepth: 1,
+        // A workspace with no skills/ directory is the normal case, not an error: listing must not
+        // throw just because nobody has written one.
+        //
+        // Deeper than one level, because a skill in skills/testing/http.md was invisible while the
+        // tool reported that no such skill existed - the same mistake as present's depth limit,
+        // which reported an existing file as missing.
+        let entries = (try? workspace.listFiles(path: "skills", maxDepth: 6,
                                                 includeHidden: false)) ?? []
         let skills = entries.filter { !$0.isDirectory && $0.path.hasSuffix(".md") }
 
