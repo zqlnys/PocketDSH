@@ -118,6 +118,85 @@ final class WorkspaceCoreTests: XCTestCase {
         XCTAssertEqual(try workspace.read(path: "a.txt").lines[1], "two")
     }
 
+    /// A hunk at the very start and one at the very end, which is where an off-by-one in hunk
+    /// placement shows: the middle of a file is forgiving because the context line above and below
+    /// pin it on both sides.
+    func testPatchAtFileEdges() throws {
+        _ = try workspace.write(path: "edge.txt", content: "first\nmiddle\nlast", overwrite: false)
+
+        let patch = """
+        --- a/edge.txt
+        +++ b/edge.txt
+        @@ -1 +1 @@
+        -first
+        +FIRST
+        @@ -3 +3 @@
+        -last
+        +LAST
+        """
+
+        let result = try workspace.applyPatch(patch)
+        XCTAssertEqual(result.changedPaths, ["edge.txt"])
+        let lines = try workspace.read(path: "edge.txt").lines
+        XCTAssertEqual(lines[0], "FIRST")
+        XCTAssertEqual(lines[1], "middle")
+        XCTAssertEqual(lines[2], "LAST")
+    }
+
+    /// The same context twice in one file. A patch that picks the first match silently changes the
+    /// wrong occurrence, and the result still looks like a successful edit.
+    func testPatchWithRepeatedContextIsRejectedOrUnambiguous() throws {
+        _ = try workspace.write(path: "dup.txt",
+                                content: "block\nalpha\nblock\nbeta", overwrite: false)
+        let original = try workspace.read(path: "dup.txt").lines
+
+        // A hunk whose context matches twice at the same offset-from-start. Whether this is
+        // applied to the first or second occurrence, the file must either change exactly one
+        // place or not change at all - never both.
+        let patch = """
+        --- a/dup.txt
+        +++ b/dup.txt
+        @@ -1,2 +1,2 @@
+         block
+        -alpha
+        +ALPHA
+        """
+
+        do {
+            let result = try workspace.applyPatch(patch)
+            XCTAssertEqual(result.changedPaths, ["dup.txt"])
+        } catch {
+            XCTAssertEqual(try workspace.read(path: "dup.txt").lines, original,
+                           "a rejected patch must leave the file alone")
+            return
+        }
+        let lines = try workspace.read(path: "dup.txt").lines
+        let changed = zip(lines, original).filter { $0 != $1 }.count
+        XCTAssertEqual(changed, 1, "exactly one line should differ: \(lines)")
+        XCTAssertEqual(lines[1], "ALPHA", "the first occurrence is the one with alpha after it")
+    }
+
+    /// A hunk that does not match must not partially apply its other hunks.
+    func testPatchIsAllOrNothing() throws {
+        _ = try workspace.write(path: "half.txt", content: "aaa\nbbb\nccc", overwrite: false)
+        let original = try workspace.read(path: "half.txt").lines
+
+        let patch = """
+        --- a/half.txt
+        +++ b/half.txt
+        @@ -1 +1 @@
+        -aaa
+        +AAA
+        @@ -3 +3 @@
+        -not-present
+        +CCC
+        """
+
+        XCTAssertThrowsError(try workspace.applyPatch(patch))
+        XCTAssertEqual(try workspace.read(path: "half.txt").lines, original,
+                       "the first hunk must not have been applied")
+    }
+
     func testLineDiffMarksInsertionsAndRemovals() {
         let diff = LineDiff.compute(old: "a\nb\nc", new: "a\nB\nc\nd")
         XCTAssertTrue(diff.lines.contains { $0.kind == .remove && $0.text == "b" })
