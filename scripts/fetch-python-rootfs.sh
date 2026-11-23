@@ -78,14 +78,13 @@ fetch_pkg() {
 
 # musl provides the loader every dynamically linked guest binary needs.
 fetch_pkg musl
-# mpdecimal matters: without it, decimal silently falls back to the pure-Python implementation,
-# which is correct and far slower - the kind of difference nothing notices.
-#
-# openssl and expat are deliberately absent. Their package names differ between Alpine releases,
-# the guesses did not resolve, and a build that reports which modules are unavailable is worth
-# more than one that installs whatever the names happened to be this time. The check below says
-# exactly what is missing and what it costs.
-for pkg in python3 libffi ncurses-libs readline zlib sqlite-libs xz-libs mpdecimal; do
+# The list follows what the extensions actually link against, with the package names checked
+# against the v3.20 index rather than guessed. Three of these were absent before, and each cost a
+# module: libssl3 and libcrypto3 give _ssl and _hashlib, libbz2 gives bz2, expat gives pyexpat.
+# mpdecimal matters for a subtler reason - without it decimal silently falls back to the
+# pure-Python implementation, which is correct and far slower.
+for pkg in python3 libffi ncurses-libs readline zlib sqlite-libs xz-libs mpdecimal \
+           libssl3 libcrypto3 libbz2 expat gdbm; do
     fetch_pkg "$pkg" || echo "  (skipping $pkg)"
 done
 
