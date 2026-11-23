@@ -157,5 +157,38 @@ case "$long_out" in
     *) fail=$((fail + 1)); printf '  FAIL cancellation did not engage: %s\n' "$long_out" ;;
 esac
 
+echo "python standard library"
+
+# The interpreter is only useful if the library on top of it works, and a fault deep inside
+# math.isclose is invisible until a script reaches it. This runs json, re, hashlib, math,
+# unicodedata and the string and bytes builtins, and every line must match what qemu produces for
+# the same script - the expected values below were captured from qemu, not from this backend.
+if [ -x "$ROOT/usr/bin/python3.12" ]; then
+    cp tools/stdlib-probe.py "$WORK/stdlib_probe.py" 2>/dev/null || true
+    # The ceiling matters: the default is sixty million instructions and this script needs about
+    # seventy-five, so without raising it every case fails for a reason that has nothing to do
+    # with the library.
+    py_out=$(E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" PYTHONHOME=/usr LANG=C.UTF-8 E2_CAP=400000000 \
+        timeout 120 \
+        "$RUNE" "$ROOT/usr/bin/python3.12" /workspace/stdlib_probe.py 2>/dev/null)
+    check_std() {
+        case "$py_out" in
+            *"$1"*) pass=$((pass + 1)) ;;
+            *) fail=$((fail + 1)); printf '  FAIL stdlib %s\n    wanted: %s\n' "$2" "$1" ;;
+        esac
+    }
+    check_std 'json {"a": [1, 2.5, null, true], "b": "中文"}' json
+    check_std "re ['1', '22', '333']" re
+    check_std 'hash e98f70c29cea5aac' hashlib
+    check_std 'math 1.414213562373 3628800 12' math
+    check_std 'fmod 1.5 True' isclose-fmod
+    check_std 'int 18446744073709551616 -4 -1' ints
+    check_std 'fmt 0003.142|    42|0xff' formatting
+    check_std 'uni CJK UNIFIED IDEOGRAPH-4E2D 6' unicodedata
+    check_std 'bytes 0001ff 1' bytes
+else
+    echo "  (no CPython in this root; skipping)"
+fi
+
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

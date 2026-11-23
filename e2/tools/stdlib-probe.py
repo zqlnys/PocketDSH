@@ -1,0 +1,15 @@
+import hashlib, json, math, re, unicodedata
+
+print("json", json.dumps({"a": [1, 2.5, None, True], "b": "中文"}, sort_keys=True, ensure_ascii=False))
+print("re", re.findall(r"\d+", "a1b22c333"))
+print("sub", re.sub(r"(\w)(\d)", r"\2\1", "a1b2c3"))
+print("hash", hashlib.sha256(b"pocketdsh").hexdigest()[:16])
+print("math", round(math.sqrt(2), 12), math.factorial(10), math.gcd(84, 132))
+print("fmod", math.fmod(10.5, 3.0), math.isclose(0.1 + 0.2, 0.3))
+print("int", 2**64, 7 // -2, 7 % -2)
+print("fmt", f"{3.14159:08.3f}|{42:>6}|{255:#x}")
+print("uni", unicodedata.name("中"), len("中文".encode("utf-8")))
+print("sort", sorted([3, 1, 2], key=lambda v: -v), list(reversed("abc")))
+print("str", "  pad  ".strip(), "a,b,,c".split(","), "-".join(["x", "y"]))
+print("dict", dict(sorted({"z": 1, "a": 2}.items())))
+print("bytes", b"\x00\x01\xff".hex(), int.from_bytes(b"\x01\x00", "little"))

@@ -1952,6 +1952,50 @@ not_a_shift:;
         return E2_OK;
     }
 
+    // --- SIMD: FABD (floating-point absolute difference) ---
+    // |a - b|, element by element. Python's math.isclose reaches it, so a script that compares
+    // floats faulted on an unimplemented instruction - found by running the standard library
+    // against qemu rather than by reading the instruction set.
+    // Bit 30 selects the scalar form, not the vector width: 0x7E for scalar, 0x6E for vector.
+    // Matching only the vector pattern left the scalar one unimplemented, which is the form
+    // math.isclose actually reached.
+    const unsigned fabd_kind = insn & 0xBF20FC00u;
+    if (fabd_kind == 0x2E20D400u || fabd_kind == 0x3E20D400u) {
+        const bool scalar = (fabd_kind == 0x3E20D400u);
+        const bool q = BIT(insn, 30) != 0;
+        const unsigned sz = BIT(insn, 22);
+        const unsigned rm2 = BITS(insn, 20, 16);
+        const unsigned rn2 = BITS(insn, 9, 5);
+        const unsigned rd = BITS(insn, 4, 0);
+        const unsigned width = sz ? 64u : 32u;
+        const unsigned lanes = scalar ? 1u : ((q ? 128u : 64u) / width);
+        for (unsigned lane = 0; lane < lanes; lane++) {
+            const uint64_t av = e2_v_get(cpu, rn2, width, lane);
+            const uint64_t bv = e2_v_get(cpu, rm2, width, lane);
+            uint64_t out;
+            if (width == 64) {
+                double da, db;
+                memcpy(&da, &av, 8);
+                memcpy(&db, &bv, 8);
+                const double dv = fabs(da - db);
+                memcpy(&out, &dv, 8);
+            } else {
+                float fa, fb;
+                const uint32_t a32 = (uint32_t)av, b32 = (uint32_t)bv;
+                memcpy(&fa, &a32, 4);
+                memcpy(&fb, &b32, 4);
+                const float fv = fabsf(fa - fb);
+                uint32_t o32;
+                memcpy(&o32, &fv, 4);
+                out = o32;
+            }
+            e2_v_set(cpu, rd, width, lane, out);
+        }
+        cpu->pc = next_pc;
+        machine->instructions++;
+        return E2_OK;
+    }
+
     // --- SIMD: LD1 / ST1 single structure, post-indexed ---
     // `ld1 {v0.16b}, [x], #16` loads a whole register and advances the pointer. It is the
     // shape a block copy takes, and it was missing: a fast path that copies 16 bytes a pass
