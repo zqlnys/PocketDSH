@@ -59,6 +59,17 @@ else
     ok "no doubled escapes"
 fi
 
+# 2c. The guest filesystem layer, through busybox. Seconds, not minutes.
+if [ -x e2/tools/fs-test.sh ] && [ -f /tmp/bbs/bin/busybox.static ]; then
+    if ( cd e2 && ./tools/fs-test.sh >/tmp/preflight-fs 2>&1 ); then
+        ok "guest filesystem"
+    else
+        bad "guest filesystem"; grep -E 'FAIL|passed' /tmp/preflight-fs | head -6
+    fi
+else
+    ok "guest filesystem (skipped: no busybox)"
+fi
+
 # 3. The unit suite, which is fast and covers the interpreter.
 if make -s -C e2 test >/tmp/preflight-test 2>&1; then
     ok "e2 unit suite"

@@ -290,7 +290,36 @@ static void host_path(char *out, size_t n, const char *p) {
             want = absolute;
         }
         if (strncmp(want, "/workspace", 10) == 0 && (want[10] == '/' || want[10] == '\0')) {
-            snprintf(out, n, "%s%.1790s", tmp, want + 10);
+            // Resolve . and .. before handing the path to the host. Without this,
+            // /workspace/../../etc/hostname resolved to the host's /etc/hostname: the workspace
+            // is a directory, not a boundary, and "..": is how a directory stops being one.
+            // Anything that would climb above the workspace is clamped back to it, so the escape
+            // becomes a missing file rather than a read outside the project.
+            char rel[1792];
+            snprintf(rel, sizeof(rel), "%.1790s", want + 10);
+            char clean[1792];
+            size_t at = 0;
+            const char *walk = rel;
+            while (*walk != '\0') {
+                while (*walk == '/') walk++;
+                if (*walk == '\0') break;
+                const char *end = strchr(walk, '/');
+                const size_t len = (end != NULL) ? (size_t)(end - walk) : strlen(walk);
+                if (len == 1 && walk[0] == '.') {
+                    /* skip */
+                } else if (len == 2 && walk[0] == '.' && walk[1] == '.') {
+                    // Drop the last component, never going above the root.
+                    while (at > 0 && clean[at - 1] != '/') at--;
+                    if (at > 0) at--;
+                } else if (at + len + 2 < sizeof(clean)) {
+                    clean[at++] = '/';
+                    memcpy(clean + at, walk, len);
+                    at += len;
+                }
+                walk += len;
+            }
+            clean[at] = '\0';
+            snprintf(out, n, "%s%.1790s", tmp, clean);
             return;
         }
     }
@@ -3421,7 +3450,9 @@ env_done:
 #else
     // The region table is a fixed array; a run that approaches its size is one allocation away
     // from failing for a reason that has nothing to do with memory being available.
-    printf("\n[exit %d] instructions=%ld regions=%u/%u%s%s\n", procs[1].exit_status,
+    // stderr: the exit line is a report about the run, not part of what the guest printed, and
+    // anything comparing output has to filter it otherwise.
+    fprintf(stderr, "\n[exit %d] instructions=%ld regions=%u/%u%s%s\n", procs[1].exit_status,
            (long)procs[1].m.instructions, procs[1].m.mem.count, E2_MAX_REGIONS,
            g_fault ? " FAULT reason=" : "", g_fault ? g_reason : "");
 #endif
