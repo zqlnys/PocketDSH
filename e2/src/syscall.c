@@ -793,8 +793,47 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             memcpy(dst, &ts, sizeof(ts));
             E2_RETURN(0);
         }
-        case 115:  // clock_nanosleep: the scheduler has no sleeping, so say it slept
+        case 101:   // nanosleep(request, remaining)
+        case 115: { // clock_nanosleep(clockid, flags, request, remaining)
+            // Both take a struct timespec of the time to sleep. Saying "slept" without sleeping
+            // made time.sleep() a no-op: a program pacing itself spun, and one measuring elapsed
+            // time measured zero.
+            //
+            // clock_nanosleep names the request in a2 and nanosleep in a0, so the address is
+            // chosen by which one arrived - the case labels are shared and cannot tell.
+            const uint64_t at = (a0 > 8) ? a0 : a2;
+            // clock_nanosleep's a1 is flags, and TIMER_ABSTIME (1) means the timespec names an
+            // instant on the monotonic clock rather than a duration. Treating it as a duration
+            // turned "sleep until 8 days of uptime" into a request for eight days, which the
+            // ceiling then capped - so time.sleep(0.3) slept for the cap instead of not at all.
+            const bool absolute = (a0 <= 8) && ((a1 & 1) != 0);
+            struct { int64_t sec; int64_t nsec; } ts;
+            if (at != 0 && env->files != NULL && env->files->sleep_ns != NULL &&
+                e2_memory_read(&m->mem, at, &ts, sizeof(ts)) == 0 &&
+                ts.sec >= 0 && ts.nsec >= 0) {
+                if (absolute) {
+                    // How long until that instant, using the same clock the guest reads.
+                    const long long now = (env->files->clock_ns != NULL)
+                                              ? (long long)env->files->clock_ns(env->ctx, 1)
+                                              : 0;
+                    const long long target = (long long)(ts.sec * 1000000000LL + ts.nsec);
+                    const long long delta = target - now;
+                    if (delta <= 0) {
+                        E2_RETURN(0);   // already past: nothing to wait for
+                    }
+                    env->files->sleep_ns(env->ctx, (uint64_t)delta);
+                    E2_RETURN(0);
+                }
+                if (getenv("E2_TRACE_SLEEP")) {
+                    fprintf(stderr, "[sleepreq] a0=%llu a1=%llu a2=%llu at=0x%llx sec=%lld nsec=%lld\n",
+                            (unsigned long long)a0, (unsigned long long)a1, (unsigned long long)a2,
+                            (unsigned long long)at, (long long)ts.sec, (long long)ts.nsec);
+                }
+                const uint64_t ns = (uint64_t)ts.sec * 1000000000ull + (uint64_t)ts.nsec;
+                env->files->sleep_ns(env->ctx, ns);
+            }
             E2_RETURN(0);
+        }
         case 96:  // set_tid_address
             E2_RETURN(1);
         case 172:  // getpid

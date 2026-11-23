@@ -113,6 +113,12 @@ typedef struct {
     /// { uint32 events, uint64 data } laid out as the guest expects.
     long (*epoll_wait)(void *ctx, int epfd, uint32_t *events_out, uint64_t *data_out,
                        int max, long timeout_ms);
+    /// Waits, for a guest that asked to sleep.
+    ///
+    /// Returning immediately made `time.sleep(0.3)` report 0.0 seconds - a program that paces
+    /// itself would spin instead, and one measuring elapsed time would measure nothing.
+    void (*sleep_ns)(void *ctx, uint64_t nanoseconds);
+
     /// Runs whatever could make progress and reports whether anything did.
     ///
     /// poll must be able to wait: a guest that polls a descriptor nothing has written yet would

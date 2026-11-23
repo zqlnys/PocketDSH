@@ -312,6 +312,40 @@ final class E2BackendTests: XCTestCase {
                       "guest write did not reach the project directory")
     }
 
+    /// A guest that sleeps has to wait.
+    ///
+    /// `clock_nanosleep` returned zero without waiting, so `time.sleep(0.3)` reported 0.0 seconds
+    /// and a program pacing itself spun instead. The nuance is TIMER_ABSTIME: with that flag the
+    /// timespec names an instant on the monotonic clock, not a duration, and treating it as a
+    /// duration asked to sleep until eight days of uptime.
+    @MainActor
+    func testSleepActuallyWaits() async throws {
+        let root = try guestRoot()
+        let python = root.appendingPathComponent("usr/bin/python3.12").path
+        try XCTSkipUnless(FileManager.default.isReadableFile(atPath: python),
+                          "this build's guest root has no CPython")
+
+        let workspace = URL(fileURLWithPath: E2Runtime().resolvedWorkspacePath)
+        try? FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        let script = workspace.appendingPathComponent("sleep-\(UUID().uuidString).py")
+        defer { try? FileManager.default.removeItem(at: script) }
+        try """
+        import time
+        t = time.monotonic()
+        time.sleep(0.25)
+        print("slept", round(time.monotonic() - t, 2))
+        """.write(to: script, atomically: true, encoding: .utf8)
+
+        let runtime = E2Runtime()
+        let result = await runtime.run(command: "python3.12 /workspace/\(script.lastPathComponent)",
+                                       workspace: workspace)
+        XCTAssertFalse(result.isError, result.content)
+        // Anything close to 0.25 will do; the point is that it is not 0.0, which is what a
+        // no-op sleep reports.
+        XCTAssertTrue(result.content.contains("slept 0.2") || result.content.contains("slept 0.3"),
+                      "sleep did not wait: \(result.content)")
+    }
+
     /// A command that fails has to say so.
     ///
     /// The runtime only checked for a negative status, so `exit 3` and a missing command both

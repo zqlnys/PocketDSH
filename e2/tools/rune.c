@@ -767,6 +767,36 @@ static int fs_pollable(void *c, int fd, int events);
 
 static epoll_instance g_epoll[E2_MAX_EPOLL];
 
+// A real wait, with a ceiling.
+//
+// The guest clock and the host clock agree, so a guest that sleeps must really wait or the two
+// diverge - time.sleep(0.3) returned instantly and reported 0.0 seconds.
+//
+// The ceiling exists because a guest asking for an hour would hold a CI run for an hour. Above it
+// the request is honoured only to the cap and the difference is reported, so a program that
+// measures elapsed time sees the cap rather than a silent lie.
+static void fs_sleep_ns(void *c, uint64_t nanoseconds) {
+    (void)c;
+    static const char *cap_env = NULL;
+    static int looked = 0;
+    if (!looked) { looked = 1; cap_env = getenv("E2_MAX_SLEEP_MS"); }
+    const uint64_t cap_ms = (cap_env != NULL) ? (uint64_t)strtoull(cap_env, NULL, 10) : 30000;
+    uint64_t ms = nanoseconds / 1000000ull;
+    if (nanoseconds % 1000000ull != 0) ms++;
+    if (ms > cap_ms) {
+        if (getenv("E2_TRACE_SLEEP")) {
+            fprintf(stderr, "[sleep] capped %llu ms to %llu ms\n",
+                    (unsigned long long)ms, (unsigned long long)cap_ms);
+        }
+        ms = cap_ms;
+    }
+    if (ms == 0) return;
+    struct timespec req = { (time_t)(ms / 1000), (long)((ms % 1000) * 1000000L) };
+    while (nanosleep(&req, &req) != 0 && errno == EINTR) {
+        // Interrupted by a signal the harness handles; finish the wait.
+    }
+}
+
 static long fs_epoll_create(void *c, int flags) {
     (void)flags;
     for (int i = 0; i < E2_MAX_EPOLL; i++) {
@@ -1059,7 +1089,7 @@ static const e2_file_ops FS = {
     .socketpair = fs_socketpair, .set_nonblock = fs_set_nonblock,
     .bytes_available = fs_bytes_available,
     .epoll_create = fs_epoll_create, .epoll_ctl = fs_epoll_ctl,
-    .epoll_wait = fs_epoll_wait, .wait_for_progress = fs_wait_for_progress,
+    .epoll_wait = fs_epoll_wait, .sleep_ns = fs_sleep_ns, .wait_for_progress = fs_wait_for_progress,
     .pathop = fs_pathop, .truncate_file = fs_truncate,
     .statfs_of = fs_statfs, .seek = fs_seek, .stat_path = fs_stat_path,
 };
