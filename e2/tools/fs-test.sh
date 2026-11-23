@@ -217,13 +217,13 @@ if [ -x "$ROOT/usr/bin/python3.12" ]; then
     mods=$(E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" PYTHONHOME=/usr LANG=C.UTF-8 E2_CAP=400000000 \
         timeout 120 "$RUNE" "$ROOT/usr/bin/python3.12" -c \
         'import importlib
-for m in ("ssl", "hashlib", "bz2", "lzma", "sqlite3", "pyexpat", "decimal", "curses", "gdbm"):
+for m in ("ssl", "hashlib", "bz2", "lzma", "sqlite3", "pyexpat", "decimal", "xml.etree.ElementTree", "curses", "gdbm"):
     try:
         importlib.import_module(m); print(m, "ok")
     except Exception as e:
         print(m, "no")' 2>/dev/null)
     ok_count=$(printf '%s' "$mods" | grep -c ' ok$')
-    if [ "$ok_count" -ge 4 ]; then
+    if [ "$ok_count" -ge 7 ]; then
         pass=$((pass + 1))
     else
         fail=$((fail + 1))

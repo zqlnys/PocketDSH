@@ -23,12 +23,20 @@ WORK=$(mktemp -d "${TMPDIR:-/tmp}/pyroot.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT
 
 INDEX="$MIRROR/$VERSION/main/$ARCH/APKINDEX.tar.gz"
+# Both repositories are indexed, because a package in one can depend on a library in the other:
+# expat is in main and needs libexpat, which is in community.
+INDEX_COMMUNITY="$MIRROR/$VERSION/community/$ARCH/APKINDEX.tar.gz"
 echo "fetching $INDEX"
 curl -fsSL "$INDEX" -o "$WORK/APKINDEX.tar.gz"
 
 # APKINDEX is a tar with an APKINDEX file inside; each package is a paragraph of K=V lines.
 tar -xzf "$WORK/APKINDEX.tar.gz" -C "$WORK" APKINDEX 2>/dev/null || \
     tar -xzf "$WORK/APKINDEX.tar.gz" -C "$WORK"
+if curl -fsSL "$INDEX_COMMUNITY" -o "$WORK/APKINDEX-community.tar.gz" 2>/dev/null; then
+    # Appended rather than extracted alongside: extracting both to the same name clobbered the
+    # main index, which then reported that python3 does not exist.
+    tar -xzf "$WORK/APKINDEX-community.tar.gz" -O APKINDEX >> "$WORK/APKINDEX" 2>/dev/null || true
+fi
 # Note the found flag: `exit` does not skip the END block, so without it the version was
 # printed twice and the URL was built from both lines.
 awk -F: '
@@ -60,9 +68,18 @@ fetch_pkg() {
         END   { if (!found && pkg == w) print ver }
     ' "$WORK/APKINDEX")
     [ -n "$ver" ] || { echo "missing package $name" >&2; return 1; }
-    url="$MIRROR/$VERSION/main/$ARCH/$name-$ver.apk"
+    # main first, then community: libexpat lives in community while expat, the binary that needs
+    # it, lives in main - so a package can depend on a library that is only in the other repository.
     echo "  $name $ver"
-    curl -fsSL "$url" -o "$WORK/$name.apk"
+    fetched=""
+    for repo in main community; do
+        url="$MIRROR/$VERSION/$repo/$ARCH/$name-$ver.apk"
+        if curl -fsSL "$url" -o "$WORK/$name.apk" 2>/dev/null; then
+            fetched="$repo"
+            break
+        fi
+    done
+    [ -n "$fetched" ] || { echo "  $name is not in main or community" >&2; return 1; }
     # An .apk is a gzipped tar whose members are the package's files, alongside a signature
     # and .PKGINFO. Older Alpine releases nested them in data.tar.gz; both shapes are handled
     # because the index does not say which.
@@ -88,7 +105,7 @@ fetch_pkg musl
 # CERTIFICATE_VERIFY_FAILED. ca-certificates-bundle is what actually contains
 # /etc/ssl/certs/ca-certificates.crt.
 for pkg in python3 libffi ncurses-libs readline zlib sqlite-libs xz-libs mpdecimal \
-           libssl3 libcrypto3 libbz2 expat gdbm ca-certificates-bundle; do
+           libssl3 libcrypto3 libbz2 libexpat gdbm ca-certificates-bundle ncurses-libs; do
     fetch_pkg "$pkg" || echo "  (skipping $pkg)"
 done
 
