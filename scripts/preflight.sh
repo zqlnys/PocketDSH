@@ -48,6 +48,17 @@ for f in $swift_files; do
 done
 [ "$swift_bad" -eq 0 ] && ok "swift syntax"
 
+# 2b. Doubled escapes. Writing Swift through a heredoc twice produced sources containing a literal
+#     backslash-paren, which is not an interpolation: it compiled, and produced a filename with
+#     parentheses in it that the guest's shell rejected. Three of these in one file, so it is worth
+#     a check.
+doubled=$(grep -rln '\\\\(' --include='*.swift' PocketDSH PocketDSHTests 2>/dev/null | head -5)
+if [ -n "$doubled" ]; then
+    bad "doubled interpolation escapes in: $doubled"
+else
+    ok "no doubled escapes"
+fi
+
 # 3. The unit suite, which is fast and covers the interpreter.
 if make -s -C e2 test >/tmp/preflight-test 2>&1; then
     ok "e2 unit suite"

@@ -21,7 +21,7 @@ final class OsSurfaceTests: XCTestCase {
 
         let workspace = URL(fileURLWithPath: E2Runtime().resolvedWorkspacePath)
         try? FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
-        let script = workspace.appendingPathComponent("os-\\(UUID().uuidString).py")
+        let script = workspace.appendingPathComponent("os-\(UUID().uuidString).py")
         defer { try? FileManager.default.removeItem(at: script) }
         // The directory is name-spaced and removed at the end, so a rerun starts clean.
         try """
@@ -67,7 +67,7 @@ final class OsSurfaceTests: XCTestCase {
         """.write(to: script, atomically: true, encoding: .utf8)
 
         let runtime = E2Runtime()
-        let result = await runtime.run(command: "python3.12 /workspace/\\(script.lastPathComponent)",
+        let result = await runtime.run(command: "python3.12 /workspace/\(script.lastPathComponent)",
                                        workspace: workspace)
         XCTAssertFalse(result.isError, result.content)
         let failures = result.content.split(separator: "\n")
