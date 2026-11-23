@@ -292,10 +292,14 @@ final class E2BackendTests: XCTestCase {
                           "needs a readable busybox in the guest root")
 
         let runtime = E2Runtime()
-        let result = await runtime.run(command: "yes flooding | head -c 2000000")
+        // A file that is already large, read by one applet. Three earlier attempts at generating
+        // output were wrong in three different ways: `yes | head -c` deadlocked the whole CI run
+        // for fifty minutes, a shell loop hit the instruction cap at 2,500 lines, and reading
+        // /dev/zero blocked. This produces six megabytes in one command that cannot hang.
+        let result = await runtime.run(command: "cat /usr/lib/libpython3.12.so.1.0")
         XCTAssertFalse(result.isError, "a capped run should still succeed")
         XCTAssertTrue(result.content.contains("bytes omitted"), "the cap did not engage")
-        XCTAssertTrue(result.content.contains("flooding"), "the head was dropped")
+        XCTAssertTrue(result.content.contains("ELF"), "the head was dropped")
         // Comfortably under what was produced, and under what a conversation can carry.
         XCTAssertLessThan(result.content.utf8.count, 100_000,
                           "capped output was \(result.content.utf8.count) bytes")
