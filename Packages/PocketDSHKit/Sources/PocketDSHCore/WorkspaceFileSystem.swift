@@ -339,6 +339,34 @@ public struct WorkspaceFileSystem {
     /// expression can: an unparseable pattern is reported instead of silently
     /// matching nothing, which is the difference between "no results" and "your
     /// pattern is wrong".
+    /// What a search found, and whether it looked at everything.
+    ///
+    /// Returning the matches alone made an incomplete search indistinguishable from a complete one:
+    /// past three thousand files the walk stops, and the caller had no way to know that the file it
+    /// wanted was never read.
+    public struct SearchOutcome: Sendable {
+        public let matches: [SearchMatch]
+        /// True when the file or result ceiling stopped the walk before the tree was exhausted.
+        public let truncated: Bool
+        /// Files actually read, so a caller can say how far it got.
+        public let scanned: Int
+    }
+
+    public func searchOutcome(
+        query: String,
+        path: String = ".",
+        include: String? = nil,
+        maxResults: Int = 100,
+        useRegex: Bool = false
+    ) throws -> SearchOutcome {
+        let (matches, truncated, scanned) = try searchDetailed(
+            query: query, path: path, include: include,
+            maxResults: maxResults, useRegex: useRegex
+        )
+        return SearchOutcome(matches: matches, truncated: truncated, scanned: scanned)
+    }
+
+    /// The matches alone, for callers that do not need to know whether the walk was complete.
     public func search(
         query: String,
         path: String = ".",
@@ -346,8 +374,19 @@ public struct WorkspaceFileSystem {
         maxResults: Int = 100,
         useRegex: Bool = false
     ) throws -> [SearchMatch] {
+        try searchDetailed(query: query, path: path, include: include,
+                           maxResults: maxResults, useRegex: useRegex).0
+    }
+
+    private func searchDetailed(
+        query: String,
+        path: String = ".",
+        include: String? = nil,
+        maxResults: Int = 100,
+        useRegex: Bool = false
+    ) throws -> ([SearchMatch], Bool, Int) {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return [] }
+        guard !trimmed.isEmpty else { return ([], false, 0) }
 
         var expression: NSRegularExpression?
         if useRegex {
@@ -446,7 +485,9 @@ public struct WorkspaceFileSystem {
             }
         }
 
-        return matches
+        // Truncated when either ceiling was reached before the tree ran out.
+        let truncated = visited >= maxSearchFiles || matches.count >= limit
+        return (matches, truncated, visited)
     }
 
     // MARK: - Changes and recovery

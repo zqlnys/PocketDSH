@@ -200,7 +200,7 @@ final class ToolExecutor {
         let include = arguments["include"]?.stringValue
         let maxResults = min(max(arguments["max_results"]?.intValue ?? 100, 1), 500)
         let useRegex = arguments["regex"]?.boolValue ?? false
-        let matches = try workspace.search(
+        let outcome = try workspace.searchOutcome(
             query: query,
             path: path,
             include: include,
@@ -208,12 +208,23 @@ final class ToolExecutor {
             useRegex: useRegex
         )
 
-        guard !matches.isEmpty else {
+        guard !outcome.matches.isEmpty else {
+            // "No matches" is a claim about the whole tree, and a truncated search cannot make it.
+            if outcome.truncated {
+                return .success("No matches in the \(outcome.scanned) files searched. The search "
+                    + "stopped at its ceiling before the whole workspace was read - narrow the "
+                    + "path to be sure.")
+            }
             return .success("No matches.")
         }
-        return .success(
-            matches.map { "\($0.path):\($0.line): \($0.preview)" }.joined(separator: "\n")
-        )
+        var text = outcome.matches
+            .map { "\($0.path):\($0.line): \($0.preview)" }
+            .joined(separator: "\n")
+        if outcome.truncated {
+            text += "\n\n(searched \(outcome.scanned) files and stopped at a ceiling; "
+                + "narrow the path for a complete answer)"
+        }
+        return .success(text)
     }
 
     private func applyPatch(_ arguments: [String: JSONValue]) throws -> ToolExecutionResult {

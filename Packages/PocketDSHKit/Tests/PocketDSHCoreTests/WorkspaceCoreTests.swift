@@ -199,6 +199,34 @@ final class WorkspaceCoreTests: XCTestCase {
 
     /// A file deep in the tree is a file. `present` used to confirm existence by walking to a
     /// fixed depth, so anything past six levels was reported missing while it sat there.
+    /// A search that stopped at a ceiling must say so, because "no matches" is otherwise a claim
+    /// about the whole tree.
+    func testSearchReportsWhetherItSawEverything() throws {
+        _ = try workspace.write(path: "hit.txt", content: "needle", overwrite: false)
+
+        let complete = try workspace.searchOutcome(query: "needle")
+        XCTAssertEqual(complete.matches.count, 1)
+        XCTAssertFalse(complete.truncated, "a tiny workspace is read completely")
+        XCTAssertGreaterThan(complete.scanned, 0)
+
+        // The result ceiling is reached whenever there are more hits than the caller asked for.
+        for index in 0..<20 {
+            _ = try workspace.write(path: "more\(index).txt", content: "needle", overwrite: false)
+        }
+        let capped = try workspace.searchOutcome(query: "needle", maxResults: 3)
+        XCTAssertEqual(capped.matches.count, 3)
+        XCTAssertTrue(capped.truncated, "asking for three of twenty-one hits is a truncated search")
+    }
+
+    /// Nothing found in a truncated search is not the same as nothing found.
+    func testSearchWithNoMatchesStillReportsCoverage() throws {
+        _ = try workspace.write(path: "only.txt", content: "haystack", overwrite: false)
+        let outcome = try workspace.searchOutcome(query: "needle")
+        XCTAssertTrue(outcome.matches.isEmpty)
+        XCTAssertFalse(outcome.truncated)
+        XCTAssertGreaterThan(outcome.scanned, 0)
+    }
+
     func testIsRegularFileFindsDeepPaths() throws {
         _ = try workspace.createDirectory(path: "a/b/c/d/e/f/g")
         _ = try workspace.write(path: "a/b/c/d/e/f/g/deep.txt", content: "here", overwrite: false)
