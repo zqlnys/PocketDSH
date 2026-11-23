@@ -48,6 +48,39 @@ final class PocketDSHTests: XCTestCase {
                        "the prompt still denies a tool this build has: \(prompt)")
     }
 
+    /// A directory with more entries than a conversation should carry is reported, not dumped.
+    ///
+    /// The cap and the shell-output cap are the same defect reached by two routes: a tool result
+    /// had no upper bound, and nothing fails when one is enormous - it just crowds out everything
+    /// else.
+    @MainActor
+    func testListFilesCapsWhatItReturns() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        for index in 0..<450 {
+            try "x".write(to: root.appendingPathComponent("f\(index).txt"),
+                          atomically: true, encoding: .utf8)
+        }
+
+        let executor = ToolExecutor(
+            workspace: WorkspaceFileSystem(root: root),
+            luaEngine: LuaEngine(),
+            runtimeStore: RuntimeCapabilityStore(defaults: UserDefaults(suiteName: "cap")!),
+            pluginRuntime: nil,
+            systemActions: SystemActionStore(),
+            linuxRuntime: nil,
+            e2Runtime: nil
+        )
+        let result = await executor.execute(name: ToolNames.listFiles, argumentsJSON: "{}")
+        XCTAssertFalse(result.isError, result.content)
+        XCTAssertTrue(result.content.contains("more entries not shown"),
+                      "the cap did not engage")
+        XCTAssertLessThan(result.content.utf8.count, 200_000,
+                          "list_files returned \(result.content.utf8.count) bytes")
+    }
+
     @MainActor
     func testTodoWriteAcceptsOnlyOneInProgressAndRejectsEmptyContent() async throws {
         let root = FileManager.default.temporaryDirectory

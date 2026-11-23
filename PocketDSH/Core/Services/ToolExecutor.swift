@@ -118,11 +118,20 @@ final class ToolExecutor {
             includeHidden: includeHidden
         )
 
+        // Capped. Every entry was encoded, so a tree the size of a package directory produced
+        // megabytes of JSON in one tool result - the same failure as an uncapped shell command,
+        // arriving through a different door.
+        let shown = entries.count > 400 ? Array(entries.prefix(400)) : entries
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
-        let data = try encoder.encode(entries)
-        return .success(String(decoding: data, as: UTF8.self))
+        let data = try encoder.encode(shown)
+        var text = String(decoding: data, as: UTF8.self)
+        if entries.count > shown.count {
+            text += "\n\n\(entries.count - shown.count) more entries not shown. "
+                + "Narrow the path or reduce depth to see them."
+        }
+        return .success(text)
     }
 
     private func readFile(_ arguments: [String: JSONValue]) throws -> ToolExecutionResult {
