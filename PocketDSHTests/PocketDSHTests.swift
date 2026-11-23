@@ -67,11 +67,8 @@ final class PocketDSHTests: XCTestCase {
         let executor = ToolExecutor(
             workspace: WorkspaceFileSystem(root: root),
             luaEngine: LuaEngine(),
-            runtimeStore: RuntimeCapabilityStore(defaults: UserDefaults(suiteName: "cap")!),
-            pluginRuntime: nil,
             systemActions: SystemActionStore(),
-            linuxRuntime: nil,
-            e2Runtime: nil
+            runtimeStore: RuntimeCapabilityStore(defaults: UserDefaults(suiteName: "cap")!)
         )
         let result = await executor.execute(name: ToolNames.listFiles, argumentsJSON: "{}")
         XCTAssertFalse(result.isError, result.content)
