@@ -490,7 +490,9 @@ struct AgentView: View {
                     .foregroundStyle(PocketTheme.secondaryText)
 
                 Image(systemName: "lock.shield")
-                Text("Keychain key · workspace-scoped tools · no shell")
+                // "no shell" was true until Tier D; the shell it runs is interpreted in this
+                // process, which is what the line is trying to say.
+                Text("Keychain key · workspace-scoped tools · on-device shell")
                     .font(.caption2)
                     .foregroundStyle(PocketTheme.secondaryText)
             }
