@@ -69,8 +69,11 @@ final class OsSurfaceTests: XCTestCase {
         let result = await runtime.run(command: "python3.12 /workspace/\\(script.lastPathComponent)",
                                        workspace: workspace)
         XCTAssertFalse(result.isError, result.content)
-        let failures = result.content.split(separator: "\\n").filter { $0.hasPrefix("NO ") }
-        XCTAssertTrue(failures.isEmpty, "failed checks: \\(failures.joined(separator: ", "))\\n\\(result.content)")
+        let failures = result.content.split(separator: "\n")
+            .filter { $0.hasPrefix("NO ") }
+            .map(String.init)
+        let joined = failures.joined(separator: "; ")
+        XCTAssertTrue(failures.isEmpty, "failed checks: \(joined) -- \(result.content)")
         XCTAssertTrue(result.content.contains("ok cleanup"), result.content)
     }
 }
