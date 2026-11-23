@@ -197,6 +197,20 @@ final class WorkspaceCoreTests: XCTestCase {
                        "the first hunk must not have been applied")
     }
 
+    /// A file deep in the tree is a file. `present` used to confirm existence by walking to a
+    /// fixed depth, so anything past six levels was reported missing while it sat there.
+    func testIsRegularFileFindsDeepPaths() throws {
+        _ = try workspace.createDirectory(path: "a/b/c/d/e/f/g")
+        _ = try workspace.write(path: "a/b/c/d/e/f/g/deep.txt", content: "here", overwrite: false)
+
+        XCTAssertTrue(workspace.isRegularFile(path: "a/b/c/d/e/f/g/deep.txt"))
+        XCTAssertFalse(workspace.isRegularFile(path: "a/b/c/d/e/f/g"),
+                       "a directory is not a regular file")
+        XCTAssertFalse(workspace.isRegularFile(path: "a/b/c/absent.txt"))
+        XCTAssertFalse(workspace.isRegularFile(path: "../outside.txt"),
+                       "a path outside the workspace is not a file in it")
+    }
+
     func testLineDiffMarksInsertionsAndRemovals() {
         let diff = LineDiff.compute(old: "a\nb\nc", new: "a\nB\nc\nd")
         XCTAssertTrue(diff.lines.contains { $0.kind == .remove && $0.text == "b" })

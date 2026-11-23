@@ -124,6 +124,19 @@ public struct WorkspaceFileSystem {
         )
     }
 
+    /// Whether a path names a regular file in the workspace.
+    ///
+    /// Added for `present`, which had been confirming existence by walking the tree to a fixed
+    /// depth - so a file seven levels down was reported as missing while it sat there.
+    public func isRegularFile(path: String) -> Bool {
+        guard let url = try? pathGuard.resolve(path, mustExist: true) else { return false }
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
+            return false
+        }
+        return !isDirectory.boolValue
+    }
+
     public func readText(path: String) throws -> String {
         let url = try pathGuard.resolve(path, mustExist: true)
         var isDirectory: ObjCBool = false

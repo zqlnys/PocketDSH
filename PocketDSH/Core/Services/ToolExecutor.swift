@@ -360,18 +360,12 @@ final class ToolExecutor {
         let summary = (arguments["summary"]?.stringValue ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
-        let entries: [FileEntry]
-        do {
-            entries = try workspace.listFiles(path: ".", maxDepth: 6,
-                                              includeHidden: true)
-        } catch {
-            return .failure("present could not read the workspace: \(error.localizedDescription)")
-        }
-        guard let entry = entries.first(where: { $0.path == path }) else {
-            return .failure("present: no such workspace file \(path). Create it with write_file first.")
-        }
-        if entry.isDirectory {
-            return .failure("present takes a file, not a directory: \(path)")
+        // Checked directly, not through a tree walk. Walking to a fixed depth meant a file seven
+        // levels down was reported as missing while it was there - and the message told the model
+        // to create a file that already existed.
+        guard workspace.isRegularFile(path: path) else {
+            return .failure("present: no such workspace file \(path), or it is a directory. "
+                + "Create it with write_file first.")
         }
 
         var items = deliverables
