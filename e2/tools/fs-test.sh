@@ -251,5 +251,25 @@ check "binary-not-text"   'printf "\000\000\000" > /workspace/z.bin && cat /work
 check "empty-file"        ': > /workspace/empty && wc -c < /workspace/empty' 0
 check "empty-dir"         'mkdir -p /workspace/emptydir && ls /workspace/emptydir | wc -l' 0
 
+# Epoll instances are released between runs and there are enough of them for one program. Eight
+# slots, never freed, meant the ninth epoll_create anywhere in the app's life returned EMFILE - a
+# leak the command line could not show, because each run there is a fresh process.
+if [ -x "$ROOT/usr/bin/python3.12" ]; then
+    ep_out=$(E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" PYTHONHOME=/usr LANG=C.UTF-8 E2_CAP=400000000 \
+        timeout 120 "$RUNE" "$ROOT/usr/bin/python3.12" -c \
+        'import select
+for i in range(12):
+    try:
+        e = select.epoll(); e.close()
+    except OSError:
+        print("exhausted at", i); break
+else:
+    print("all ok")' 2>/dev/null)
+    case "$ep_out" in
+        *"all ok"*) pass=$((pass + 1)) ;;
+        *) fail=$((fail + 1)); printf '  FAIL epoll slots: %s\n' "$ep_out" ;;
+    esac
+fi
+
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

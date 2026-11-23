@@ -240,6 +240,15 @@ static void host_close_if_done(int h) {
     }
 }
 static void fd_init(void) { fd_init_tab(0); refs_init(); }
+
+// Epoll instances live as long as the descriptors they watch, and nothing released them.
+//
+// Eight slots, allocated on create and never freed: the command line starts a process per run and
+// never noticed, while a device runs every guest in one - so the ninth epoll_create anywhere in the
+// app's life returned EMFILE for good. Same shape as the heap budget cached across runs.
+static void epoll_release_all(void);
+
+
 static int fd_alloc_tab(int tab, int host) {
     // POSIX says open returns the lowest free descriptor, and real kernels do.
     // Starting at 3 looked safe but is not: a program that closes stdin and then
@@ -808,7 +817,7 @@ static long fs_bytes_available(void *c, int fd) {
 //
 // Python's selectors prefers epoll and asyncio inherits that; without these the loop falls back
 // to PollSelector, which works and is not what the program asked for.
-#define E2_MAX_EPOLL 8
+#define E2_MAX_EPOLL 32
 #define E2_EPOLL_MAX_WATCH 64
 
 typedef struct {
@@ -821,6 +830,14 @@ typedef struct {
 static int fs_pollable(void *c, int fd, int events);
 
 static epoll_instance g_epoll[E2_MAX_EPOLL];
+
+static void epoll_release_all(void) {
+    for (int i = 0; i < E2_MAX_EPOLL; i++) {
+        g_epoll[i].used = 0;
+        g_epoll[i].fdtab = 0;
+        g_epoll[i].count = 0;
+    }
+}
 
 // A real wait, with a ceiling.
 //
@@ -3441,6 +3458,7 @@ int e2_rune_main(int argc, char **argv) {
     const char *path = argc > 1 ? argv[1] : "/tmp/bbs/bin/busybox.static";
     g_self_path = path;
     fd_init();
+    epoll_release_all();
     // Populate the guest's /proc once, as a kernel would. The root comes from the
     // same place host_path uses, so E2_ROOT still applies.
     {
