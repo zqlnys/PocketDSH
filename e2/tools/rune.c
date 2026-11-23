@@ -158,6 +158,7 @@ static long proc_quantum(void) {
     return q;
 }
 static long g_proc_budget = -1;
+static int g_sw_thread = -1;
 /// Whether the instruction-history ring is maintained. It exists for post-mortem dumps and
 /// used to be filled on every instruction - seven stores per step, which profiling put at
 /// about a fifth of the entire run.
@@ -3041,7 +3042,28 @@ static int run_proc(int idx) {
             pc_hist_pc[slot] = p->m.cpu.pc;
             sample_at = guard + 4096;
         }
+        const uint64_t pc_here = p->m.cpu.pc;
         e2_status st = e2_step(&p->m);
+        // Bounded and specific: while a thread is young, notice any step that puts the truncated
+        // address into a register. That value is 0x400000872ca4 with its high half gone, and the
+        // instruction that produces it is the one to look at - cheaper than reading every 32-bit
+        // form in the backend and guessing.
+        if (p->thread_of && env_once("E2_TRACE_THREAD", &g_sw_thread)) {
+            static long young = 0;
+            if (young++ < 200000) {
+                for (int r = 0; r < 31; r++) {
+                    if (p->m.cpu.x[r] != 0x872ca4ull) continue;
+                    uint32_t word = 0;
+                    e2_memory_read(&p->m.mem, pc_here, &word, 4);
+                    fprintf(stderr, "[trunc] x%d set to 0x872ca4 by insn=0x%08x at pc=0x%llx "
+                                    "(sp=0x%llx x28=0x%llx x29=0x%llx)\n",
+                            r, word, (unsigned long long)pc_here,
+                            (unsigned long long)p->m.cpu.sp,
+                            (unsigned long long)p->m.cpu.x[28],
+                            (unsigned long long)p->m.cpu.x[29]);
+                }
+            }
+        }
         // A chdir inside the step changed env.cwd; keep the process copy in step so
         // the change survives to the next scheduling turn.
         // Only a chdir moves it, and chdir sets the flag. Comparing the strings after every

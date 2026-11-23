@@ -82,6 +82,17 @@ final class E2Runtime: ObservableObject {
 
         // The command was asked about a project; without this the guest's /workspace is a scratch
         // directory and the command cannot see a single file of it.
+        //
+        // A workspace that is not there is reported rather than mounted: the guest would otherwise
+        // see an empty directory that does not exist on the host, and every command would fail
+        // with ENOENT and no explanation of why.
+        if let workspace, !FileManager.default.fileExists(atPath: workspace.path) {
+            let message = "The workspace at \(workspace.path) is no longer there. Reopen the "
+                + "project, or run the command without one."
+            sessionError = message
+            state = .failed(message)
+            return .failure(message)
+        }
         let workspacePath = workspace?.path
         let status = cArgs.withUnsafeMutableBufferPointer { buffer -> Int32 in
             if let workspacePath {
