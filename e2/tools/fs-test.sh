@@ -289,5 +289,20 @@ print("reaped", ok)' 2>/dev/null)
     esac
 fi
 
+# A command that floods is stopped by the write ceiling rather than filling storage. The ceiling
+# only applies to regular files - a pipe is not limited - which is why this redirects rather than
+# piping, and why the first attempt to test it appeared not to work.
+flood_file="$WORK/../flood-$$.out"
+E2_MAX_OUTPUT_MB=1 E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" timeout 60 \
+    "$RUNE" "$BUSYBOX" sh -c 'cat /usr/lib/libpython3.12.so.1.0' >"$flood_file" 2>/dev/null
+flood_size=$(wc -c <"$flood_file" 2>/dev/null | tr -d ' ')
+rm -f "$flood_file"
+if [ -n "$flood_size" ] && [ "$flood_size" -le 1100000 ]; then
+    pass=$((pass + 1))
+else
+    fail=$((fail + 1))
+    printf '  FAIL output ceiling: wrote %s bytes under a 1 MB limit\n' "${flood_size:-0}"
+fi
+
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

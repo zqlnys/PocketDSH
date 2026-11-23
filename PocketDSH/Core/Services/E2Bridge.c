@@ -17,6 +17,7 @@
 void e2_request_cancel(void);
 void e2_clear_cancel(void);
 #include <sys/stat.h>
+#include <sys/resource.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -139,7 +140,23 @@ int e2_bridge_run_in(const char *rootfs, const char *workspace, const char *out_
     // Cleared first: a cancellation belongs to the run that asked for it, and a stale flag would
     // stop the next command before it began.
     e2_clear_cancel();
+    // A ceiling on what a command may write.
+    //
+    // The output is captured to a file and the cap on what is read back was applied afterwards, so
+    // a command that flooded - yes, a runaway loop, anything reading a binary - filled the device's
+    // storage before anything noticed. Sixty-four megabytes is far beyond what a tool result can
+    // carry and far below what a phone can spare; past it the write fails, which the guest sees as
+    // an error instead of the app being killed for storage.
+    struct rlimit file_limit = { 64ULL << 20, 64ULL << 20 };
+    struct rlimit previous_limit;
+    const int had_limit = (getrlimit(RLIMIT_FSIZE, &previous_limit) == 0);
+    setrlimit(RLIMIT_FSIZE, &file_limit);
+
     const int status = e2_rune_main(argc, argv);
+
+    if (had_limit) {
+        setrlimit(RLIMIT_FSIZE, &previous_limit);
+    }
 
     fflush(stdout);
     fflush(stderr);

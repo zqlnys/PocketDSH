@@ -22,6 +22,7 @@
 // three are needed for shell pipelines to see EOF correctly.
 #define _GNU_SOURCE
 #include <errno.h>
+#include <sys/resource.h>
 #include <pthread.h>
 #include <execinfo.h>
 #include <signal.h>
@@ -3435,6 +3436,16 @@ void e2_set_root(const char *path) {
 
 #ifndef E2_AS_LIBRARY
 int main(int argc, char **argv) {
+    // A ceiling on what the command may write, so the bridge can bound storage use. Set here as
+    // well as in the bridge so the mechanism can be exercised on the command line, where the
+    // difference between "the write failed" and "the file is enormous" is otherwise invisible.
+    if (getenv("E2_MAX_OUTPUT_MB")) {
+        const unsigned long long mb = strtoull(getenv("E2_MAX_OUTPUT_MB"), NULL, 0);
+        if (mb > 0) {
+            struct rlimit lim = { mb << 20, mb << 20 };
+            setrlimit(RLIMIT_FSIZE, &lim);
+        }
+    }
     if (getenv("E2_CANCEL_AFTER_MS")) {
         pthread_t thread;
         const long ms = atol(getenv("E2_CANCEL_AFTER_MS"));
