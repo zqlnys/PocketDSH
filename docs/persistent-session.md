@@ -97,6 +97,27 @@ So the remaining problem is not that the thread is stuck; it is that the handsha
 the parent stays parked on its futex while the child runs Python code that should eventually set the
 word it is waiting on.
 
+## The one hard fact
+
+The thread's pc was seen at `0x872ca4`, and that address is **inside none of its 185 mappings**.
+Against the address it should be:
+
+```
+0x400000872ca4   what it should be, inside musl
+0x000000872ca4   what it is
+0x400000000000   the difference - the top thirty-two bits
+```
+
+So a pointer lost its high half somewhere between being formed and being branched to. That is a
+concrete defect with a shape, unlike the three rounds of "it spins" that preceded it, and the thing
+to find next is which instruction dropped the bits: a 32-bit register used where a 64-bit one was
+meant, either in the guest's own code or in how this backend decodes a 32-bit form.
+
+A check for a jump to an unmapped address was added and removed in the same round: it was a linear
+scan over the region table on every instruction, which took the benchmark from 52 ns to 89 on
+busybox alone and would have been far worse on Python's 185 mappings. It also never fired, because
+the pc does not arrive by a clean jump - the fetch faults instead, which is where to look.
+
 Without it, the default path raises `RuntimeError: can't start new thread`, which a program can
 catch and degrade from. That has been true through all seven attempts and every regression suite
 passes.
