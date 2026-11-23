@@ -99,7 +99,7 @@ end
 | `plugin.result(content, is_error)` | — | 构造工具结果 JSON |
 | `plugin.workspace_list(path, depth)` | `workspace.read` | 返回真实文件列表 JSON |
 | `plugin.workspace_read(path)` | `workspace.read` | 返回真实 UTF-8 文件内容 |
-| `plugin.workspace_search(query, include)` | `workspace.read` | 返回真实搜索结果 JSON |
+| `plugin.workspace_search(query, include)` | `workspace.read` | 返回 `{matches, truncated, scanned}`：匹配列表、是否因上限截断、读了多少文件 |
 | `plugin.workspace_write(path, content, overwrite)` | `workspace.write` | 真实写入；覆盖会产生备份/diff |
 | `plugin.workspace_root()` | `workspace.read` | 当前工作区绝对路径（仅用于显示/诊断） |
 | `plugin.config()` | — | 当前配置 JSON |

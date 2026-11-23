@@ -105,6 +105,27 @@ final class PluginRuntimeManager: ObservableObject {
         toolSpecs.sort { $0.function.name < $1.function.name }
     }
 
+    /// What `workspace.search` hands a plugin.
+    ///
+    /// A bare array could not say whether the walk finished, so a plugin could not tell an empty
+    /// workspace from one the search never reached.
+    private struct SearchPayload: Encodable {
+        struct Match: Encodable {
+            let path: String
+            let line: Int
+            let preview: String
+        }
+        let matches: [Match]
+        let truncated: Bool
+        let scanned: Int
+
+        init(matches: [SearchMatch], truncated: Bool, scanned: Int) {
+            self.matches = matches.map { Match(path: $0.path, line: $0.line, preview: $0.preview) }
+            self.truncated = truncated
+            self.scanned = scanned
+        }
+    }
+
     /// A plugin's output, bounded.
     ///
     /// A plugin is code someone else wrote. Letting it return however much it likes is the same
@@ -295,12 +316,19 @@ private final class PluginWorkspaceHost: LuaPluginHost {
                     return errorJSON("workspace.search requires a query")
                 }
                 let include = argumentB.flatMap { $0.isEmpty ? nil : $0 }
-                let matches = try workspace.search(
+                // The tool layer reports when a search stopped at a ceiling; a plugin gets the
+                // same information, because a plugin that believes it saw the whole workspace is
+                // wrong in exactly the same way.
+                let outcome = try workspace.searchOutcome(
                     query: query,
                     include: include,
                     maxResults: 100
                 )
-                return try encode(matches)
+                return try encode(SearchPayload(
+                    matches: outcome.matches,
+                    truncated: outcome.truncated,
+                    scanned: outcome.scanned
+                ))
 
             case "workspace.root":
                 try require("workspace.read")
