@@ -129,3 +129,44 @@ branch on `x0` being zero and then calls through a function pointer; either that
 wrongly, or the pointer is not what musl stored. Instrumenting `__clone`'s child path - the pc of
 first execution and the value it branches on - is the next concrete step, and it is a better one
 than another theory.
+
+---
+
+# Threads: closed for now
+
+Eleven rounds. Not working, and this is where it stops being chased.
+
+## What is known
+
+The thread runs — it never did before this — through musl and into libpython, with its own stack,
+`st=0` on every step. The parent stays parked on a futex. The thread's pc is eventually seen at
+`0x872ca4`, which is inside none of its 185 mappings and is exactly `0x400000872ca4` with the high
+half gone.
+
+## What was ruled out
+
+- **The region tables have not diverged** — both machines report 185 mappings.
+- **`futex_wake` does clear the wait flag**, so a woken parent would proceed.
+- **Load width is correct.** `ldr x` and `ldr w` from the same address differ exactly as qemu says
+  they should, which is the case that would produce this truncation. `tests/guest/ldrsize.s`
+  keeps it that way.
+- **The thread is not stuck** — it advances normally; an earlier reading that said otherwise was
+  sampled at `run_proc`'s entry, where consecutive calls each took one step.
+
+## What is left
+
+Finding the instruction that drops the top thirty-two bits. It is not the load path, and it is not
+the clone entry point (which was wrong, and is fixed). The next thing to try is a narrow one: log
+every instruction that writes a general register with a 32-bit form while the value is later used
+as an address — expensive, but bounded to a thread's first thousand steps rather than a whole run.
+
+## Why stop here
+
+Eleven rounds, four of which produced a false conclusion of my own making: an inherited instruction
+counter read as a spinning thread, a pc sampled at the wrong point read as a stuck one, a jump
+detector that scanned every mapping per instruction and cost half the performance while never
+firing, and an `sigsuspend` that belonged to a shell wrapper rather than the harness.
+
+The default is honest and safe — `RuntimeError: can't start new thread`, which a program can catch
+and degrade from — and every regression suite passes. Continuing to spend rounds on this while
+calling the result progress would be the dishonest option.
