@@ -105,6 +105,18 @@ final class PluginRuntimeManager: ObservableObject {
         toolSpecs.sort { $0.function.name < $1.function.name }
     }
 
+    /// A plugin's output, bounded.
+    ///
+    /// A plugin is code someone else wrote. Letting it return however much it likes is the same
+    /// defect the shell and list_files had, except that here the amount is not even a function of
+    /// what the user asked for.
+    private static func capped(_ content: String, limit: Int = 32_000) -> String {
+        guard content.utf8.count > limit else { return content }
+        let kept = String(content.prefix(limit))
+        return kept + "\n\n… \(content.utf8.count - limit) bytes omitted; the plugin returned "
+            + "more than a tool result should carry."
+    }
+
     /// One place that turns a manifest's tools into routes and specs, for every runtime.
     private func registerTools(for plugin: InstalledPlugin, id: String) {
         for tool in plugin.manifest.tools {
@@ -145,9 +157,9 @@ final class PluginRuntimeManager: ObservableObject {
             )
             if outcome.isError {
                 store.log(pluginID: route.pluginID, level: .error, message: outcome.content)
-                return .failure(outcome.content)
+                return .failure(Self.capped(outcome.content))
             }
-            return .success(outcome.content)
+            return .success(Self.capped(outcome.content))
         }
         guard let runtime = runtimes[route.pluginID] else {
             return nil
@@ -176,7 +188,7 @@ final class PluginRuntimeManager: ObservableObject {
                 message: "\(route.originalToolName): ok"
             )
         }
-        return ToolExecutionResult(content: result.content, isError: result.isError)
+        return ToolExecutionResult(content: Self.capped(result.content), isError: result.isError)
     }
 
     func cancel() {
