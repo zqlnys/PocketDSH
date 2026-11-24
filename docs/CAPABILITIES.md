@@ -32,7 +32,7 @@ xml.etree.ElementTree  curses  curses.panel
 
 | 症状 | 影响 |
 | --- | --- |
-| **`pow()` 与 `math.hypot()` 结果错误** | `2.0 ** 0.5` 得到 `0.7069` 而非 `1.4142`；`math.hypot(3, 4)` 得到 `nan`。`sqrt`、`exp2`、`log` 均正确，尚未定位 |
+| **`pow()`、`math.hypot()`、`math.log2()` 结果错误** | `2.0 ** 1.0` 得到 `0.4836`（应等于 2.0）；`log2(2.0)` 得到 `1.0223`（应为 1.0）；`hypot(3, 4)` 得到 `nan`。**已排除**：加减乘除、比较、`sqrt`、`exp2`、`log`、`frexp`、`ldexp`、`floor`、`trunc`、`int()`、双精度↔单精度转换——这些全部与 qemu 一致。**未定位**：这三个函数共用的那条内部归约路径 |
 
 ## 不能用
 
