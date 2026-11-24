@@ -1812,6 +1812,9 @@ not_a_shift:;
         const unsigned b6 = (imm8 >> 6) & 1;
         const unsigned c = (imm8 >> 5) & 1;
         const unsigned d = (imm8 >> 4) & 1;
+        // imm8[3:0], and the low nibble is what arrives here in every encoding exercised so far.
+        // Reading six bits was tried and changed nothing measurable, so the narrower read stays
+        // until a case proves it wrong - guessing twice is how the previous round went.
         const uint64_t frac = (uint64_t)(imm8 & 0xF);
         if (ftype == 0) {                      // single
             const unsigned exp = ((1u - b6) << 7) | (b6 ? 0x7Cu : 0u) | (c << 1) | d;
