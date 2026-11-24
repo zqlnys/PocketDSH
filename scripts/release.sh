@@ -28,7 +28,22 @@ echo "releasing $TITLE from $NAME"
 gh release create "$TAG" "$IPA" --title "$TITLE" --notes-file "$NOTES"
 
 # Anonymous download, because a link that only works when authenticated is not a link.
+#
+# Retried: the asset is served through a redirect and the first request can arrive before it is
+# ready, which returned 404 once and looked like a failed publish.
 URL="https://github.com/zqlnys/PocketDSH/releases/download/$TAG/$NAME"
 printf 'verifying %s\n' "$URL"
-env -u GH_TOKEN -u GITHUB_TOKEN curl -sL -o /dev/null \
-    -w "anonymous download HTTP %{http_code}  %{size_download} bytes\n" "$URL"
+attempt=1
+while [ "$attempt" -le 5 ]; do
+    code=$(env -u GH_TOKEN -u GITHUB_TOKEN curl -sL -o /dev/null -w '%{http_code}' "$URL" || echo "000")
+    if [ "$code" = "200" ]; then
+        size=$(env -u GH_TOKEN -u GITHUB_TOKEN curl -sL -o /dev/null -w '%{size_download}' "$URL" || echo 0)
+        printf 'anonymous download HTTP 200  %s bytes\n' "$size"
+        exit 0
+    fi
+    printf 'attempt %d: HTTP %s, waiting\n' "$attempt" "$code"
+    attempt=$((attempt + 1))
+    sleep 20
+done
+printf 'the asset never became downloadable; the release exists but the link does not work\n' >&2
+exit 1
