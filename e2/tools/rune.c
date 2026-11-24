@@ -1780,17 +1780,22 @@ static int p_execve(void *ctx, e2_machine *m, const char *path, uint64_t argv,
     // unconditionally meant every exec loaded the *initial* image: run_linux on python3
     // then `subprocess.run(["/bin/busybox", ...])` re-loaded CPython instead of busybox, and
     // busybox was never anywhere in the picture.
-    if (g_self_path != NULL && strcmp(g_self_path, host) != 0) {
+    // A missing file is missing.
+    //
+    // This used to fall back to the running image whenever the path did not exist, so
+    // execve("/usr/bin/absent") re-executed the interpreter that was already running, with the
+    // absent path as argv[0]. Python then tried to run a file of that name, found nothing, and
+    // exited 0 - a failed exec that looked like a successful one and printed nothing, including
+    // whatever the caller wrote after catching the error it should have received.
+    //
+    // What the fallback was for - exec'ing a guest symlink whose target is the running binary -
+    // is handled by resolving the guest path first, which host_path does.
+    {
         FILE *probe = fopen(host, "rb");
         if (probe == NULL) {
-            if (nargs == 0) {
-                snprintf(args[0], sizeof(args[0]), "%s", arg0);
-                nargs = 1;
-            }
-            snprintf(host, sizeof(host), "%s", g_self_path);
-        } else {
-            fclose(probe);
+            return -2;   // ENOENT, as the guest expects
         }
+        fclose(probe);
     }
     if (nargs == 0) {
         snprintf(args[0], sizeof(args[0]), "%s", arg0);

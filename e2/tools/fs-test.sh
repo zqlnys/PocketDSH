@@ -304,5 +304,25 @@ else
     printf '  FAIL output ceiling: wrote %s bytes under a 1 MB limit\n' "${flood_size:-0}"
 fi
 
+echo "exec"
+
+# A failed exec must fail. It used to fall back to the running image, so execve of an absent path
+# re-executed the interpreter with that path as argv[0]; Python then found no such file and exited
+# zero, printing nothing - including whatever the caller wrote after catching the error it should
+# have received.
+exec_out=$(E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" PYTHONHOME=/usr LANG=C.UTF-8 E2_CAP=400000000 \
+    timeout 120 "$RUNE" "$ROOT/usr/bin/python3.12" -c \
+    'import os
+try:
+    os.execve("/usr/bin/absent", ["absent"], {})
+    print("returned")
+except OSError as e:
+    print("errno", e.errno)
+print("alive")' 2>/dev/null)
+case "$exec_out" in
+    *"errno 2"*"alive"*) pass=$((pass + 1)) ;;
+    *) fail=$((fail + 1)); printf '  FAIL exec failure: %s\n' "$exec_out" ;;
+esac
+
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
