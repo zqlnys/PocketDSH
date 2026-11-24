@@ -74,6 +74,19 @@ jobs:
           fi
           xcodegen --version | tee "$LOG_DIR/xcodegen-version.log"
 
+          # The build number is the commit count, so it only ever increases and identifies the
+          # exact commit; the marketing version carries the date. Forty releases shipped as
+          # 0.1.0 (1) before this, which made two installed builds indistinguishable.
+          BUILD_NUMBER=$(git rev-list --count HEAD)
+          MARKETING="0.1.$(date -u +%Y%m%d)"
+          echo "version $MARKETING build $BUILD_NUMBER"
+          xcodegen generate
+          # sed rather than a heredoc: a heredoc inside this indented block keeps the leading
+          # spaces, and Python rejects the body as badly indented.
+          sed -i '' "s/MARKETING_VERSION = [^;]*;/MARKETING_VERSION = $MARKETING;/g; \
+                     s/CURRENT_PROJECT_VERSION = [^;]*;/CURRENT_PROJECT_VERSION = $BUILD_NUMBER;/g" \
+            PocketDSH.xcodeproj/project.pbxproj
+
       # Tier D ships a busybox so shell commands work. CPython needs the interpreter, libpython,
       # the standard library and musl - about 27 MB after trimming - which is fetched here
       # rather than committed. Without this step the Python test skips instead of failing, so a
