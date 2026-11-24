@@ -393,5 +393,21 @@ PROBE_EXPECTED
     fi
 fi
 
+echo "single precision"
+
+# Converting between double and single precision. `fcvt s0, d0` writes a single-precision
+# destination while reading a double-precision source, and the handler decided both ends from one
+# bit - so struct.pack("<f", 1.5) produced four zero bytes.
+sp_out=$(E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" PYTHONHOME=/usr LANG=C.UTF-8 E2_CAP=400000000 \
+    timeout 120 "$RUNE" "$ROOT/usr/bin/python3.12" -c \
+    'import struct
+print("pack", struct.pack("<f", 1.5).hex())
+print("roundtrip", struct.unpack("<f", struct.pack("<f", 0.1))[0])
+print("wide", struct.unpack("<d", struct.pack("<d", 1.5))[0])' 2>/dev/null)
+case "$sp_out" in
+    *"pack 0000c03f"*"roundtrip 0.10000000149011612"*"wide 1.5"*) pass=$((pass + 1)) ;;
+    *) fail=$((fail + 1)); printf '  FAIL single precision: %s\n' "$sp_out" ;;
+esac
+
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

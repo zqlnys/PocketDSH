@@ -1614,28 +1614,53 @@ not_a_shift:;
                 case OP_FRINTI: d = trunc(d); break;
                 // Move, negate and absolute value are exact bit operations on
                 // the sign, so they never round and never touch the payload.
-                case OP_FMOV: d = single ? (double)(uint32_t)raw_src
-                                        : ({ double t; memcpy(&t, &raw_src, 8); t; });
-                              break;
+                // The single-precision forms reinterpret the 32-bit pattern as a float. They used
+                // to cast that pattern to an integer and then to a double, so `fmov s0, s1` and
+                // `fabs s0, s0` produced the numeric value of the bits: 1.5 became 0.0 when
+                // packed through struct, and musl's log2 answered 1.0223 for log2(2.0).
+                case OP_FMOV:
                 case OP_FABS:
-                    if (single) {
-                        d = (double)(uint32_t)(raw_src & 0x7FFFFFFFu);
+                case OP_FNEG: {
+                    uint64_t t;
+                    if (fops[fi].op == OP_FMOV) {
+                        t = raw_src;
+                    } else if (fops[fi].op == OP_FABS) {
+                        t = single ? (raw_src & 0x7FFFFFFFu)
+                                   : (raw_src & 0x7FFFFFFFFFFFFFFFULL);
                     } else {
-                        uint64_t t = raw_src & 0x7FFFFFFFFFFFFFFFULL;
+                        t = single ? (raw_src ^ 0x80000000u)
+                                   : (raw_src ^ 0x8000000000000000ULL);
+                    }
+                    if (single) {
+                        uint32_t narrow = (uint32_t)t;
+                        float f;
+                        memcpy(&f, &narrow, 4);
+                        d = (double)f;
+                    } else {
                         memcpy(&d, &t, 8);
                     }
                     break;
-                case OP_FNEG:
-                    if (single) {
-                        d = (double)(uint32_t)(raw_src ^ 0x80000000u);
-                    } else {
-                        uint64_t t = raw_src ^ 0x8000000000000000ULL;
-                        memcpy(&d, &t, 8);
-                    }
-                    break;
+                }
                 case OP_FSQRT: d = sqrt(single ? fabs(d) : d); break;
-                case OP_FCVT_NARROW: d = (double)(float)d; break;   // s <- d
-                case OP_FCVT_WIDEN: d = d; break;                   // d <- s
+                // FCVT is the one pair whose source and destination types differ, so it writes its
+                // own destination rather than going through the `single` path below. That path
+                // decides both ends from one bit, which for `fcvt s0, d0` read the double as a
+                // single-precision pattern and then wrote zero.
+                case OP_FCVT_NARROW: {
+                    const float f = (float)d;
+                    uint32_t raw32;
+                    memcpy(&raw32, &f, 4);
+                    cpu->v[rd2][0] = (cpu->v[rd2][0] & ~0xFFFFFFFFULL) | raw32;
+                    cpu->pc = next_pc;
+                    machine->instructions++;
+                    return E2_OK;
+                }
+                case OP_FCVT_WIDEN:
+                    d = (double)(float)d;
+                    memcpy(&cpu->v[rd2][0], &d, 8);
+                    cpu->pc = next_pc;
+                    machine->instructions++;
+                    return E2_OK;
                 default: break;
             }
             if (single) {
