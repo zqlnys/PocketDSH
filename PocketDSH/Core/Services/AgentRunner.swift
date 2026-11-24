@@ -154,6 +154,41 @@ final class AgentRunner: ObservableObject {
         }
     }
 
+    /// Keeps the transcript inside a budget by eliding the oldest tool results.
+    private func trimOldToolResults() {
+        messages = AgentRunner.trimmed(messages)
+    }
+
+    /// The trimming itself, as a pure function so it can be tested without a runner.
+    ///
+    /// Only tool results are shortened, and each is replaced rather than removed: a tool message
+    /// answers a specific tool call and the API rejects a transcript where the call has no reply.
+    /// The newest results stay whole because they are the ones the model is working from.
+    static func trimmed(_ messages: [LLMMessage], budget: Int = 240_000,
+                        keepRecent: Int = 6) -> [LLMMessage] {
+        var total = messages.reduce(0) { $0 + $1.content.utf8.count }
+        guard total > budget else { return messages }
+
+        var result = messages
+        for index in 0..<max(0, result.count - keepRecent) {
+            guard total > budget else { break }
+            guard result[index].role == .tool else { continue }
+            let content = result[index].content
+            guard content.utf8.count > 400 else { continue }
+            let replacement = String(content.prefix(400))
+                + "\n\n[trimmed: \(content.utf8.count - 400) bytes of an older result, "
+                + "dropped to keep the conversation inside its budget]"
+            total -= content.utf8.count - replacement.utf8.count
+            result[index] = LLMMessage(
+                role: .tool,
+                content: replacement,
+                toolCallID: result[index].toolCallID,
+                name: result[index].name
+            )
+        }
+        return result
+    }
+
     func cancel() {
         guard isRunning else { return }
         cancelRequested = true
@@ -267,6 +302,11 @@ final class AgentRunner: ObservableObject {
                             name: call.function.name
                         )
                     )
+                    // The conversation is what the model is asked to read, and it grew without
+                    // limit: every tool result was appended and nothing was ever dropped, so a run
+                    // with a few dozen calls carried megabytes - past what any model accepts, and
+                    // the request then failed with no hint that the transcript was the reason.
+                    trimOldToolResults()
                     appendEvent(
                         .toolFinished,
                         title: "Result · \(call.function.name)",
