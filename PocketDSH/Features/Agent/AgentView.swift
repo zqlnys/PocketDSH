@@ -457,6 +457,12 @@ struct AgentView: View {
                     let task = input
                     input = ""
                     agent.send(task)
+                    // send() refuses without taking the text in two cases - no key, or a run in
+                    // progress - and puts it back so it is not lost.
+                    if let draft = agent.unsentDraft {
+                        input = draft
+                        agent.clearUnsentDraft()
+                    }
                 } label: {
                     Image(systemName: "arrow.up")
                         .font(.system(size: 17, weight: .bold))

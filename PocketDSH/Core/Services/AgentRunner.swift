@@ -47,6 +47,12 @@ final class AgentRunner: ObservableObject {
     /// conversation so a finished artifact is something to open, not a path in
     /// prose.
     @Published private(set) var deliverables: [Deliverable] = []
+
+    /// Text a send refused to accept, so the composer can put it back.
+    ///
+    /// Only set when the message was not taken at all - a missing key, a run already in progress.
+    /// Text that was accepted belongs in the conversation, not in the composer.
+    @Published var unsentDraft: String?
     @Published private(set) var phase: AgentPhase = .idle
     @Published private(set) var currentStep = 0
     @Published private(set) var isRunning = false
@@ -103,14 +109,25 @@ final class AgentRunner: ObservableObject {
 
     func send(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !isRunning else { return }
+        guard !trimmed.isEmpty else { return }
+        guard !isRunning else {
+            // The composer cleared its text before calling; putting it back is the difference
+            // between "try again in a moment" and writing the message twice.
+            unsentDraft = trimmed
+            return
+        }
 
         guard let key = keychain.apiKey(), !key.isEmpty else {
             errorMessage = "Add a DeepSeek API key in Settings before running the agent."
+            // Put the text back where it came from. It was cleared by the composer before this
+            // ran, so refusing here threw away what the user had typed and they had to write it
+            // again after adding the key.
+            unsentDraft = trimmed
             return
         }
 
         errorMessage = nil
+        unsentDraft = nil
         cancelRequested = false
         isRunning = true
         pluginRuntime.reload()
@@ -188,6 +205,9 @@ final class AgentRunner: ObservableObject {
         }
         return result
     }
+
+    /// Cleared by the composer once it has taken the draft back.
+    func clearUnsentDraft() { unsentDraft = nil }
 
     func cancel() {
         guard isRunning else { return }
