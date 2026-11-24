@@ -218,14 +218,22 @@ final class PluginStore: ObservableObject {
             stored = decoded
         }
 
-        let contents = (try? fileManager.contentsOfDirectory(
-            at: root,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        )) ?? []
+        var unreadable: [String] = []
+        let contents: [URL]
+        do {
+            contents = try fileManager.contentsOfDirectory(
+                at: root,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            )
+        } catch {
+            // A directory that cannot be listed is not an empty one. `?? []` made the two
+            // identical, so a permissions or storage problem looked like a fresh install.
+            contents = []
+            unreadable.append("the plugins folder could not be read: \(error.localizedDescription)")
+        }
 
         var loaded: [InstalledPlugin] = []
-        var unreadable: [String] = []
         for directory in contents {
             let manifestURL = directory.appendingPathComponent("plugin.json")
             // A plugin directory that cannot be read is not an absent plugin.
