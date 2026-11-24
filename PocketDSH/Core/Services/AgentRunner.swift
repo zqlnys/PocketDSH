@@ -166,14 +166,14 @@ final class AgentRunner: ObservableObject {
     /// The newest results stay whole because they are the ones the model is working from.
     static func trimmed(_ messages: [LLMMessage], budget: Int = 240_000,
                         keepRecent: Int = 6) -> [LLMMessage] {
-        var total = messages.reduce(0) { $0 + $1.content.utf8.count }
+        var total = messages.reduce(0) { $0 + ($1.content ?? "").utf8.count }
         guard total > budget else { return messages }
 
         var result = messages
         for index in 0..<max(0, result.count - keepRecent) {
             guard total > budget else { break }
             guard result[index].role == .tool else { continue }
-            let content = result[index].content
+            let content = result[index].content ?? ""
             guard content.utf8.count > 400 else { continue }
             let replacement = String(content.prefix(400))
                 + "\n\n[trimmed: \(content.utf8.count - 400) bytes of an older result, "

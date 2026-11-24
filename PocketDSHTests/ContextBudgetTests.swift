@@ -18,19 +18,19 @@ final class ContextBudgetTests: XCTestCase {
             messages.append(LLMMessage(role: .tool, content: big,
                                        toolCallID: "id\(index)", name: "read_file"))
         }
-        let before = messages.reduce(0) { $0 + $1.content.utf8.count }
+        let before = messages.reduce(0) { $0 + ($1.content ?? "").utf8.count }
         XCTAssertGreaterThan(before, 240_000, "the fixture has to exceed the budget")
 
         let after = AgentRunner.trimmed(messages)
-        let total = after.reduce(0) { $0 + $1.content.utf8.count }
+        let total = after.reduce(0) { $0 + ($1.content ?? "").utf8.count }
 
         XCTAssertLessThanOrEqual(total, 240_000 + 60_000,
                                  "still \(total) bytes after trimming")
         XCTAssertEqual(after.count, messages.count,
                        "trimming must not remove messages: a tool call needs its reply")
-        XCTAssertEqual(after.last?.content.utf8.count, big.utf8.count,
+        XCTAssertEqual((after.last?.content ?? "").utf8.count, big.utf8.count,
                        "the newest result must stay whole")
-        XCTAssertTrue(after[2].content.contains("[trimmed:"),
+        XCTAssertTrue((after[2].content ?? "").contains("[trimmed:"),
                       "an old result should say it was elided")
     }
 
@@ -41,7 +41,7 @@ final class ContextBudgetTests: XCTestCase {
             LLMMessage(role: .tool, content: "small", toolCallID: "a", name: "read_file")
         ]
         let after = AgentRunner.trimmed(messages)
-        XCTAssertEqual(after.map(\.content), ["短", "small"])
+        XCTAssertEqual(after.map { $0.content ?? "" }, ["短", "small"])
     }
 
     /// A reply stays a reply: the tool call id survives elision, or the API rejects the transcript.
