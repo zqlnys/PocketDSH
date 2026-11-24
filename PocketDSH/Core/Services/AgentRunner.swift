@@ -496,8 +496,16 @@ final class AgentRunner: ObservableObject {
             let data = try encoder.encode(conversation)
             try data.write(to: conversationURL, options: .atomic)
         } catch {
-            // The in-memory conversation remains usable. A later save can repair
-            // persistence without discarding the user's current task.
+            // The in-memory conversation remains usable and a later save can repair persistence,
+            // so this does not interrupt the task - but staying silent meant a full disk lost the
+            // whole conversation at exit with nothing having said a word. Reported once per run,
+            // because a save is attempted after every message and a banner per message would be
+            // worse than none.
+            guard saveFailureReported == nil else { return }
+            saveFailureReported = error.localizedDescription
+            appendEvent(.error, title: "Conversation not saved",
+                        detail: "This chat is still usable, but it is not being written to disk: "
+                            + error.localizedDescription)
         }
     }
 
@@ -505,6 +513,9 @@ final class AgentRunner: ObservableObject {
     /// alternative is writing over the file that could not be read.
     private(set) var conversationLoadError: String?
     private var writesBlocked = false
+
+    /// The first save failure of this run, so it is reported once rather than after every message.
+    private var saveFailureReported: String?
 
     private func load() {
         // A conversation that cannot be read or decoded is not the same as one that does not

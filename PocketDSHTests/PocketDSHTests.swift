@@ -53,6 +53,23 @@ final class PocketDSHTests: XCTestCase {
     /// The cap and the shell-output cap are the same defect reached by two routes: a tool result
     /// had no upper bound, and nothing fails when one is enormous - it just crowds out everything
     /// else.
+    /// A conversation that cannot be written says so.
+    ///
+    /// Saving happens after every message and its failure was swallowed, so a full disk lost the
+    /// whole chat at exit with nothing having reported it. The check below uses the same encoder
+    /// path against an unwritable location, which is the closest local stand-in.
+    @MainActor
+    func testUnwritableConversationPathThrows() throws {
+        let conversation = AgentConversation(messages: [], events: [], todos: [],
+                                             deliverables: [], updatedAt: .now)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(conversation)
+        let blocked = URL(fileURLWithPath: "/dev/null/impossible/conversation.json")
+        XCTAssertThrowsError(try data.write(to: blocked, options: .atomic),
+                             "writing under /dev/null must fail, or the test proves nothing")
+    }
+
     @MainActor
     func testListFilesCapsWhatItReturns() async throws {
         let root = FileManager.default.temporaryDirectory
