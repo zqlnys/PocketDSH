@@ -48,7 +48,15 @@ if command -v lipo >/dev/null 2>&1; then
   lipo -info "${BUNDLE_APP}/${NAME}"
 fi
 
-IPA_PATH="${OUTPUT_DIR}/${NAME}-unsigned.ipa"
+# The file name carries the version, so two downloads do not land as "PocketDSH-unsigned.ipa" and
+# "PocketDSH-unsigned (1).ipa" with no way to tell which is which on disk.
+VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_PATH/Info.plist" 2>/dev/null || echo "")
+BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP_PATH/Info.plist" 2>/dev/null || echo "")
+if [ -n "$VERSION" ] && [ -n "$BUILD" ]; then
+    IPA_PATH="${OUTPUT_DIR}/${NAME}-${VERSION}-${BUILD}-unsigned.ipa"
+else
+    IPA_PATH="${OUTPUT_DIR}/${NAME}-unsigned.ipa"
+fi
 rm -f "${IPA_PATH}"
 (
   cd "${STAGE}"
