@@ -164,7 +164,7 @@ final class AgentRunner: ObservableObject {
     /// Only tool results are shortened, and each is replaced rather than removed: a tool message
     /// answers a specific tool call and the API rejects a transcript where the call has no reply.
     /// The newest results stay whole because they are the ones the model is working from.
-    static func trimmed(_ messages: [LLMMessage], budget: Int = 240_000,
+    nonisolated static func trimmed(_ messages: [LLMMessage], budget: Int = 240_000,
                         keepRecent: Int = 6) -> [LLMMessage] {
         var total = messages.reduce(0) { $0 + ($1.content ?? "").utf8.count }
         guard total > budget else { return messages }
