@@ -492,13 +492,28 @@ public struct WorkspaceFileSystem {
 
     // MARK: - Changes and recovery
 
-    public func changes() -> [ChangeRecord] {
+    /// The edit history, and why it could not be read when it could not.
+    ///
+    /// A corrupt or unreadable log used to return an empty array, which the UI showed as "no
+    /// changes" - so a user looking for something to undo was told there was nothing, when the
+    /// truth was that the list itself was unreadable.
+    public func changesOutcome() -> (records: [ChangeRecord], failure: String?) {
         let url = metadataRoot.appendingPathComponent("changes.json")
-        guard let data = try? Data(contentsOf: url),
-              let records = try? JSONDecoder().decode([ChangeRecord].self, from: data) else {
-            return []
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return ([], nil)   // no history yet is not a failure
         }
-        return records
+        guard let data = try? Data(contentsOf: url) else {
+            return ([], "The edit history could not be read. Undo is unavailable for this workspace.")
+        }
+        guard let records = try? JSONDecoder().decode([ChangeRecord].self, from: data) else {
+            return ([], "The edit history is unreadable, so older edits cannot be restored from "
+                + "here. The backups themselves are still on disk.")
+        }
+        return (records, nil)
+    }
+
+    public func changes() -> [ChangeRecord] {
+        changesOutcome().records
     }
 
     public func restore(_ record: ChangeRecord) throws {

@@ -261,6 +261,27 @@ final class WorkspaceCoreTests: XCTestCase {
                        "a path outside the workspace is not a file in it")
     }
 
+    /// An unreadable history is not an empty one.
+    ///
+    /// Both used to read as "no changes", so a user looking for something to undo was told there
+    /// was nothing when the list itself could not be read.
+    func testUnreadableHistoryIsReported() throws {
+        let clean = workspace.changesOutcome()
+        XCTAssertTrue(clean.records.isEmpty)
+        XCTAssertNil(clean.failure, "no history file at all is not a failure")
+
+        _ = try workspace.write(path: "a.txt", content: "one", overwrite: false)
+        let afterWrite = workspace.changesOutcome()
+        XCTAssertFalse(afterWrite.records.isEmpty, "a write should be recorded")
+
+        // Corrupt the log the way a partial write would.
+        let log = workspace.metadataRoot.appendingPathComponent("changes.json")
+        try Data("not json".utf8).write(to: log)
+        let broken = workspace.changesOutcome()
+        XCTAssertTrue(broken.records.isEmpty)
+        XCTAssertNotNil(broken.failure, "an unreadable log must say so")
+    }
+
     func testLineDiffMarksInsertionsAndRemovals() {
         let diff = LineDiff.compute(old: "a\nb\nc", new: "a\nB\nc\nd")
         XCTAssertTrue(diff.lines.contains { $0.kind == .remove && $0.text == "b" })

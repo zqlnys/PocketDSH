@@ -25,7 +25,16 @@ struct ChangesView: View {
                 }
 
                 Section("Recent changes") {
-                    if records.isEmpty {
+                    if let notice = historyNotice {
+                        // An unreadable history is not an empty one, and saying "no changes yet"
+                        // about it is a claim the app has no right to make.
+                        ContentUnavailableView(
+                            "History unavailable",
+                            systemImage: "exclamationmark.triangle",
+                            description: Text(notice)
+                        )
+                        .listRowBackground(Color.clear)
+                    } else if records.isEmpty {
                         ContentUnavailableView(
                             "No changes yet",
                             systemImage: "clock",
@@ -116,8 +125,14 @@ struct ChangesView: View {
     }
 
     private func load() {
-        records = session.fileSystem.changes()
+        let outcome = session.fileSystem.changesOutcome()
+        records = outcome.records
+        // Shown rather than swallowed: an empty list and an unreadable list look identical, and
+        // only one of them means there is nothing to undo.
+        historyNotice = outcome.failure
     }
+
+    @State private var historyNotice: String?
 
     private func restore() {
         guard let target = restoreTarget else { return }
