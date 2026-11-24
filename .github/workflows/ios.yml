@@ -80,6 +80,9 @@ jobs:
           BUILD_NUMBER=$(git rev-list --count HEAD)
           MARKETING="0.1.$(date -u +%Y%m%d)"
           echo "version $MARKETING build $BUILD_NUMBER"
+          # Exported, because a variable set in one step's shell is gone by the next one.
+          echo "MARKETING=$MARKETING" >> "$GITHUB_ENV"
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
           xcodegen generate
           # sed rather than a heredoc: a heredoc inside this indented block keeps the leading
           # spaces, and Python rejects the body as badly indented.
@@ -135,6 +138,8 @@ jobs:
           set -euo pipefail
           xcodebuild build \
             GUEST_ROOT="$GUEST_ROOT" \
+            MARKETING_VERSION="$MARKETING" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
             -project "$PROJECT_NAME.xcodeproj" \
             -scheme "$SCHEME" \
             -configuration Debug \
@@ -242,6 +247,8 @@ jobs:
           set -euo pipefail
           xcodebuild build \
             GUEST_ROOT="$GUEST_ROOT" \
+            MARKETING_VERSION="$MARKETING" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
             -project "$PROJECT_NAME.xcodeproj" \
             -scheme "$SCHEME" \
             -configuration Release \
