@@ -259,6 +259,15 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             2>&1 | tee "$LOG_DIR/release-build.log"
           APP_PATH="$DERIVED_DATA/Build/Products/Release-iphoneos/$PROJECT_NAME.app"
+          # The artifact's own version, checked here rather than in a unit test: a test runs inside
+          # the xctest host and sees that bundle's constant, not the one a person installs.
+          APP_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_PATH/Info.plist")
+          APP_BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP_PATH/Info.plist")
+          echo "artifact version $APP_VERSION build $APP_BUILD" | tee "$LOG_DIR/version.log"
+          if [ "$APP_BUILD" = "1" ]; then
+            echo "::error::the build number is the constant again; version overrides did not reach the app"
+            exit 1
+          fi
           scripts/package_ipa.sh "$APP_PATH" "$ARTIFACTS_DIR" "$PROJECT_NAME" 2>&1 | tee "$LOG_DIR/package.log"
 
       - name: Build report
