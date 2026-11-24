@@ -324,5 +324,27 @@ case "$exec_out" in
     *) fail=$((fail + 1)); printf '  FAIL exec failure: %s\n' "$exec_out" ;;
 esac
 
+echo "select"
+
+# select(2) was unimplemented, so Python's select.select and selectors both raised ENOSYS - and a
+# program that waits on a pipe could not be written. Expected values from qemu.
+sel_out=$(E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" PYTHONHOME=/usr LANG=C.UTF-8 E2_CAP=400000000 \
+    timeout 120 "$RUNE" "$ROOT/usr/bin/python3.12" -c \
+    'import os, select, selectors
+r, w = os.pipe()
+os.write(w, b"x")
+print("select", len(select.select([r], [], [], 0.5)[0]) == 1)
+s = selectors.DefaultSelector()
+s.register(r, selectors.EVENT_READ)
+print("selectors", len(s.select(0.5)) == 1)
+print("empty", select.select([], [], [], 0.05) == ([], [], []))' 2>/dev/null)
+sel_ok=$(printf '%s' "$sel_out" | grep -c 'True')
+if [ "$sel_ok" -ge 3 ]; then
+    pass=$((pass + 1))
+else
+    fail=$((fail + 1))
+    printf '  FAIL select: %s\n' "$sel_out"
+fi
+
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

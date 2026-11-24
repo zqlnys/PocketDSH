@@ -2,7 +2,7 @@
 
 这份文件说的每一件事都有对应的测试；数字是本地实测的，不是估计。
 
-**最后核对：2026-11-24，版本 0.1.20261124 (913)。**
+**最后核对：2026-11-24，版本 0.1.20261124 (915)。**
 
 ## 能用
 
@@ -11,7 +11,7 @@
 | busybox 全套 applet | 384 条差分用例与 qemu 逐字一致（1 条已知差异，见下） |
 | CPython 3.12 + 标准库 | 30 个模块的广度探针、13 行窄探针，输出与 qemu 逐字一致 |
 | `fork` / `exec` / `wait4` | 一个进程里 fork + wait 100 次；`subprocess` 可运行 |
-| 管道与 `epoll` | shell 管道、`select.epoll` 建 12 个 |
+| 管道、`epoll`、`select` | shell 管道、`select.epoll` 建 12 个、`select.select` 与 `selectors` 与 qemu 一致 |
 | 真实休眠 | `time.sleep(0.25)` 真的等 250 ms，与 qemu 一致 |
 | 取消正在跑的命令 | 每 65536 条指令检查一次，300 ms 内停下 |
 | 写入上限 | 运行期 64 MB `RLIMIT_FSIZE`，超出时写失败 |
@@ -32,6 +32,7 @@ xml.etree.ElementTree  curses  curses.panel
 | 限制 | 原因 |
 | --- | --- |
 | **没有网络** | 只支持 `socketpair`，没有任何会 `connect` 的东西。**`ssl` 能导入、CA 证书齐全，但发不出 HTTPS 请求。** |
+| **`socket.socketpair` 不可用** | 系统调用本身有，但 Python 的包装还需要 `sendmsg`/`recvmsg` 传描述符，两者返回 ENOSYS |
 | **没有线程** | 见下 |
 | **没有 `/proc/mounts` 一致性** | `df` 的 `st_dev` 与 `/proc/mounts` 对不上，`df` 输出不可信 |
 | **`prlimit64` 只报告不执行** | 设置新的 rlimit 会被接受但忽略 |

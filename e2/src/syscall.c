@@ -13,6 +13,7 @@
 #define E2_EINVAL 22
 #define E2_ENAMETOOLONG 36
 #define E2_ENOSYS 38
+#define EINVAL_ 22
 #define E2_ENOTSUP 95
 
 /// aarch64 `struct stat`. The layout is fixed by the kernel ABI: musl reads
@@ -787,6 +788,87 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             }
             memcpy(dst, &ts, sizeof(ts));
             E2_RETURN(0);
+        }
+        case 204: {  // getsockname(fd, addr, addrlen)
+            // Python's socket.socketpair calls this on each end before returning them, so without
+            // it a working socketpair still surfaced as ENOSYS - the error came from the call
+            // after the one that had succeeded.
+            if (env->files == NULL || env->files->socketpair == NULL) {
+                E2_RETURN(-E2_ENOSYS);
+            }
+            const uint64_t addr_ptr = a1, len_ptr = a2;
+            if (len_ptr == 0) E2_RETURN(-E2_EFAULT);
+            uint32_t capacity = 0;
+            if (e2_memory_read(&m->mem, len_ptr, &capacity, 4) != 0) E2_RETURN(-E2_EFAULT);
+            // struct sockaddr_un: family (2 bytes, little endian) then the path. An unnamed
+            // socket pair has no path, so only the family is written.
+            uint8_t addr[110] = {0};
+            addr[0] = 1;   // AF_UNIX
+            addr[1] = 0;
+            const uint32_t length = 2;
+            if (capacity >= length) {
+                if (e2_memory_write(&m->mem, addr_ptr, addr, length) != 0) E2_RETURN(-E2_EFAULT);
+            }
+            e2_memory_write(&m->mem, len_ptr, &length, 4);
+            E2_RETURN(0);
+        }
+        case 72: {   // pselect6(nfds, readfds, writefds, exceptfds, timeout, sigmask)
+            // Python's select.select and selectors.DefaultSelector reach this. Without it they
+            // got ENOSYS, which reads as "this system has no select" - and a program that polls a
+            // pipe could not be written at all.
+            if (env->files == NULL || env->files->pollable == NULL) {
+                E2_RETURN(-E2_ENOSYS);
+            }
+            const int nfds = (int)a0;
+            if (nfds < 0 || nfds > 1024) {
+                E2_RETURN(-EINVAL_);
+            }
+            const uint64_t rset = a1, wset = a2, xset = a3;
+            // Timeout is a timespec of { seconds, nanoseconds }, not milliseconds.
+            const uint64_t timeout_ptr = m->cpu.x[4];
+            long timeout_ms = -1;
+            if (timeout_ptr != 0) {
+                uint64_t ts[2] = {0, 0};
+                if (e2_memory_read(&m->mem, timeout_ptr, ts, sizeof(ts)) != 0) {
+                    E2_RETURN(-E2_EFAULT);
+                }
+                timeout_ms = (long)(ts[0] * 1000 + ts[1] / 1000000);
+                if (ts[0] == 0 && ts[1] == 0) timeout_ms = 0;
+            }
+            uint8_t in_r[128] = {0}, in_w[128] = {0}, in_x[128] = {0};
+            if (rset && e2_memory_read(&m->mem, rset, in_r, sizeof(in_r)) != 0) E2_RETURN(-E2_EFAULT);
+            if (wset && e2_memory_read(&m->mem, wset, in_w, sizeof(in_w)) != 0) E2_RETURN(-E2_EFAULT);
+            if (xset && e2_memory_read(&m->mem, xset, in_x, sizeof(in_x)) != 0) E2_RETURN(-E2_EFAULT);
+            uint8_t out_r[128] = {0}, out_w[128] = {0}, out_x[128] = {0};
+            int ready = 0;
+            // One pass asks the descriptors; a second pass, after letting the children run, asks
+            // again. Polling in a loop without running them would never see a child's write.
+            for (int attempt = 0; attempt < 2; attempt++) {
+                ready = 0;
+                memset(out_r, 0, sizeof(out_r));
+                memset(out_w, 0, sizeof(out_w));
+                memset(out_x, 0, sizeof(out_x));
+                for (int fd = 0; fd < nfds; fd++) {
+                    const int byte = fd / 8, bit = 1 << (fd % 8);
+                    if ((in_r[byte] & bit) && env->files->pollable(env->ctx, fd, 1) > 0) {
+                        out_r[byte] |= (uint8_t)bit; ready++;
+                    }
+                    if ((in_w[byte] & bit) && env->files->pollable(env->ctx, fd, 2) > 0) {
+                        out_w[byte] |= (uint8_t)bit; ready++;
+                    }
+                    if ((in_x[byte] & bit) && env->files->pollable(env->ctx, fd, 4) > 0) {
+                        out_x[byte] |= (uint8_t)bit; ready++;
+                    }
+                }
+                if (ready > 0) break;
+                if (timeout_ms == 0) break;
+                if (env->files->wait_for_progress != NULL) env->files->wait_for_progress(env->ctx);
+                if (timeout_ms > 0) timeout_ms = 0;   // one more pass, then report
+            }
+            if (rset) e2_memory_write(&m->mem, rset, out_r, sizeof(out_r));
+            if (wset) e2_memory_write(&m->mem, wset, out_w, sizeof(out_w));
+            if (xset) e2_memory_write(&m->mem, xset, out_x, sizeof(out_x));
+            E2_RETURN(ready);
         }
         case 199: {  // socketpair
             if (env->files == NULL || env->files->socketpair == NULL) {
