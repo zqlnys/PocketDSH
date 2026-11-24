@@ -4,6 +4,12 @@ import PocketDSHCore
 
 final class PluginStore: ObservableObject {
     @Published private(set) var plugins: [InstalledPlugin] = []
+
+    /// Plugin directories that exist but could not be loaded, with the reason.
+    ///
+    /// They used to be skipped in silence: an installed plugin whose manifest was corrupt simply
+    /// vanished from the list, and the directory stayed on disk with nothing naming it.
+    @Published private(set) var loadFailures: [String] = []
     @Published private(set) var logs: [PluginLogEntry] = []
 
     private let fileManager = FileManager.default
@@ -219,11 +225,26 @@ final class PluginStore: ObservableObject {
         )) ?? []
 
         var loaded: [InstalledPlugin] = []
+        var unreadable: [String] = []
         for directory in contents {
             let manifestURL = directory.appendingPathComponent("plugin.json")
-            guard let data = try? Data(contentsOf: manifestURL),
-                  let manifest = try? JSONDecoder().decode(PluginManifest.self, from: data),
-                  (try? manifest.validate()) != nil else {
+            // A plugin directory that cannot be read is not an absent plugin.
+            //
+            // These used to be skipped in silence, so an installed plugin whose manifest was
+            // corrupt vanished from the list with nothing to say what it had been - and the
+            // directory was still on disk the whole time.
+            guard let data = try? Data(contentsOf: manifestURL) else {
+                unreadable.append("\(directory.lastPathComponent): plugin.json could not be read")
+                continue
+            }
+            guard let manifest = try? JSONDecoder().decode(PluginManifest.self, from: data) else {
+                unreadable.append("\(directory.lastPathComponent): plugin.json is not a valid manifest")
+                continue
+            }
+            do {
+                try manifest.validate()
+            } catch {
+                unreadable.append("\(directory.lastPathComponent): \(error.localizedDescription)")
                 continue
             }
             let state = stored[manifest.id]
@@ -240,6 +261,9 @@ final class PluginStore: ObservableObject {
         plugins = loaded.sorted {
             $0.manifest.name.localizedStandardCompare($1.manifest.name) == .orderedAscending
         }
+
+        // Kept where a settings screen can show them, so a plugin that failed to load can be named.
+        loadFailures = unreadable
 
         if let data = try? Data(contentsOf: logsURL) {
             let decoder = JSONDecoder()

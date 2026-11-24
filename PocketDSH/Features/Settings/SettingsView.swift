@@ -264,6 +264,13 @@ struct SettingsView: View {
                     Text("\(pluginStore.plugins.count) installed · \(pluginStore.plugins.filter(\.enabled).count) enabled")
                         .font(.caption)
                         .foregroundStyle(PocketTheme.secondaryText)
+                    if !pluginStore.loadFailures.isEmpty {
+                        // A plugin that failed to load is still installed. Saying only the count
+                        // hid the difference between "not installed" and "installed, unreadable".
+                        Text("\(pluginStore.loadFailures.count) could not be loaded")
+                            .font(.caption2)
+                            .foregroundStyle(PocketTheme.amber)
+                    }
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
