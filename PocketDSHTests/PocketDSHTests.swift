@@ -60,7 +60,10 @@ final class PocketDSHTests: XCTestCase {
     /// which is the part that would silently regress if the workflow stopped passing them.
     @MainActor
     func testBundleCarriesAnIdentifiableVersion() throws {
-        let info = Bundle.main.infoDictionary ?? [:]
+        // The app, not the test bundle: a unit test runs inside the xctest host, whose own
+        // CFBundleVersion is the constant this test exists to catch.
+        let app = Bundle(for: AgentRunner.self)
+        let info = app.infoDictionary ?? [:]
         let version = info["CFBundleShortVersionString"] as? String ?? ""
         let build = info["CFBundleVersion"] as? String ?? ""
         XCTAssertFalse(version.isEmpty, "no marketing version in the bundle")
