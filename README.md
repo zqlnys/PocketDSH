@@ -19,6 +19,8 @@
 
 **能做什么、不能做什么，见 [docs/CAPABILITIES.md](docs/CAPABILITIES.md)** —— 每一项都有对应测试。
 
+**怎么发版，见 [docs/RELEASING.md](docs/RELEASING.md)。**
+
 ## 当前状态（2026-11-17）
 
 | 阶段 | 状态 | 证据 |
