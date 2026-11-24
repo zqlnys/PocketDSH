@@ -348,14 +348,15 @@ fi
 
 echo "syscall surface"
 
-# Seventeen syscalls in one program, compared line by line against what qemu produces for the same
+# Twenty-seven syscalls in one program, compared line by line against what qemu produces for the same
 # file. This exists because claims in the capability list twice turned out to be untested: a failed
 # exec reported success, and select was never implemented at all.
 if [ -x "$ROOT/usr/bin/python3.12" ]; then
     cp tools/syscall-probe.py "$WORK/syscall_probe.py" 2>/dev/null || true
     probe_out=$(E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" PYTHONHOME=/usr LANG=C.UTF-8 E2_CAP=400000000 \
-        timeout 180 "$RUNE" "$ROOT/usr/bin/python3.12" /workspace/syscall_probe.py 2>/dev/null | head -17)
-    expected='getpid True
+        timeout 180 "$RUNE" "$ROOT/usr/bin/python3.12" /workspace/syscall_probe.py 2>/dev/null | head -27)
+    expected=$(cat <<'PROBE_EXPECTED'
+getpid True
 getppid True
 umask True
 stat-enoent E2
@@ -371,7 +372,19 @@ environ True
 time True
 monotonic True
 lseek ok
-seek-read cd'
+seek-read cd
+symlink E17
+hardlink E17
+mode 0o640
+listdir ['a', 'b', 'c']
+walk 3
+size 5
+isfile True True
+cwd /tmp
+close ok
+stdin X NameError
+PROBE_EXPECTED
+    )
     if [ "$probe_out" = "$expected" ]; then
         pass=$((pass + 1))
     else

@@ -95,4 +95,70 @@ def seek_rt():
 
 t("seek-read", seek_rt)
 
+def symlink_rt():
+    with open("/tmp/target", "w") as f:
+        f.write("data")
+    os.symlink("/tmp/target", "/tmp/link")
+    a = open("/tmp/link").read()
+    b = os.path.islink("/tmp/link")
+    c = os.readlink("/tmp/link")
+    return "%s %s %s" % (a, b, c)
+
+def hardlink_rt():
+    with open("/tmp/h1", "w") as f:
+        f.write("h")
+    os.link("/tmp/h1", "/tmp/h2")
+    s1, s2 = os.stat("/tmp/h1"), os.stat("/tmp/h2")
+    return s1.st_ino == s2.st_ino and s1.st_nlink == 2
+
+def mode_rt():
+    with open("/tmp/m", "w") as f:
+        f.write("m")
+    os.chmod("/tmp/m", 0o640)
+    return oct(stat.S_IMODE(os.stat("/tmp/m").st_mode))
+
+def listdir_sorted():
+    os.makedirs("/tmp/d", exist_ok=True)
+    for n in "cab":
+        open("/tmp/d/" + n, "w").close()
+    return sorted(os.listdir("/tmp/d"))
+
+def walk_depth():
+    os.makedirs("/tmp/w/x/y", exist_ok=True)
+    open("/tmp/w/x/y/z", "w").close()
+    return sum(1 for _ in os.walk("/tmp/w"))
+
+def stat_size():
+    with open("/tmp/s", "w") as f:
+        f.write("12345")
+    return os.stat("/tmp/s").st_size
+
+def isfile_isdir():
+    os.makedirs("/tmp/fd", exist_ok=True)
+    open("/tmp/ff", "w").close()
+    return "%s %s" % (os.path.isfile("/tmp/ff"), os.path.isdir("/tmp/fd"))
+
+def getcwd_chdir():
+    old = os.getcwd()
+    os.chdir("/tmp")
+    now = os.getcwd()
+    os.chdir(old)
+    return now
+
+def close_fd():
+    f = open("/tmp/c", "w")
+    os.close(f.fileno())
+    return "ok"
+
+t("symlink", symlink_rt)
+t("hardlink", hardlink_rt)
+t("mode", mode_rt)
+t("listdir", listdir_sorted)
+t("walk", walk_depth)
+t("size", stat_size)
+t("isfile", isfile_isdir)
+t("cwd", getcwd_chdir)
+t("close", close_fd)
+t("stdin", lambda: sys.stdin is not None)
+
 print("\n".join(out))
