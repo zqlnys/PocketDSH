@@ -17,6 +17,7 @@
 | 写入上限 | 运行期 64 MB `RLIMIT_FSIZE`，超出时写失败 |
 | 内存上限 | `E2_HEAP_MB` 同时约束 `brk` 与 `mmap`，超出抛 `MemoryError` |
 | 工作区挂载 | guest 的 `/workspace` 就是项目目录 |
+| **17 个系统调用** | `tools/syscall-probe.py` 逐行与 qemu 对比：`getpid`、`stat`、`unlink`、`open`、`mkdir`、`rename`、`pipe`、`select`、`lseek`、`time` 等 |
 
 ## 这些模块可导入
 

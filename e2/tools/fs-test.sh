@@ -346,5 +346,39 @@ else
     printf '  FAIL select: %s\n' "$sel_out"
 fi
 
+echo "syscall surface"
+
+# Seventeen syscalls in one program, compared line by line against what qemu produces for the same
+# file. This exists because claims in the capability list twice turned out to be untested: a failed
+# exec reported success, and select was never implemented at all.
+if [ -x "$ROOT/usr/bin/python3.12" ]; then
+    cp tools/syscall-probe.py "$WORK/syscall_probe.py" 2>/dev/null || true
+    probe_out=$(E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" PYTHONHOME=/usr LANG=C.UTF-8 E2_CAP=400000000 \
+        timeout 180 "$RUNE" "$ROOT/usr/bin/python3.12" /workspace/syscall_probe.py 2>/dev/null | head -17)
+    expected='getpid True
+getppid True
+umask True
+stat-enoent E2
+unlink-enoent E2
+open-enoent E2
+mkdir-rmdir ok
+rename ok
+pipe ping
+select True
+select-empty True
+fd-blocking True
+environ True
+time True
+monotonic True
+lseek ok
+seek-read cd'
+    if [ "$probe_out" = "$expected" ]; then
+        pass=$((pass + 1))
+    else
+        fail=$((fail + 1))
+        printf '  FAIL syscall probe differs from qemu:\n%s\n' "$(printf '%s' "$probe_out" | diff --unchanged-line-format="" --old-line-format="- %L" --new-line-format="" <(printf '%s' "$expected") 2>/dev/null | head -6)"
+    fi
+fi
+
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
