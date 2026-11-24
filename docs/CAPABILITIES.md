@@ -1,0 +1,78 @@
+# Tier D 能力清单
+
+这份文件说的每一件事都有对应的测试；数字是本地实测的，不是估计。
+
+**最后核对：2026-11-24，版本 0.1.20261124 (913)。**
+
+## 能用
+
+| 能力 | 证据 |
+| --- | --- |
+| busybox 全套 applet | 384 条差分用例与 qemu 逐字一致（1 条已知差异，见下） |
+| CPython 3.12 + 标准库 | 30 个模块的广度探针、13 行窄探针，输出与 qemu 逐字一致 |
+| `fork` / `exec` / `wait4` | 一个进程里 fork + wait 100 次；`subprocess` 可运行 |
+| 管道与 `epoll` | shell 管道、`select.epoll` 建 12 个 |
+| 真实休眠 | `time.sleep(0.25)` 真的等 250 ms，与 qemu 一致 |
+| 取消正在跑的命令 | 每 65536 条指令检查一次，300 ms 内停下 |
+| 写入上限 | 运行期 64 MB `RLIMIT_FSIZE`，超出时写失败 |
+| 内存上限 | `E2_HEAP_MB` 同时约束 `brk` 与 `mmap`，超出抛 `MemoryError` |
+| 工作区挂载 | guest 的 `/workspace` 就是项目目录 |
+
+## 这些模块可导入
+
+```
+ssl  hashlib  bz2  lzma  sqlite3  pyexpat  decimal
+xml.etree.ElementTree  curses  curses.panel
+```
+
+**`gdbm` 不行**——缺的是 Python 侧的模块（裁剪时去掉了），不是共享库。构建脚本会报告这件事，不会静默跳过。
+
+## 不能用
+
+| 限制 | 原因 |
+| --- | --- |
+| **没有网络** | 只支持 `socketpair`，没有任何会 `connect` 的东西。**`ssl` 能导入、CA 证书齐全，但发不出 HTTPS 请求。** |
+| **没有线程** | 见下 |
+| **没有 `/proc/mounts` 一致性** | `df` 的 `st_dev` 与 `/proc/mounts` 对不上，`df` 输出不可信 |
+| **`prlimit64` 只报告不执行** | 设置新的 rlimit 会被接受但忽略 |
+
+## 关于线程
+
+`clone` 能创建执行流，但跨执行流的 pc 会损坏——故障转储里出现过 `pc=0x872ca4`，即 `0x400000872ca4` 的高 32 位丢失，且不在任何映射里。
+
+**这一点试过十一轮，其中四次得出了自己造成的错误结论**（继承的指令计数、错误的采样点、逐指令的区域扫描、bash 的 `sigsuspend`）。**目前关闭，记录在 `docs/persistent-session.md`。**
+
+**CPython 的 `threading` 依赖它，所以 `threading` 不可用。**
+
+## 性能
+
+```
+合成循环       50 ns/指令
+真实负载       72 ns/指令（CPython 启动，3910 万条指令）
+```
+
+**分发不是瓶颈**：Python 负载上每条指令只有 2.0 次守卫比较（加前门判别前是 33.6 次）。剩下的差距是缓存行为。
+
+**真实负载那个数才是该盯的**——合成循环测的是分发，而分发早就不是成本所在。
+
+## 已知差异
+
+差分对比里有一条长期存在的已知差异，记录在 `tools/diff-test.sh` 的注释里；其余 384 条与 qemu 完全一致。
+
+## 怎么自己验证
+
+```sh
+cd e2
+make test                                    # 334 条指令级检查
+./tools/diff-test.sh <busybox.static> ./tools/rune   # 384 条与 qemu 对比
+./tools/fs-test.sh                           # 68 条端到端
+./tools/perf-check.sh                        # 两个性能数字
+```
+
+iOS 侧：
+
+```sh
+cd ..
+./scripts/preflight.sh                       # 预检
+# CI 会跑 85 条设备测试
+```

@@ -17,6 +17,8 @@
 - Agent 可选 `deepseek-flash` / `deepseek-v4-pro`，可调推理强度（low/high/max）和思考模式
 - Linux VPS 只开发/检查/编译，不执行用户任务
 
+**能做什么、不能做什么，见 [docs/CAPABILITIES.md](docs/CAPABILITIES.md)** —— 每一项都有对应测试。
+
 ## 当前状态（2026-11-17）
 
 | 阶段 | 状态 | 证据 |
