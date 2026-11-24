@@ -53,6 +53,22 @@ final class PocketDSHTests: XCTestCase {
     /// The cap and the shell-output cap are the same defect reached by two routes: a tool result
     /// had no upper bound, and nothing fails when one is enormous - it just crowds out everything
     /// else.
+    /// The bundle carries a version a person can read and quote.
+    ///
+    /// Forty releases shipped as 0.1.0 (1), so an installed build could not be identified. The
+    /// build numbers come from git now; this checks they are present and not the old constant,
+    /// which is the part that would silently regress if the workflow stopped passing them.
+    @MainActor
+    func testBundleCarriesAnIdentifiableVersion() throws {
+        let info = Bundle.main.infoDictionary ?? [:]
+        let version = info["CFBundleShortVersionString"] as? String ?? ""
+        let build = info["CFBundleVersion"] as? String ?? ""
+        XCTAssertFalse(version.isEmpty, "no marketing version in the bundle")
+        XCTAssertFalse(build.isEmpty, "no build number in the bundle")
+        XCTAssertNotEqual(build, "1",
+                          "the build number is the constant again - the workflow stopped passing it")
+    }
+
     @MainActor
     func testListFilesCapsWhatItReturns() async throws {
         let root = FileManager.default.temporaryDirectory

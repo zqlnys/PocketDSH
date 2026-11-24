@@ -471,7 +471,7 @@ struct SettingsView: View {
     private var aboutCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionLabel(title: "About")
-            Text("PocketDSH \(version)")
+            Text("PocketDSH \(version) (\(build))")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(PocketTheme.primaryText)
             Text("Local-first iOS coding agent. Model inference uses the DeepSeek API; your files stay on this phone.")
@@ -486,6 +486,14 @@ struct SettingsView: View {
 
     private var version: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"
+    }
+
+    /// The build number, shown beside the version.
+    ///
+    /// The two move independently now: every build of a given day shares a marketing version and
+    /// differs only here, so showing one of them still left two installs looking identical.
+    private var build: String {
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
     }
 
     private func runtimeLine(_ label: String, _ value: String) -> some View {
