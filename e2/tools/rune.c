@@ -1228,7 +1228,16 @@ static void seed_proc(const char *root) {
     char dir[2048];
     snprintf(dir, sizeof(dir), "%s/proc", root);
     struct stat st;
-    if (stat(dir, &st) != 0 || !S_ISDIR(st.st_mode)) return;
+    // Created if absent. Returning here meant that a root without /proc got nothing seeded at
+    // all - no meminfo, no mounts, no version - and every reader of them failed as though the file
+    // simply did not exist, because it did not. The trimmed Alpine root has no /proc, so this was
+    // the normal case rather than the edge one.
+    if (stat(dir, &st) != 0 || !S_ISDIR(st.st_mode)) {
+        if (mkdir(dir, 0555) != 0 && errno != EEXIST) {
+            fprintf(stderr, "e2: could not create %s\n", dir);
+            return;
+        }
+    }
     // /proc/self/fd must exist as a directory: ls stats the path before listing it,
     // and a directory that only materialises inside opendir is invisible to that.
     {
@@ -1260,8 +1269,12 @@ static void seed_proc(const char *root) {
                 mkdir(parent, 0555);
             }
         }
-        // Do not clobber a file the guest has already produced.
-        if (access(full, F_OK) == 0) continue;
+        // Rewritten every run. Skipping existing files protected a guest's own output, but these
+        // are synthetic files that belong to the harness - and a guest that wrote to /proc/version
+        // once (a test did) left the old contents in place for every later run.
+        if (access(full, F_OK) == 0) {
+            chmod(full, 0600);   // undo the read-only bit so it can be replaced
+        }
         FILE *f = fopen(full, "wb");
         if (f == NULL) {
             // Say so. A seed that quietly fails is indistinguishable from one that was
@@ -1273,6 +1286,10 @@ static void seed_proc(const char *root) {
         }
         fputs(files[i].body, f);
         fclose(f);
+        // Read-only, as /proc is. Writing to /proc/version fails on a real system, and leaving
+        // these writable made `echo x > /proc/version` succeed - which the filesystem suite
+        // caught the moment /proc started existing at all.
+        chmod(full, 0444);
         if (getenv("E2_TRACE_SEED"))
             fprintf(stderr, "[seed] wrote %s\n", full);
     }

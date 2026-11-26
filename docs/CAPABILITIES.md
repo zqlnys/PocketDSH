@@ -17,6 +17,7 @@
 | 写入上限 | 运行期 64 MB `RLIMIT_FSIZE`，超出时写失败 |
 | 内存上限 | `E2_HEAP_MB` 同时约束 `brk` 与 `mmap`，超出抛 `MemoryError` |
 | 工作区挂载 | guest 的 `/workspace` 就是项目目录 |
+| **`/proc` 已种入** | `df`、`free`、`uname -a`、`nproc` 都能用；`/proc/mounts` 与 `statfs` 一致 |
 | 深嵌套的子 shell | 1000 层括号嵌套仍能运行 |
 | **27 个系统调用** | `tools/syscall-probe.py` 逐行与 qemu 对比：`getpid`、`stat`、`symlink`、`hardlink`、`chmod`、`listdir`、`walk`、`pipe`、`select`、`lseek`、`getcwd`、`time` 等 |
 
@@ -50,7 +51,7 @@ xml.etree.ElementTree  curses  curses.panel
 | **没有网络** | 只支持 `socketpair`，没有任何会 `connect` 的东西。**`ssl` 能导入、CA 证书齐全，但发不出 HTTPS 请求。** |
 | **`socket.socketpair` 不可用** | 系统调用本身有，但 Python 的包装还需要 `sendmsg`/`recvmsg` 传描述符，两者返回 ENOSYS |
 | **没有线程** | 见下 |
-| **没有 `/proc/mounts` 一致性** | `df` 的 `st_dev` 与 `/proc/mounts` 对不上，`df` 输出不可信 |
+
 | **`prlimit64` 只报告不执行** | 设置新的 rlimit 会被接受但忽略 |
 | **exec 最多携带 32 个参数和 64 个环境变量** | 超过时返回 `E2BIG`（真内核的上限高得多）。上限受限于每次 exec 的栈上缓冲区；`run_proc` 是嵌套的，把它调大会把栈风险换成一个更少见的错误 |
 

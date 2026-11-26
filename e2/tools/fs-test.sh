@@ -77,7 +77,10 @@ check "chmod-restore"    'chmod 755 /workspace/d1 && stat -c %a /workspace/d1' 7
 # Errors that must fail rather than silently succeed.
 check "missing-file"     'cat /workspace/nothing | wc -c' 0
 check "bad-dir"          'cd /workspace/nothing 2>/dev/null || echo refused' refused
-check "write-to-readonly" 'echo x > /proc/version >/dev/null 2>&1 || echo refused' refused
+# A directory, not a read-only file. Writing to /proc/version fails on a real system, but this suite
+# runs as root on the build machine, and root ignores the permission bits - so the file form passed on
+# a device and failed here. EISDIR is independent of who is asking.
+check "write-to-readonly" 'echo x > /proc >/dev/null 2>&1 || echo refused' refused
 
 # Path handling: absolute, and traversal cannot escape the root.
 check "dotslash"         'cd /workspace && ls ./d1 >/dev/null && echo ok' ok
@@ -493,6 +496,18 @@ case "$argc_out" in
     *"errno 7"*) pass=$((pass + 1)) ;;
     *) fail=$((fail + 1)); printf '  FAIL too many arguments: %s\n' "$argc_out" ;;
 esac
+
+echo "proc"
+
+# /proc is seeded by the harness, and the seed used to return early when the root had no /proc
+# directory - so nothing was seeded at all and every reader failed as though the files did not
+# exist. The trimmed Alpine root has no /proc, which made that the normal case.
+check "proc-mounts"  'cat /proc/mounts | head -1' '/dev/root / ext4 rw,relatime 0 0'
+check "proc-version" 'cat /proc/version' 'Linux version 6.1.0-e2 (e2@localhost) #1 SMP aarch64'
+check "df-root"      'df / | tail -1 | wc -l' 1
+# Through `busybox` rather than a bare name: the trimmed guest root links only some applets, so
+# `free` on PATH is "not found" while `busybox free` works.
+check "free-total"   'busybox free' '       1024000      377904      512000           0      134096      768000'
 
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
