@@ -181,6 +181,14 @@ final class AgentRunner: ObservableObject {
     /// Only tool results are shortened, and each is replaced rather than removed: a tool message
     /// answers a specific tool call and the API rejects a transcript where the call has no reply.
     /// The newest results stay whole because they are the ones the model is working from.
+    /// A sub-agent's answer, bounded the way a tool result is.
+    nonisolated static func capped(_ text: String, limit: Int = 32_000) -> String {
+        guard text.utf8.count > limit else { return text }
+        return String(text.prefix(limit))
+            + "\n\n[truncated: \(text.utf8.count - limit) bytes; the sub-agent returned more than "
+            + "a tool result should carry]"
+    }
+
     nonisolated static func trimmed(_ messages: [LLMMessage], budget: Int = 240_000,
                         keepRecent: Int = 6) -> [LLMMessage] {
         var total = messages.reduce(0) { $0 + ($1.content ?? "").utf8.count }
@@ -405,9 +413,27 @@ final class AgentRunner: ObservableObject {
             detail: label ?? String(prompt.prefix(120))
         )
         guard let answer, !answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return .failure("The sub-agent did not return an answer. Try giving it a narrower task.")
+            // Why it stopped decides what to do about it: an error is worth retrying, running out
+            // of steps means a narrower task, and a cancellation means the caller stopped it.
+            var reason = "it returned nothing"
+            switch child.phase {
+            case .failed(let message):
+                reason = "it failed: \(message)"
+            case .cancelled:
+                reason = "it was cancelled"
+            default:
+                if let failure = child.errorMessage, !failure.isEmpty {
+                    reason = "it stopped: \(failure)"
+                } else if child.currentStep >= settings.maxSteps {
+                    reason = "it used all \(settings.maxSteps) steps without an answer"
+                }
+            }
+            return .failure("The sub-agent did not return an answer because \(reason).")
         }
-        return .success(answer)
+        // Bounded like any other tool result: a child that produces a report cannot decide how much
+        // of the parent's conversation it takes.
+        let capped = answer.utf8.count > 32_000 ? Self.capped(answer) : answer
+        return .success(capped)
     }
 
     /// The conversation as Markdown, for sharing or keeping.

@@ -155,6 +155,20 @@ final class PocketDSHTests: XCTestCase {
         XCTAssertTrue(other.contains("nope"), other)
     }
 
+    /// A sub-agent's answer is bounded like any other tool result.
+    ///
+    /// A child that writes a long report would otherwise decide how much of the parent's
+    /// conversation it takes, and the parent has no say.
+    func testSubagentAnswerIsCapped() {
+        let long = String(repeating: "z", count: 50_000)
+        let capped = AgentRunner.capped(long)
+        XCTAssertLessThan(capped.utf8.count, 34_000)
+        XCTAssertTrue(capped.contains("truncated"), capped.suffix(200).description)
+
+        let short = "an answer"
+        XCTAssertEqual(AgentRunner.capped(short), short)
+    }
+
     @MainActor
     func testListFilesCapsWhatItReturns() async throws {
         let root = FileManager.default.temporaryDirectory
