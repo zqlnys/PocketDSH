@@ -130,29 +130,8 @@ jobs:
           set -euo pipefail
           swift test --package-path Packages/PocketDSHKit 2>&1 | tee "$LOG_DIR/pocketdshkit-tests.log"
 
-      - name: Build app for device
-        id: build
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -euo pipefail
-          xcodebuild build \
-            GUEST_ROOT="$GUEST_ROOT" \
-            MARKETING_VERSION="$MARKETING" \
-            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
-            -project "$PROJECT_NAME.xcodeproj" \
-            -scheme "$SCHEME" \
-            -configuration Debug \
-            -destination 'generic/platform=iOS' \
-            -derivedDataPath "$DERIVED_DATA" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            2>&1 | tee "$LOG_DIR/build.log"
-
       - name: Run iOS tests
         id: tests
-        if: steps.build.outcome == 'success'
         continue-on-error: true
         shell: bash
         run: |
@@ -238,7 +217,6 @@ jobs:
       - name: Build Release and package unsigned IPA
         id: ipa
         if: >-
-          steps.build.outcome == 'success' &&
           steps.tests.outcome == 'success' &&
           steps.package_tests.outcome == 'success'
         continue-on-error: true
@@ -276,7 +254,6 @@ jobs:
         env:
           GENERATE_OUTCOME: ${{ steps.generate.outcome }}
           PACKAGE_TESTS_OUTCOME: ${{ steps.package_tests.outcome }}
-          BUILD_OUTCOME: ${{ steps.build.outcome }}
           TESTS_OUTCOME: ${{ steps.tests.outcome }}
           IPA_OUTCOME: ${{ steps.ipa.outcome }}
         run: |
@@ -295,7 +272,6 @@ jobs:
 
           GENERATE_STATUS="$(status "$GENERATE_OUTCOME")"
           PACKAGE_TESTS_STATUS="$(status "$PACKAGE_TESTS_OUTCOME")"
-          BUILD_STATUS="$(status "$BUILD_OUTCOME")"
           TESTS_STATUS="$(status "$TESTS_OUTCOME")"
           IPA_STATUS="$(status "$IPA_OUTCOME")"
 
@@ -306,9 +282,8 @@ jobs:
             echo "| --- | --- |"
             echo "| Source generation (XcodeGen) | $GENERATE_STATUS |"
             echo "| Domain + Lua tests (SwiftPM) | $PACKAGE_TESTS_STATUS |"
-            echo "| Xcode compile (device) | $BUILD_STATUS |"
             echo "| iOS tests (simulator) | $TESTS_STATUS |"
-            echo "| Unsigned IPA | $IPA_STATUS |"
+            echo "| Device compile + unsigned IPA | $IPA_STATUS |"
             echo ""
             echo "> Signing and real-device installation are not performed by this workflow."
             echo ""
@@ -342,7 +317,6 @@ jobs:
         shell: bash
         env:
           PACKAGE_TESTS_OUTCOME: ${{ steps.package_tests.outcome }}
-          BUILD_OUTCOME: ${{ steps.build.outcome }}
           TESTS_OUTCOME: ${{ steps.tests.outcome }}
           IPA_OUTCOME: ${{ steps.ipa.outcome }}
         run: |
@@ -350,9 +324,8 @@ jobs:
           failed=()
           for entry in \
             "domain and Lua tests:$PACKAGE_TESTS_OUTCOME" \
-            "device build:$BUILD_OUTCOME" \
             "iOS tests:$TESTS_OUTCOME" \
-            "unsigned IPA:$IPA_OUTCOME"; do
+            "device build and unsigned IPA:$IPA_OUTCOME"; do
             name="${entry%%:*}"
             value="${entry#*:}"
             if [[ "$value" != "success" ]]; then
