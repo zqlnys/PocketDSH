@@ -186,15 +186,33 @@ final class ProjectStore: ObservableObject {
     }
 
     private func load() {
-        guard let data = try? Data(contentsOf: indexURL),
-              let records = try? JSONDecoder().decode([ProjectRecord].self, from: data) else {
+        // A missing index and an unreadable one are different, and the difference matters because
+        // the next save writes whatever is in memory: an unreadable index that quietly became an
+        // empty list was overwritten by the first project the user opened, and every other project
+        // was gone with nothing having reported it.
+        guard fileManager.fileExists(atPath: indexURL.path) else {
             projects = []
+            return
+        }
+        guard let data = try? Data(contentsOf: indexURL) else {
+            projects = []
+            loadError = "The project list could not be read. It has been left on disk and will not "
+                + "be overwritten; projects you open now are not saved."
+            writesBlocked = true
+            return
+        }
+        guard let records = try? JSONDecoder().decode([ProjectRecord].self, from: data) else {
+            projects = []
+            loadError = "The project list is unreadable, so it was not loaded and will not be "
+                + "overwritten. Projects you open now are not saved."
+            writesBlocked = true
             return
         }
         projects = records.sorted { $0.lastOpenedAt > $1.lastOpenedAt }
     }
 
     private func save() {
+        guard !writesBlocked else { return }
         do {
             try fileManager.createDirectory(at: appSupportRoot, withIntermediateDirectories: true)
             let data = try JSONEncoder().encode(projects)
@@ -204,6 +222,13 @@ final class ProjectStore: ObservableObject {
             // still operate on the files; the next successful save repairs it.
         }
     }
+
+    /// Says why the list is not being written, when it is not.
+    private(set) var loadError: String?
+
+    /// Set when an existing index could not be used. Saving stops, because the alternative is
+    /// writing over the file that could not be read.
+    private var writesBlocked = false
 
     private func sanitizedName(_ raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -204,7 +204,15 @@ struct ProjectsView: View {
                     .foregroundStyle(PocketTheme.secondaryText)
             }
 
-            if projectStore.projects.isEmpty {
+            if let notice = projectStore.loadError {
+                // "No projects" is a claim about the library, and an unreadable index cannot
+                // support it.
+                Text(notice)
+                    .font(.subheadline)
+                    .foregroundStyle(PocketTheme.amber)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .pocketCard(padding: PocketSpacing.lg)
+            } else if projectStore.projects.isEmpty {
                 emptyProjects
                     .pocketCard(padding: PocketSpacing.lg)
             } else if visibleProjects.isEmpty {
