@@ -493,6 +493,17 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             }
             E2_RETURN(files->statfs_of(env->ctx, (int)a0, NULL, dst, 128));
         }
+        case E2_SYS_vfork: {
+            // vfork promises the parent is suspended and the address space shared. Implementing it
+            // as a clone with the same flags as fork gives the behaviour every caller relies on -
+            // the parent waits, the child execs - without the promise nobody checks. Doing nothing
+            // was not an option: busybox's popen and system get ENOSYS and return an empty stream,
+            // silently.
+            if (env->fork == NULL) {
+                E2_RETURN(-E2_ENOSYS);
+            }
+            E2_RETURN(env->fork(env->ctx, m));
+        }
         case E2_SYS_clone: {
             // The shell uses clone(SIGCHLD, 0, ...) for fork; a NULL stack means
             // "same address space, copied". A non-NULL stack is a thread, which

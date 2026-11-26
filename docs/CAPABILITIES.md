@@ -33,6 +33,10 @@ xml.etree.ElementTree  curses  curses.panel
 
 | 症状 | 影响 |
 | --- | --- |
+| **`awk` 的 `"cmd" | getline` 和 `system()` 不工作** | 两者都经 `popen`，它要 `clone(CLONE_VM\|CLONE_VFORK\|SIGCHLD, stack)`——非 NULL 的栈让这条路径被当作线程，返回 `EINVAL`，于是 `system()` 返回 -1、`getline` 拿到空串。`vfork` 系统调用（58）已实现为 fork，但 busybox 走的是 clone。**试过把 `CLONE_VM\|CLONE_VFORK` 当 fork 处理，进程在内核态死掉——比原来更糟，已撤回。** qemu 正常 |
+
+| 症状 | 影响 |
+| --- | --- |
 | **`pow()`、`math.hypot()`、`math.log2()` 结果错误** | 误差是常数 `+0.0223674`。**十轮的定位结论**：`log2` 确实在执行；归约结果 `d7 = 1.0` 精确；`fmov d2, #-1.0` 精确；`ubfx` 的索引（40）与编码一致；从 `.rodata` 读到的表项 `0.9922480467550775` 与 E2 加载的值**完全一致**——也就是说 **E2 的内存读取本身没错**，而 `1.0` 出现在表内另一个位置（`0x9B540`，对应索引 73，超出 6 位字段范围）。**结论：我对这张表布局的理解是错的，问题不在已排除的那些指令上。** 已排除：加减乘除、比较、`sqrt`、`exp2`、`log`、`log10`、`log1p`、`exp`、`frexp`、`ldexp`、`floor`、`trunc`、`int()`、双↔单精度转换、`ubfx`、64 位逻辑立即数、`fmov` 立即数与寄存器形式、`fmadd` |
 
 ## 已知错误

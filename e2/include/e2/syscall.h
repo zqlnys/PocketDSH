@@ -11,6 +11,10 @@
 #define E2_SYS_dup3 24
 #define E2_SYS_fcntl 25
 #define E2_SYS_clone 220
+/// vfork. AArch64 has no separate fork; vfork is 58 and is what busybox's popen and system
+/// use. Without it those return nothing at all, which is how `awk '{ "cmd" | getline }'`
+/// printed an empty string against qemu's answer.
+#define E2_SYS_vfork 58
 #define E2_SYS_execve 221
 #define E2_SYS_wait4 260
 
