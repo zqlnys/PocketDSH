@@ -445,5 +445,22 @@ case "$long_out" in
     *) fail=$((fail + 1)); printf '  FAIL long argument: %s\n' "$long_out" ;;
 esac
 
+# An argument too long for the exec buffer is refused rather than shortened. A truncated path is a
+# path to somewhere else, and the program would be started with a string it was never given.
+# Reached through subprocess, because a shell's echo is a builtin and never execs anything.
+big_out=$(E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" PYTHONHOME=/usr LANG=C.UTF-8 E2_CAP=400000000 \
+    timeout 180 "$RUNE" "$ROOT/usr/bin/python3.12" -c \
+    'import subprocess
+big = "y" * 3000
+try:
+    subprocess.run(["/bin/busybox", "echo", big])
+    print("ran")
+except OSError as e:
+    print("errno", e.errno)' 2>/dev/null)
+case "$big_out" in
+    *"errno 7"*) pass=$((pass + 1)) ;;
+    *) fail=$((fail + 1)); printf '  FAIL oversized exec argument: %s\n' "$big_out" ;;
+esac
+
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

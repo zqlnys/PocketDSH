@@ -1781,6 +1781,14 @@ static int p_execve(void *ctx, e2_machine *m, const char *path, uint64_t argv,
         uint64_t ptr = 0;
         if (e2_memory_read(&m->mem, argv + (uint64_t)i * 8, &ptr, 8) != 0 || ptr == 0) break;
         if (e2_memory_read(&m->mem, ptr, args[nargs], sizeof(args[0])) != 0) break;
+        // An argument longer than the buffer is refused rather than silently shortened: the
+        // read stops at the limit without a terminator, and the program would then be started with
+        // a different string from the one it was given - a truncated path is a path to somewhere
+        // else.
+        if (args[nargs][sizeof(args[0]) - 1] != '\0' && strlen(args[nargs]) >= sizeof(args[0]) - 1) {
+            fprintf(stderr, "e2: an exec argument is longer than %zu bytes\n", sizeof(args[0]) - 1);
+            return -7;   // E2_E2BIG
+        }
         nargs++;
     }
     // Same class of limit as ARG_MAX: 96 bytes per variable and eight variables
