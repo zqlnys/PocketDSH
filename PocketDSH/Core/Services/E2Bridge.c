@@ -59,6 +59,12 @@ static void e2_configure_environment(void) {
     if (getenv("LANG") == NULL) {
         setenv("LANG", "C.UTF-8", 0);
     }
+    // LC_ALL overrides LANG for every category, so a program that sets only LANG in its own
+    // environment cannot fall into the C locale by accident - which is the configuration where
+    // CPython truncates its own argv (see docs/CAPABILITIES.md).
+    if (getenv("LC_ALL") == NULL) {
+        setenv("LC_ALL", "C.UTF-8", 0);
+    }
     // Where CPython may put __pycache__. The bundle is read-only, so without this every import
     // is compiled from source: 239 million instructions for `import asyncio` with the cache
     // present, past 600 million without. The bundle now ships precompiled bytecode as well;

@@ -34,8 +34,12 @@ xml.etree.ElementTree  curses  curses.panel
 | --- | --- |
 | **`pow()`、`math.hypot()`、`math.log2()` 结果错误** | 误差是常数 `+0.0223674`。**十轮的定位结论**：`log2` 确实在执行；归约结果 `d7 = 1.0` 精确；`fmov d2, #-1.0` 精确；`ubfx` 的索引（40）与编码一致；从 `.rodata` 读到的表项 `0.9922480467550775` 与 E2 加载的值**完全一致**——也就是说 **E2 的内存读取本身没错**，而 `1.0` 出现在表内另一个位置（`0x9B540`，对应索引 73，超出 6 位字段范围）。**结论：我对这张表布局的理解是错的，问题不在已排除的那些指令上。** 已排除：加减乘除、比较、`sqrt`、`exp2`、`log`、`log10`、`log1p`、`exp`、`frexp`、`ldexp`、`floor`、`trunc`、`int()`、双↔单精度转换、`ubfx`、64 位逻辑立即数、`fmov` 立即数与寄存器形式、`fmadd` |
 
-## 不能用
+## 已知错误
 
+| 症状 | 影响 |
+| --- | --- |
+| **`LANG=C` 下 CPython 的命令行参数被截断** | `python3.12 /workspace/a.py` 报 `can't open file '/wor'`；24 个字符的参数只剩 4 个。**busybox 不受影响**，所以问题在 CPython 的 argv 解码路径（musl 的 `mbrtowc`）。qemu 正常。`C.UTF-8` 下同样正常，桥接层默认就设它，所以只有用户脚本自己设 `LANG=C` 才会踩到 |
+| **`pow()`、`math.hypot()`、`math.log2()` 结果错误** |
 | 限制 | 原因 |
 | --- | --- |
 | **没有网络** | 只支持 `socketpair`，没有任何会 `connect` 的东西。**`ssl` 能导入、CA 证书齐全，但发不出 HTTPS 请求。** |
