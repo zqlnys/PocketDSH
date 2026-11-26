@@ -237,11 +237,15 @@ final class ToolExecutor {
         guard let path = arguments["path"]?.stringValue else {
             return .failure("read_file requires path.")
         }
-        let offset = max(arguments["offset"]?.intValue ?? 1, 1)
-        let limit = min(max(arguments["limit"]?.intValue ?? 400, 1), 2_000)
+        var notes: [String] = []
+        let offset = Self.clampedInt(arguments, "offset", default: 1,
+                                     in: 1...Int.max, note: &notes)
+        let limit = Self.clampedInt(arguments, "limit", default: 400,
+                                    in: 1...2_000, note: &notes)
         let result = try workspace.read(path: path, offset: offset, limit: limit)
 
         var output = "path: \(result.path)\n"
+        if !notes.isEmpty { output += notes.joined(separator: "\n") + "\n" }
         output += "range: \(result.startLine)-\(result.endLine) of \(result.totalLines)\n"
         if result.truncated {
             output += "note: truncated; request a later offset for more.\n"
@@ -289,7 +293,9 @@ final class ToolExecutor {
         }
         let path = arguments["path"]?.stringValue ?? "."
         let include = arguments["include"]?.stringValue
-        let maxResults = min(max(arguments["max_results"]?.intValue ?? 100, 1), 500)
+        var notes: [String] = []
+        let maxResults = Self.clampedInt(arguments, "max_results", default: 100,
+                                          in: 1...500, note: &notes)
         let useRegex = arguments["regex"]?.boolValue ?? false
         let outcome = try workspace.searchOutcome(
             query: query,
@@ -311,6 +317,7 @@ final class ToolExecutor {
         var text = outcome.matches
             .map { "\($0.path):\($0.line): \($0.preview)" }
             .joined(separator: "\n")
+        if !notes.isEmpty { text += "\n\n" + notes.joined(separator: "\n") }
         if outcome.truncated {
             text += "\n\n(searched \(outcome.scanned) files and stopped at a ceiling; "
                 + "narrow the path for a complete answer)"
@@ -344,11 +351,14 @@ final class ToolExecutor {
         guard let code = arguments["code"]?.stringValue else {
             return .failure("run_lua requires code.")
         }
-        let requested = arguments["timeout_seconds"]?.intValue ?? 5
-        let timeout = min(max(requested, 1), 10)
+        var notes: [String] = []
+        let timeout = Self.clampedInt(arguments, "timeout_seconds", default: 5,
+                                       in: 1...10, note: &notes)
         let result = await luaEngine.run(code, timeout: TimeInterval(timeout))
 
-        var output = "exit_code: \(result.exitCode)\n"
+        var output = ""
+        if !notes.isEmpty { output += notes.joined(separator: "\n") + "\n" }
+        output += "exit_code: \(result.exitCode)\n"
         output += "duration_ms: \(Int((result.duration * 1_000).rounded()))\n"
         output += "stdout:\n\(result.stdout)\n"
         output += "stderr:\n\(result.stderr)"
@@ -580,7 +590,8 @@ final class ToolExecutor {
               !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return .failure("web_search requires a non-empty query.")
         }
-        let count = min(max(arguments["count"]?.intValue ?? 5, 1), 10)
+        var notes: [String] = []
+        let count = Self.clampedInt(arguments, "count", default: 5, in: 1...10, note: &notes)
 
         var components = URLComponents(string: "https://html.duckduckgo.com/html/")!
         components.queryItems = [URLQueryItem(name: "q", value: query)]
@@ -612,7 +623,9 @@ final class ToolExecutor {
         if results.isEmpty {
             return .success("query: \(query)\nstatus: \(status)\nresults: 0\n-----\nNo results were parsed. The page may be a captcha, a consent screen, or a layout change.")
         }
-        var output = "query: \(query)\nstatus: \(status)\nresults: \(results.count)\n-----\n"
+        var output = "query: \(query)\nstatus: \(status)\nresults: \(results.count)\n"
+        if !notes.isEmpty { output += notes.joined(separator: "\n") + "\n" }
+        output += "-----\n"
         for (index, item) in results.enumerated() {
             output += "\(index + 1). \(item.title)\n   \(item.url)\n"
             if !item.snippet.isEmpty {

@@ -198,6 +198,18 @@ final class PocketDSHTests: XCTestCase {
                                                argumentsJSON: #"{"depth":"deep"}"#)
         XCTAssertFalse(wrongType.isError)
         XCTAssertTrue(wrongType.content.contains("should be a number"), wrongType.content)
+
+        // The other numeric arguments carry the note too, or the fix only covered one door.
+        let readClamped = await executor.execute(name: ToolNames.readFile,
+                                                 argumentsJSON: #"{"path":"a.txt","limit":99999}"#)
+        XCTAssertFalse(readClamped.isError, readClamped.content)
+        XCTAssertTrue(readClamped.content.contains("limit was 99999 and was clamped to 2000"),
+                      readClamped.content)
+
+        let luaClamped = await executor.execute(name: ToolNames.runLua,
+                                                argumentsJSON: #"{"code":"return 1","timeout_seconds":"soon"}"#)
+        XCTAssertFalse(luaClamped.isError, luaClamped.content)
+        XCTAssertTrue(luaClamped.content.contains("should be a number"), luaClamped.content)
     }
 
     @MainActor
