@@ -300,6 +300,21 @@ final class PocketDSHTests: XCTestCase {
                       "the old list survived the reset: \(again.content)")
     }
 
+    /// A fetched page's punctuation arrives as punctuation, not as ampersand codes.
+    ///
+    /// Six entities were decoded, so a page using &rsquo; and &mdash; - most prose on the web -
+    /// reached the model as literal entities. That reads badly and spends tokens on punctuation.
+    func testHTMLEntitiesAreDecoded() {
+        XCTAssertEqual(ToolExecutor.decodeHTMLEntities("it&rsquo;s a &mdash; test"),
+                       "it’s a — test")
+        XCTAssertEqual(ToolExecutor.decodeHTMLEntities("&#8217;&#x2014;"), "’—")
+        XCTAssertEqual(ToolExecutor.decodeHTMLEntities("a &lt; b &amp; c"), "a < b & c")
+        // An entity that is not in the table, and a malformed one, are left alone rather than
+        // eaten: losing text is worse than showing it oddly.
+        XCTAssertEqual(ToolExecutor.decodeHTMLEntities("&unknown; &#;"), "&unknown; &#;")
+        XCTAssertEqual(ToolExecutor.decodeHTMLEntities("100 &#37; done"), "100 % done")
+    }
+
     @MainActor
     func testListFilesCapsWhatItReturns() async throws {
         let root = FileManager.default.temporaryDirectory

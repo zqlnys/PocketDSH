@@ -807,10 +807,10 @@ final class ToolExecutor {
             of: "(?s)<!--.*?-->", with: " ", options: .regularExpression)
         text = text.replacingOccurrences(
             of: "(?s)<[^>]+>", with: " ", options: .regularExpression)
-        for (entity, replacement) in [("&nbsp;", " "), ("&amp;", "&"), ("&lt;", "<"),
-                                      ("&gt;", ">"), ("&quot;", "\""), ("&#39;", "'")] {
-            text = text.replacingOccurrences(of: entity, with: replacement)
-        }
+        // Six entities were decoded and everything else was left as written, so a page using
+        // &rsquo; and &mdash; - which is most prose on the web - reached the model as literal
+        // ampersand codes. That reads badly and spends tokens on punctuation.
+        text = Self.decodeHTMLEntities(text)
         text = text.replacingOccurrences(
             of: "[ \t]+", with: " ", options: .regularExpression)
         text = text.replacingOccurrences(
@@ -818,6 +818,56 @@ final class ToolExecutor {
         text = text.replacingOccurrences(
             of: "\n{3,}", with: "\n\n", options: .regularExpression)
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Named and numeric HTML entities, decoded.
+    nonisolated static func decodeHTMLEntities(_ text: String) -> String {
+        let named = [
+            "nbsp": " ", "amp": "&", "lt": "<", "gt": ">", "quot": "\"", "apos": "'",
+            "mdash": "—", "ndash": "–", "hellip": "…", "rsquo": "’", "lsquo": "‘",
+            "rdquo": "”", "ldquo": "“", "times": "×", "middot": "·", "bull": "•",
+            "copy": "©", "reg": "®", "trade": "™", "deg": "°", "plusmn": "±",
+            "frac12": "½", "frac14": "¼", "euro": "€", "pound": "£", "yen": "¥",
+            "cent": "¢", "sect": "§", "para": "¶", "dagger": "†", "laquo": "«",
+            "raquo": "»", "larr": "←", "rarr": "→", "harr": "↔", "infin": "∞",
+            "ne": "≠", "le": "≤", "ge": "≥", "minus": "−",
+        ]
+        var result = text
+        // Numeric first: &#8217; and &#x2019; are common and unambiguous.
+        if result.contains("&#") {
+            var output = ""
+            var index = result.startIndex
+            while let start = result[index...].range(of: "&#")?.lowerBound {
+                output += result[index..<start]
+                guard let end = result[start...].firstIndex(of: ";"),
+                      result.distance(from: start, to: end) <= 10 else {
+                    output += "&#"
+                    index = result.index(start, offsetBy: 2)
+                    continue
+                }
+                let body = result[result.index(start, offsetBy: 2)..<end]
+                var scalar: UInt32?
+                if body.hasPrefix("x") || body.hasPrefix("X") {
+                    scalar = UInt32(body.dropFirst(), radix: 16)
+                } else {
+                    scalar = UInt32(body)
+                }
+                if let scalar, let unicode = Unicode.Scalar(scalar) {
+                    output.append(Character(unicode))
+                    index = result.index(after: end)
+                } else {
+                    output += "&#"
+                    index = result.index(start, offsetBy: 2)
+                    continue
+                }
+            }
+            output += result[index...]
+            result = output
+        }
+        for (name, replacement) in named {
+            result = result.replacingOccurrences(of: "&\(name);", with: replacement)
+        }
+        return result
     }
 
     private func scheduleAlert(_ arguments: [String: JSONValue]) async throws -> ToolExecutionResult {
