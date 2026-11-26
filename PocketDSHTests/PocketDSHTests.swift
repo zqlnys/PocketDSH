@@ -133,6 +133,28 @@ final class PocketDSHTests: XCTestCase {
         XCTAssertEqual(ToolExecutor.editDistance("", "abc"), 3)
     }
 
+    /// A network failure says what to do, not just what happened.
+    ///
+    /// "The internet connection appears to be offline" leaves a model unable to choose between
+    /// retrying, trying another URL, and telling the user - three different decisions.
+    func testNetworkFailuresAreActionable() {
+        let offline = ToolExecutor.describeNetworkFailure(
+            URLError(.notConnectedToInternet))
+        XCTAssertTrue(offline.contains("no network"), offline)
+        XCTAssertTrue(offline.contains("do not help") || offline.contains("will not help"), offline)
+
+        let timeout = ToolExecutor.describeNetworkFailure(URLError(.timedOut))
+        XCTAssertTrue(timeout.contains("timed out"), timeout)
+
+        let host = ToolExecutor.describeNetworkFailure(URLError(.cannotFindHost))
+        XCTAssertTrue(host.contains("host"), host)
+
+        // An error that is not a URLError still produces something readable.
+        let other = ToolExecutor.describeNetworkFailure(
+            NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "nope"]))
+        XCTAssertTrue(other.contains("nope"), other)
+    }
+
     @MainActor
     func testListFilesCapsWhatItReturns() async throws {
         let root = FileManager.default.temporaryDirectory

@@ -129,6 +129,33 @@ final class ToolExecutor {
         }
     }
 
+    /// A network failure, with what to do about it.
+    ///
+    /// The system message alone - "The internet connection appears to be offline" - leaves a model
+    /// unable to choose between retrying, trying a different URL, and telling the user something
+    /// outside its control has happened. Those are three different decisions.
+    nonisolated static func describeNetworkFailure(_ error: Error) -> String {
+        guard let urlError = error as? URLError else { return error.localizedDescription }
+        switch urlError.code {
+        case .notConnectedToInternet, .networkConnectionLost:
+            return "there is no network connection right now. Retrying will not help until the "
+                + "device is online; tell the user rather than trying another URL."
+        case .timedOut:
+            return "the request timed out. Retrying once is reasonable; a second failure means the "
+                + "site is not answering."
+        case .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
+            return "the host could not be reached. Check the URL for a typo before retrying."
+        case .unsupportedURL, .badURL:
+            return "the URL is not one this tool can fetch."
+        case .appTransportSecurityRequiresSecureConnection:
+            return "iOS refuses plain http for this host. Use https."
+        case .cancelled:
+            return "the request was cancelled."
+        default:
+            return urlError.localizedDescription
+        }
+    }
+
     /// Levenshtein distance, for suggesting a near miss rather than making the model guess again.
     nonisolated static func editDistance(_ a: String, _ b: String) -> Int {
         let left = Array(a), right = Array(b)
@@ -546,7 +573,7 @@ final class ToolExecutor {
         do {
             (data, response) = try await URLSession.shared.data(for: request)
         } catch {
-            return .failure("web_search failed: \(error.localizedDescription)")
+            return .failure("web_search failed: \(Self.describeNetworkFailure(error))")
         }
         if Task.isCancelled {
             return .failure("Cancelled before reading the response.")
@@ -675,7 +702,7 @@ final class ToolExecutor {
         do {
             (data, response) = try await URLSession.shared.data(for: request)
         } catch {
-            return .failure("fetch_url failed: \(error.localizedDescription)")
+            return .failure("fetch_url failed: \(Self.describeNetworkFailure(error))")
         }
         if Task.isCancelled {
             return .failure("Cancelled before reading the response.")
