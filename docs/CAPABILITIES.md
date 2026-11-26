@@ -38,7 +38,7 @@ xml.etree.ElementTree  curses  curses.panel
 
 | 症状 | 影响 |
 | --- | --- |
-| **`LANG=C` 且没有 `LC_ALL` 时，CPython 的命令行参数被截断** | `python3.12 /workspace/a.py` 报 `can't open file '/wor'`。**已缓解**：`LC_ALL` 现在会真的传到 guest（此前桥接层设了它，但 harness 自建的环境列表没有透传，等于空操作），所以 `LC_ALL=C.UTF-8` 时参数完整。**仍会产生**：只有用户脚本显式 `unset LC_ALL; export LANG=C` 时。根因未找到——`mbrtowc` 在 C locale 下经 ctypes 实测完全正确（`setlocale` 返回 "C"，`MB_CUR_MAX` 为 1，每个字节返回长度 1） |
+| **`LANG=C` 且没有 `LC_ALL` 时，`/workspace` 下的路径被破坏** | `python3.12 /workspace/t.py` 报 `can't open file '/wor'`。**范围已收窄**：`/workspace` 本身、`/workspac`、`/abcdefghij`、`/a/b/c/d/e` 全部正常，**只有以 `/workspace/` 开头、因而走工作区映射分支的路径会被破坏**。同样的命令在 `LANG=C.UTF-8` 下正常。**已缓解**：`LC_ALL` 现在真的会传到 guest（此前桥接层设了它、harness 没有透传，等于空操作）。**也未发现**：harness 传给 guest 的 argv 是完整的（`[argv] 1 = "/workspace/t.py"`），所以破坏发生在 guest 内部；`mbrtowc` 在 C locale 下经 ctypes 实测完全正确。根因未找到 |
 | **`pow()`、`math.hypot()`、`math.log2()` 结果错误** |
 | 限制 | 原因 |
 | --- | --- |
