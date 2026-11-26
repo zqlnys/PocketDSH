@@ -1781,9 +1781,17 @@ static int p_execve(void *ctx, e2_machine *m, const char *path, uint64_t argv,
     // exactly what happened when this was made static to avoid a large stack frame -
     // seq inside a subshell started reporting usage errors.
     char args[ARG_COUNT][ARG_MAX]; int nargs = 0;
-    for (int i = 0; i < ARG_COUNT; i++) {
+    // The loop runs one past the array size so that hitting the limit is distinguishable from
+    // reaching the terminator. It used to stop at ARG_COUNT, so a program exec'd with more
+    // arguments was silently given the first ARG_COUNT and no indication that the rest existed.
+    for (int i = 0; i <= ARG_COUNT; i++) {
         uint64_t ptr = 0;
-        if (e2_memory_read(&m->mem, argv + (uint64_t)i * 8, &ptr, 8) != 0 || ptr == 0) break;
+        if (e2_memory_read(&m->mem, argv + (uint64_t)i * 8, &ptr, 8) != 0) break;
+        if (ptr == 0) break;
+        if (i == ARG_COUNT) {
+            fprintf(stderr, "e2: exec was given more than %d arguments\n", ARG_COUNT);
+            return -7;   // E2_E2BIG
+        }
         if (e2_memory_read(&m->mem, ptr, args[nargs], sizeof(args[0])) != 0) break;
         // An argument longer than the buffer is refused rather than silently shortened: the
         // read stops at the limit without a terminator, and the program would then be started with

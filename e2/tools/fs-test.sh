@@ -478,5 +478,21 @@ case "$env_out" in
     *) fail=$((fail + 1)); printf '  FAIL too many env vars: %s\n' "$env_out" ;;
 esac
 
+# More arguments than the exec buffer holds is refused. The loop stopped at the array size, which is
+# indistinguishable from reaching the terminator, so the rest were dropped without a word.
+argc_out=$(E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" PYTHONHOME=/usr LANG=C.UTF-8 E2_CAP=400000000 \
+    timeout 180 "$RUNE" "$ROOT/usr/bin/python3.12" -c \
+    'import subprocess
+argv = ["/bin/busybox", "echo"] + ["a"] * 40
+try:
+    subprocess.run(argv, capture_output=True)
+    print("ran")
+except OSError as e:
+    print("errno", e.errno)' 2>/dev/null)
+case "$argc_out" in
+    *"errno 7"*) pass=$((pass + 1)) ;;
+    *) fail=$((fail + 1)); printf '  FAIL too many arguments: %s\n' "$argc_out" ;;
+esac
+
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
