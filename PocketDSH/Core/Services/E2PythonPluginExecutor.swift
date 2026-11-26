@@ -50,7 +50,12 @@ final class E2PythonPluginExecutor: PythonPluginExecuting {
         // shell: an argument containing $(...) was executed rather than passed. The guest can only
         // reach the workspace, so the damage was bounded - but an argument is not code.
         let quoted = arguments.map(Self.shellQuoted)
-        let command = "python3.12 " + Self.shellQuoted(guestScript) + " " + quoted.joined(separator: " ")
+        // The absolute guest path, so the check above and the command below refer to the same
+        // file. The command used to say `python3.12` and rely on the guest's PATH: the guard
+        // verified one thing and the run used another, which is the shape of mistake that makes a
+        // check look like it is protecting something it is not.
+        let command = "/usr/bin/python3.12 " + Self.shellQuoted(guestScript) + " "
+            + quoted.joined(separator: " ")
         let result = await runtime.run(command: command, workspace: workspace)
         if result.isError {
             return .failure(ExecutorError.guest(result.content))

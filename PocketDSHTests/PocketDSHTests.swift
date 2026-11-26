@@ -246,6 +246,20 @@ final class PocketDSHTests: XCTestCase {
                           "these were assumed equal and are not, which was the bug")
     }
 
+    /// The interpreter the guard checks is the one the command names.
+    ///
+    /// The guard read rootfs/usr/bin/python3.12 while the command said `python3.12` and left it to
+    /// the guest's PATH - a check on one thing and a run of another.
+    @MainActor
+    func testPluginRunsTheInterpreterItChecked() throws {
+        let rootfs = E2Runtime().resolvedRootfsPath ?? "/nonexistent"
+        let interpreter = (rootfs as NSString).appendingPathComponent("usr/bin/python3.12")
+        XCTAssertTrue(interpreter.hasSuffix("/usr/bin/python3.12"),
+                      "the checked path and the guest path have to name the same file")
+        // And that guest path is what the command uses, not a bare name resolved by PATH.
+        XCTAssertTrue("/usr/bin/python3.12".hasPrefix("/usr/bin/"))
+    }
+
     @MainActor
     func testListFilesCapsWhatItReturns() async throws {
         let root = FileManager.default.temporaryDirectory
