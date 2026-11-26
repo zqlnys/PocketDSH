@@ -28,9 +28,12 @@ final class E2PythonPluginExecutor: PythonPluginExecuting {
             return .failure(ExecutorError.noInterpreter)
         }
 
-        // The script goes into the shared temporary directory, which is where E2_WORKSPACE points
-        // for the guest's /workspace.
-        let scratch = FileManager.default.temporaryDirectory
+        // The script has to land in the directory the guest sees as /workspace, and that is the
+        // runtime's own workspace, not the process's temporary directory: they are different
+        // paths, and writing to the wrong one produced a guest that could not find the file.
+        let workspace = URL(fileURLWithPath: runtime.resolvedWorkspacePath, isDirectory: true)
+        try? FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        let scratch = workspace
             .appendingPathComponent("plugin-\(UUID().uuidString).py")
         defer { try? FileManager.default.removeItem(at: scratch) }
         do {
@@ -48,7 +51,7 @@ final class E2PythonPluginExecutor: PythonPluginExecuting {
         // reach the workspace, so the damage was bounded - but an argument is not code.
         let quoted = arguments.map(Self.shellQuoted)
         let command = "python3.12 " + Self.shellQuoted(guestScript) + " " + quoted.joined(separator: " ")
-        let result = await runtime.run(command: command)
+        let result = await runtime.run(command: command, workspace: workspace)
         if result.isError {
             return .failure(ExecutorError.guest(result.content))
         }

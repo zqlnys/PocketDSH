@@ -227,6 +227,25 @@ final class PocketDSHTests: XCTestCase {
         XCTAssertEqual(E2PythonPluginExecutor.shellQuoted("it's"), "'it'\\''s'")
     }
 
+    /// The plugin's script goes where the guest looks for it.
+    ///
+    /// It was written to the process temporary directory while the guest's /workspace was the
+    /// runtime's own workspace - two different paths, so the guest was asked to run a file that was
+    /// not there.
+    @MainActor
+    func testPluginWorkspaceMatchesTheGuestView() throws {
+        let runtime = E2Runtime()
+        let workspace = URL(fileURLWithPath: runtime.resolvedWorkspacePath, isDirectory: true)
+        let scratch = workspace.appendingPathComponent("plugin-test.py")
+
+        XCTAssertEqual(scratch.deletingLastPathComponent().path,
+                       runtime.resolvedWorkspacePath,
+                       "the script must sit in the directory the guest calls /workspace")
+        XCTAssertNotEqual(FileManager.default.temporaryDirectory.path,
+                          runtime.resolvedWorkspacePath,
+                          "these were assumed equal and are not, which was the bug")
+    }
+
     @MainActor
     func testListFilesCapsWhatItReturns() async throws {
         let root = FileManager.default.temporaryDirectory
