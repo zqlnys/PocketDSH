@@ -42,8 +42,12 @@ final class E2PythonPluginExecutor: PythonPluginExecuting {
         // Guest path, not host path: the guest sees this directory as /workspace, and the host
         // path does not exist inside it.
         let guestScript = "/workspace/" + scratch.lastPathComponent
-        let quoted = arguments.map { "\"" + $0.replacingOccurrences(of: "\"", with: "\\\"") + "\"" }
-        let command = "python3.12 " + quotedPath(guestScript) + " " + quoted.joined(separator: " ")
+        // Single quotes, with the one escape a single-quoted string needs. Wrapping in double
+        // quotes and escaping only the quote character left $, backticks and backslashes to the
+        // shell: an argument containing $(...) was executed rather than passed. The guest can only
+        // reach the workspace, so the damage was bounded - but an argument is not code.
+        let quoted = arguments.map(Self.shellQuoted)
+        let command = "python3.12 " + Self.shellQuoted(guestScript) + " " + quoted.joined(separator: " ")
         let result = await runtime.run(command: command)
         if result.isError {
             return .failure(ExecutorError.guest(result.content))
@@ -54,8 +58,12 @@ final class E2PythonPluginExecutor: PythonPluginExecuting {
     // The harness takes one command line, not an argument vector, so this goes through the shell
     // exactly as a user's command would.
 
-    private func quotedPath(_ path: String) -> String {
-        "\"" + path.replacingOccurrences(of: "\"", with: "\\\"") + "\""
+    /// A string the shell reads as one word, whatever it contains.
+    ///
+    /// The standard form: wrap in single quotes and replace each embedded quote with the four
+    /// characters that close, escape and reopen. Nothing else inside single quotes is special.
+    nonisolated static func shellQuoted(_ text: String) -> String {
+        "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     enum ExecutorError: LocalizedError {

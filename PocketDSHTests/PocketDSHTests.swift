@@ -212,6 +212,21 @@ final class PocketDSHTests: XCTestCase {
         XCTAssertTrue(luaClamped.content.contains("should be a number"), luaClamped.content)
     }
 
+    /// A plugin argument is an argument, not shell code.
+    ///
+    /// The old form wrapped in double quotes and escaped only the quote character, so $, backticks
+    /// and backslashes reached the shell: an argument containing $(...) was executed. The guest can
+    /// only reach the workspace, so the blast radius was small, and that is not the point.
+    func testPluginArgumentsAreShellSafe() {
+        XCTAssertEqual(E2PythonPluginExecutor.shellQuoted("plain"), "'plain'")
+        XCTAssertEqual(E2PythonPluginExecutor.shellQuoted("has space"), "'has space'")
+        // The classic injection: a command substitution must stay a literal.
+        XCTAssertEqual(E2PythonPluginExecutor.shellQuoted("$(whoami)"), "'$(whoami)'")
+        XCTAssertEqual(E2PythonPluginExecutor.shellQuoted("`id`"), "'`id`'")
+        // A single quote inside is closed, escaped and reopened.
+        XCTAssertEqual(E2PythonPluginExecutor.shellQuoted("it's"), "'it'\\''s'")
+    }
+
     @MainActor
     func testListFilesCapsWhatItReturns() async throws {
         let root = FileManager.default.temporaryDirectory
