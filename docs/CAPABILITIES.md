@@ -38,7 +38,7 @@ xml.etree.ElementTree  curses  curses.panel
 
 | 症状 | 影响 |
 | --- | --- |
-| **`LANG=C` 且没有 `LC_ALL` 时，`/workspace` 下的路径被破坏** | `python3.12 /workspace/t.py` 报 `can't open file '/wor'`。**范围已收窄**：`/workspace` 本身、`/workspac`、`/abcdefghij`、`/a/b/c/d/e` 全部正常，**只有以 `/workspace/` 开头、因而走工作区映射分支的路径会被破坏**。同样的命令在 `LANG=C.UTF-8` 下正常。**已缓解**：`LC_ALL` 现在真的会传到 guest（此前桥接层设了它、harness 没有透传，等于空操作）。**也未发现**：harness 传给 guest 的 argv 是完整的（`[argv] 1 = "/workspace/t.py"`），所以破坏发生在 guest 内部；`mbrtowc` 在 C locale 下经 ctypes 实测完全正确。根因未找到 |
+| **`LANG=C` 且没有 `LC_ALL` 时，长参数被截断** | **精确边界：9 个字符及以下的参数完好，10 个及以上被截成 2 个字符。** `python3.12 - /aaaaaaaaa` 得到 `arg1 9`，而 `/aaaaaaaaaa` 得到 `arg1 2`。同样的长度在 `LANG=C.UTF-8` 下完全正常（`arg1 11`）。**已缓解**：`LC_ALL` 现在真的会透传到 guest（此前桥接层设了它、harness 没透传，等于空操作）。**已排除**：harness 传给 guest 的 argv 是完整的（`[argv] 1` 追踪可见）；`mbrtowc` 在 C locale 下经 ctypes 实测正确（`setlocale` → "C"，`MB_CUR_MAX` → 1，每字节返回长度 1）；关闭 `PYTHONCOERCECLOCALE` 不改变结果。根因未找到 |
 | **`pow()`、`math.hypot()`、`math.log2()` 结果错误** |
 | 限制 | 原因 |
 | --- | --- |
