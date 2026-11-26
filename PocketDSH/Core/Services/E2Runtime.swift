@@ -104,7 +104,17 @@ final class E2Runtime: ObservableObject {
             return e2_bridge_run(rootfs.path, outURL.path, Int32(argv.count), buffer.baseAddress)
         }
 
-        let output = readCapped(outURL)
+        // An output file that cannot be read is not a command with no output. `try?` returned an
+        // empty string, so a permissions or storage problem looked exactly like `true`: a success
+        // with nothing to show.
+        let captured: (text: String, failure: String?)
+        captured = readCapped(outURL)
+        if let failure = captured.failure, status == 0 {
+            sessionError = failure
+            state = .failed(failure)
+            return .failure(failure)
+        }
+        let output = captured.text
         if status < 0 {
             sessionError = "Tier D could not start the interpreter."
             state = .failed(sessionError)
@@ -133,23 +143,60 @@ final class E2Runtime: ObservableObject {
     /// `yes` or a verbose build log filled memory and the model's context at once, and neither
     /// failure names itself. The head and the tail are kept, because a log is usually useful at
     /// both ends and least useful in the middle.
-    private func readCapped(_ url: URL, head: Int = 24_000, tail: Int = 8_000) -> String {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return "" }
+    /// Drops a partial UTF-8 sequence at a cut, so the seam does not become a replacement character.
+    nonisolated static func trimmedToUTF8(_ data: Data, fromEnd: Bool) -> Data {
+        guard !data.isEmpty else { return data }
+        let bytes = [UInt8](data)
+        if fromEnd {
+            // Walk back over continuation bytes to the start of the last character; if that
+            // character is incomplete, drop it.
+            var index = bytes.count - 1
+            var steps = 0
+            while index >= 0, bytes[index] & 0xC0 == 0x80, steps < 4 {
+                index -= 1
+                steps += 1
+            }
+            guard index >= 0 else { return data }
+            let lead = bytes[index]
+            let expected: Int
+            if lead & 0x80 == 0 { expected = 1 }
+            else if lead & 0xE0 == 0xC0 { expected = 2 }
+            else if lead & 0xF0 == 0xE0 { expected = 3 }
+            else if lead & 0xF8 == 0xF0 { expected = 4 }
+            else { return data }
+            let have = bytes.count - index
+            return have < expected ? Data(bytes[0..<index]) : data
+        }
+        // At the start, drop leading continuation bytes.
+        var index = 0
+        while index < bytes.count, index < 3, bytes[index] & 0xC0 == 0x80 { index += 1 }
+        return index == 0 ? data : Data(bytes[index...])
+    }
+
+    private func readCapped(_ url: URL, head: Int = 24_000,
+                            tail: Int = 8_000) -> (text: String, failure: String?) {
+        guard let handle = try? FileHandle(forReadingFrom: url) else {
+            return ("", "Tier D finished but its output could not be read. The command may have run; "
+                + "nothing of what it printed survived.")
+        }
         defer { try? handle.close() }
         let size = (try? handle.seekToEnd()) ?? 0
         if size <= UInt64(head + tail) {
             try? handle.seek(toOffset: 0)
             let data = (try? handle.readToEnd()) ?? Data()
-            return String(decoding: data, as: UTF8.self)
+            return (String(decoding: data, as: UTF8.self), nil)
         }
         try? handle.seek(toOffset: 0)
         let first = (try? handle.read(upToCount: head)) ?? Data()
         try? handle.seek(toOffset: size - UInt64(tail))
         let last = (try? handle.read(upToCount: tail)) ?? Data()
         let omitted = Int(size) - head - tail
-        return String(decoding: first, as: UTF8.self)
+        // Split at a character boundary rather than mid-sequence: cutting a multi-byte character
+        // in half put a replacement character at the seam, in the one place a reader is already
+        // being told that something is missing.
+        return (String(decoding: Self.trimmedToUTF8(first, fromEnd: true), as: UTF8.self)
             + "\n… \(omitted) bytes omitted …\n"
-            + String(decoding: last, as: UTF8.self)
+            + String(decoding: Self.trimmedToUTF8(last, fromEnd: false), as: UTF8.self), nil)
     }
 
     /// Stops the run in progress. Called from the cancel path, on any thread.

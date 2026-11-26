@@ -413,6 +413,23 @@ final class E2BackendTests: XCTestCase {
                       "96 MB allocated inside a 64 MB budget: \(result.content)")
     }
 
+    /// A cut in the middle of a multi-byte character does not become a replacement character.
+    ///
+    /// The head and tail are cut at byte offsets, so a character straddling the seam was split in
+    /// half - and the one place a reader is already being told something is missing is the worst
+    /// place for a spurious U+FFFD.
+    func testCappedBoundariesRespectCharacters() {
+        // "中" is three bytes; a two-byte tail ends inside it.
+        let data = Data([0xE4, 0xB8])              // first two bytes of 中
+        XCTAssertEqual(E2Runtime.trimmedToUTF8(data, fromEnd: true), Data())
+
+        let whole = Data([0x61, 0xE4, 0xB8, 0xAD]) // "a中"
+        XCTAssertEqual(E2Runtime.trimmedToUTF8(whole, fromEnd: true), whole)
+
+        let leading = Data([0xB8, 0xAD, 0x62])     // tail of 中 then "b"
+        XCTAssertEqual(E2Runtime.trimmedToUTF8(leading, fromEnd: false), Data([0x62]))
+    }
+
     /// A command that fails has to say so.
     ///
     /// The runtime only checked for a negative status, so `exit 3` and a missing command both
