@@ -432,5 +432,18 @@ case "$env_out" in
     *) fail=$((fail + 1)); printf '  FAIL LC_ALL did not reach the guest\n' ;;
 esac
 
+echo "argument size"
+
+# The guest stack's string area was a fixed two kilobytes with no bound on the write, so a long
+# command line ran past the end of it silently. It is sized from what has to go in it now, and
+# something that genuinely cannot fit is refused instead of corrupting the stack.
+long_script=$(python3 -c 'print("BEGIN{s=0;" + "s+=1;" * 400 + "print s}")')
+long_out=$(E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" timeout 120 \
+    "$RUNE" "$BUSYBOX" awk "$long_script" 2>&1 | head -2)
+case "$long_out" in
+    "400") pass=$((pass + 1)) ;;
+    *) fail=$((fail + 1)); printf '  FAIL long argument: %s\n' "$long_out" ;;
+esac
+
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

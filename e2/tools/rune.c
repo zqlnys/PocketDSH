@@ -1428,20 +1428,48 @@ static int start_image(e2_machine *m, const char *path, char args[][ARG_MAX], in
     // They were sized 16 and 2048 when args held eight entries of 1024, so raising those
     // without raising these just moved the truncation: a command with thirty arguments
     // reached the guest with fourteen.
-    uint64_t top = m->cpu.sp - 64, strs = top - 2048, cur = strs;
+    // The string area is sized from what has to go in it, rather than being a fixed two
+    // kilobytes. It was fixed, and an awk command line with a long script plus the environment
+    // wrote past the end of it without anything noticing - the check below turned that silent
+    // overflow into a refusal, which is how it was found.
+    uint64_t need = 0;
+    for (int i = 0; i < nargs; i++) need += strlen(args[i]) + 1;
+    for (int i = 0; i < nenv; i++) need += strlen(envs[i]) + 1;
+    need = (need + 16) & ~(uint64_t)15;
+    if (need > (64ULL << 10)) {
+        fprintf(stderr, "e2: the command line and environment need %llu bytes, more than the "
+                        "guest stack allows\n", (unsigned long long)need);
+        return -2;
+    }
+    const uint64_t top = m->cpu.sp - 64, strs = top - need, cur_start = strs;
+    uint64_t cur = cur_start;
     uint64_t argp[ARG_COUNT + 1], envp[65];
     // Strings are packed back to back, as a real kernel does. Padding each one
     // to 16 bytes changes their addresses, and an aligned address takes a
     // different branch inside musl's word-at-a-time strlen - which shows up as
     // a divergence in any trace comparison and is purely an artifact.
+    // Bounded. The string area is a fixed two kilobytes just below the pointer array, and the
+    // loop wrote into it without checking - so a command long enough to fill it ran past the end
+    // into whatever the stack held next. run_linux passes the whole command line as one argument,
+    // so this was reachable by pasting something long rather than by doing anything unusual.
     for (int i = 0; i < nargs; i++) {
         size_t l = strlen(args[i]) + 1;
+        if (cur + l > top) {
+            fprintf(stderr, "e2: the command line is too long for the guest stack "
+                            "(%d argument(s), %llu bytes)\n", nargs,
+                    (unsigned long long)(cur - cur_start));
+            return -2;
+        }
         e2_memory_write(&m->mem, cur, args[i], l);
         argp[i] = cur;
         cur += l;
     }
     for (int i = 0; i < nenv; i++) {
         size_t l = strlen(envs[i]) + 1;
+        if (cur + l > top) {
+            fprintf(stderr, "e2: the environment is too long for the guest stack\n");
+            return -2;
+        }
         e2_memory_write(&m->mem, cur, envs[i], l);
         envp[i] = cur;
         cur += l;
@@ -1464,7 +1492,12 @@ static int start_image(e2_machine *m, const char *path, char args[][ARG_MAX], in
     // strings just above.
     uint64_t sp = (strs - ((ARG_COUNT + 66) * 8 + 512)) & ~15ULL;
     // AT_* come from <elf.h>.
+    // Sized to what can actually be written: argc + argv + env + the two terminators + auxv.
     uint64_t st[80];
+    if (1 + nargs + 1 + nenv + 1 + 40 > 80) {
+        fprintf(stderr, "e2: too many arguments or environment entries (%d/%d)\n", nargs, nenv);
+        return -2;
+    }
     int k = 0;
     uint64_t plat = 0;
     {
