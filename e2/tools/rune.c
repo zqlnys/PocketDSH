@@ -543,7 +543,11 @@ static long fs_read(void *c, int fd, void *b, size_t n, long long o) {
             //
             // The pipe has truly ended only when nothing else holds its write end. The
             // read end we are sitting on accounts for one reference.
-            if (g_refs[TAB(c)[fd].host] > 1)
+            // Through the guard every other use goes through. A bare index was the one place
+            // that trusted the host descriptor to be inside the table, and a process with more
+            // than 1024 host descriptors would read past the end of it here.
+            const int host = TAB(c)[fd].host;
+            if (host >= 0 && host < 1024 && g_refs[host] > 1)
                 return -EAGAIN;
             return 0;
         }
