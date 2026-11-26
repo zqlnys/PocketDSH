@@ -2,7 +2,7 @@
 
 这份文件说的每一件事都有对应的测试；数字是本地实测的，不是估计。
 
-**最后核对：2026-11-24，版本 0.1.20261124 (915)。**
+**最后核对：2026-11-26，版本 0.1.20261126 (963)。**
 
 ## 能用
 
@@ -10,13 +10,14 @@
 | --- | --- |
 | busybox 全套 applet | 384 条差分用例与 qemu 逐字一致（1 条已知差异，见下） |
 | CPython 3.12 + 标准库 | 30 个模块的广度探针、13 行窄探针，输出与 qemu 逐字一致 |
-| `fork` / `exec` / `wait4` | 一个进程里 fork + wait 100 次；`subprocess` 可运行 |
+| `fork` / `exec` / `wait4` | 一个进程里 fork + wait 100 次；`subprocess` 可运行；失败的 `exec` 返回 `ENOENT`，过长的参数返回 `E2BIG` |
 | 管道、`epoll`、`select` | shell 管道、`select.epoll` 建 12 个、`select.select` 与 `selectors` 与 qemu 一致 |
 | 真实休眠 | `time.sleep(0.25)` 真的等 250 ms，与 qemu 一致 |
 | 取消正在跑的命令 | 每 65536 条指令检查一次，300 ms 内停下 |
 | 写入上限 | 运行期 64 MB `RLIMIT_FSIZE`，超出时写失败 |
 | 内存上限 | `E2_HEAP_MB` 同时约束 `brk` 与 `mmap`，超出抛 `MemoryError` |
 | 工作区挂载 | guest 的 `/workspace` 就是项目目录 |
+| 深嵌套的子 shell | 1000 层括号嵌套仍能运行 |
 | **27 个系统调用** | `tools/syscall-probe.py` 逐行与 qemu 对比：`getpid`、`stat`、`symlink`、`hardlink`、`chmod`、`listdir`、`walk`、`pipe`、`select`、`lseek`、`getcwd`、`time` 等 |
 
 ## 这些模块可导入
@@ -60,8 +61,8 @@ xml.etree.ElementTree  curses  curses.panel
 ## 性能
 
 ```
-合成循环       50 ns/指令
-真实负载       72 ns/指令（CPython 启动，3910 万条指令）
+合成循环       49–52 ns/指令
+真实负载       73 ns/指令（CPython 启动，3910 万条指令）
 ```
 
 **分发不是瓶颈**：Python 负载上每条指令只有 2.0 次守卫比较（加前门判别前是 33.6 次）。剩下的差距是缓存行为。
@@ -78,7 +79,7 @@ xml.etree.ElementTree  curses  curses.panel
 cd e2
 make test                                    # 334 条指令级检查
 ./tools/diff-test.sh <busybox.static> ./tools/rune   # 384 条与 qemu 对比
-./tools/fs-test.sh                           # 68 条端到端
+./tools/fs-test.sh                           # 77 条端到端
 ./tools/perf-check.sh                        # 两个性能数字
 ```
 
@@ -87,5 +88,5 @@ iOS 侧：
 ```sh
 cd ..
 ./scripts/preflight.sh                       # 预检
-# CI 会跑 85 条设备测试
+# CI 会跑 103 条设备测试
 ```
