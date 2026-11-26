@@ -129,7 +129,15 @@ int e2_bridge_run_in(const char *rootfs, const char *workspace, const char *out_
         close(saved_err);
         return -1;
     }
-    if (dup2(sink, STDOUT_FILENO) < 0 || dup2(sink, STDERR_FILENO) < 0) {
+    // Restored before returning, because the first dup2 can succeed while the second fails. The
+    // short-circuit || then left stdout pointing at a file that this function closes, and every
+    // later write to stdout in the process - for the rest of its life - went to a closed
+    // descriptor. One failed run silently broke the ones after it.
+    const int out_redirected = dup2(sink, STDOUT_FILENO);
+    const int err_redirected = out_redirected < 0 ? -1 : dup2(sink, STDERR_FILENO);
+    if (out_redirected < 0 || err_redirected < 0) {
+        if (out_redirected >= 0) dup2(saved_out, STDOUT_FILENO);
+        if (err_redirected >= 0) dup2(saved_err, STDERR_FILENO);
         close(sink);
         close(saved_out);
         close(saved_err);

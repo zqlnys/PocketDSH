@@ -73,6 +73,41 @@ final class LinuxToolTests: XCTestCase {
         XCTAssertTrue(result.isError, "a failed command reached the agent as success")
     }
 
+    /// A run that cannot be started leaves the process able to try again.
+    ///
+    /// The redirect restored stdout only on the path that succeeded. When the first dup2 worked and
+    /// the second failed, the function returned with stdout still pointing at a file it then
+    /// closed - so every later write in the process went to a closed descriptor. One failed run
+    /// silently broke the ones after it.
+    @MainActor
+    func testFailedStartDoesNotPoisonTheNextRun() async throws {
+        let root = Bundle.main.url(forResource: "alpine-root", withExtension: nil)
+            ?? URL(fileURLWithPath: "/nonexistent")
+        try XCTSkipUnless(FileManager.default.isReadableFile(
+                            atPath: root.appendingPathComponent("bin/busybox").path),
+                          "needs a readable busybox in the guest root")
+
+        let project = FileManager.default.temporaryDirectory
+            .appendingPathComponent("bridge-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: project) }
+
+        let executor = makeExecutor(root: project, tier: .tierD)
+        // A run whose output file cannot be created: the tool reports a failure.
+        let failed = await executor.execute(
+            name: ToolNames.runLinux,
+            argumentsJSON: #"{"command":"true"}"#
+        )
+        XCTAssertFalse(failed.content.isEmpty)
+
+        // The next run must still be able to produce output.
+        let after = await executor.execute(
+            name: ToolNames.runLinux,
+            argumentsJSON: #"{"command":"echo still-works"}"#
+        )
+        XCTAssertTrue(after.content.contains("still-works"), after.content)
+    }
+
     /// The tool refuses a command it was not given, rather than running something arbitrary.
     @MainActor
     func testRunLinuxRequiresACommand() async throws {
