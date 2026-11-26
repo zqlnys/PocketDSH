@@ -38,7 +38,7 @@ xml.etree.ElementTree  curses  curses.panel
 
 | 症状 | 影响 |
 | --- | --- |
-| **`LANG=C` 且没有 `LC_ALL` 时，长参数被截断** | **精确边界：9 个字符及以下的参数完好，10 个及以上被截成 2 个字符。** `python3.12 - /aaaaaaaaa` 得到 `arg1 9`，而 `/aaaaaaaaaa` 得到 `arg1 2`。同样的长度在 `LANG=C.UTF-8` 下完全正常（`arg1 11`）。**已缓解**：`LC_ALL` 现在真的会透传到 guest（此前桥接层设了它、harness 没透传，等于空操作）。**已排除**：harness 传给 guest 的 argv 是完整的（`[argv] 1` 追踪可见）；`mbrtowc` 在 C locale 下经 ctypes 实测正确（`setlocale` → "C"，`MB_CUR_MAX` → 1，每字节返回长度 1）；关闭 `PYTHONCOERCECLOCALE` 不改变结果。根因未找到 |
+| **`LANG=C` 且没有 `LC_ALL` 时，长参数被截断** | **精确边界：9 个字符及以下的参数完好，10 个及以上被截成 2 个字符。** `python3.12 - /aaaaaaaaa` 得到 `arg1 9`，而 `/aaaaaaaaaa` 得到 `arg1 2`。同样的长度在 `LANG=C.UTF-8` 下完全正常（`arg1 11`）。**已缓解**：`LC_ALL` 现在真的会透传到 guest（此前桥接层设了它、harness 没透传，等于空操作）。**已排除**：harness 传给 guest 的 argv 是完整的（`[argv] 1` 追踪可见）；`mbrtowc` 在 C locale 下经 ctypes 实测正确（`setlocale` → "C"，`MB_CUR_MAX` → 1，每字节返回长度 1）；关闭 `PYTHONCOERCECLOCALE` 不改变结果；`sys.argv[0]` 在两种 locale 下都是 1 个字符，但那是 `python3 -` 的正常行为，不是缺陷。**四轮之后停止追查**——缓解措施有效，触发条件是用户显式 `unset LC_ALL` 再 `export LANG=C`，继续投入的回报低于成本 |
 | **`pow()`、`math.hypot()`、`math.log2()` 结果错误** |
 | 限制 | 原因 |
 | --- | --- |
