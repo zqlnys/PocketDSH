@@ -244,6 +244,7 @@ final class AgentRunner: ObservableObject {
         todos = []
         deliverables = []
         toolExecutor.resetDeliverables()
+        toolExecutor.resetTodos()
         save()
     }
 

@@ -195,6 +195,15 @@ final class ToolExecutor {
         return previous[right.count]
     }
 
+    /// Forgets the plan a previous conversation produced.
+    ///
+    /// `todo_write` merges against this list by content, so leaving it made the first plan of a new
+    /// conversation inherit the previous one's statuses.
+    func resetTodos() {
+        todos = []
+        onTodosChanged?([])
+    }
+
     /// Forgets what a previous conversation delivered.
     ///
     /// The list lives here as well as on the runner, and `present` counts against it - so leaving

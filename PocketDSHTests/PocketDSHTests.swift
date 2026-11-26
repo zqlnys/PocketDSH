@@ -283,7 +283,17 @@ final class PocketDSHTests: XCTestCase {
                                                argumentsJSON: #"{"path":"a.md"}"#)
         XCTAssertFalse(presented.isError, presented.content)
 
+        // The plan is stored the same way and has the same problem: todo_write merges by content,
+        // so a new conversation's first plan inherited the previous one's statuses.
+        _ = await executor.execute(
+            name: ToolNames.todoWrite,
+            argumentsJSON: #"{"todos":[{"content":"old step","status":"completed"}]}"#)
+        XCTAssertFalse(executor.todos.isEmpty)
+
         executor.resetDeliverables()
+        executor.resetTodos()
+        XCTAssertTrue(executor.todos.isEmpty, "the plan survived the reset")
+
         let again = await executor.execute(name: ToolNames.present,
                                            argumentsJSON: #"{"path":"a.md"}"#)
         XCTAssertTrue(again.content.contains("presented 1 file"),
