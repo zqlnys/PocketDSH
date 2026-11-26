@@ -283,4 +283,11 @@ public enum ToolNames {
     /// the final answer, so intermediate reasoning never enters the parent's
     /// context.
     public static let subagent = "subagent"
+
+    /// Every name this build answers to, for suggesting a near miss when one is unknown.
+    public static let all: [String] = [
+        listFiles, readFile, writeFile, searchFiles, applyPatch, runLua, runLinux,
+        scheduleReminder, scheduleAlert, prepareMessage, prepareCall, fetchURL,
+        webSearch, todoWrite, present, useSkill, subagent,
+    ]
 }

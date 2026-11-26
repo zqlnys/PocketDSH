@@ -103,6 +103,36 @@ final class PocketDSHTests: XCTestCase {
         XCTAssertTrue(empty.content.contains("empty"), empty.content)
     }
 
+    /// A tool name that does not exist suggests the one it probably meant.
+    ///
+    /// "Unknown tool: read_fil" makes the model guess again and spend another turn; naming the near
+    /// miss makes it a typo it can correct immediately.
+    @MainActor
+    func testUnknownToolSuggestsNearMiss() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("unknown-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let executor = ToolExecutor(
+            workspace: WorkspaceFileSystem(root: root),
+            luaEngine: LuaEngine(),
+            systemActions: SystemActionStore(),
+            runtimeStore: RuntimeCapabilityStore(defaults: UserDefaults(suiteName: "unknown")!)
+        )
+        let result = await executor.execute(name: "read_fil", argumentsJSON: "{}")
+        XCTAssertTrue(result.isError)
+        XCTAssertTrue(result.content.contains("read_file"),
+                      "no suggestion offered: \(result.content)")
+    }
+
+    /// The distance function does what the suggestion depends on.
+    func testEditDistance() {
+        XCTAssertEqual(ToolExecutor.editDistance("read_file", "read_file"), 0)
+        XCTAssertEqual(ToolExecutor.editDistance("read_fil", "read_file"), 1)
+        XCTAssertEqual(ToolExecutor.editDistance("", "abc"), 3)
+    }
+
     @MainActor
     func testListFilesCapsWhatItReturns() async throws {
         let root = FileManager.default.temporaryDirectory

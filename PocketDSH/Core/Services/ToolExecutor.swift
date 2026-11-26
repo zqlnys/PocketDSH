@@ -109,11 +109,41 @@ final class ToolExecutor {
             case ToolNames.useSkill:
                 return try useSkill(arguments)
             default:
-                return .failure("Unknown tool: \(name)")
+                // Naming the near misses turns a hallucinated tool into a typo the model can
+                // correct in the same turn. Listing every tool would be long and mostly noise;
+                // the two closest names are neither.
+                let known = ToolNames.all
+                let close = known
+                    .map { ($0, Self.editDistance($0.lowercased(), name.lowercased())) }
+                    .sorted { $0.1 < $1.1 }
+                    .prefix(3)
+                    .map(\.0)
+                var message = "Unknown tool: \(name)."
+                if !close.isEmpty {
+                    message += " Did you mean \(close.joined(separator: ", "))?"
+                }
+                return .failure(message)
             }
         } catch {
             return .failure(error.localizedDescription)
         }
+    }
+
+    /// Levenshtein distance, for suggesting a near miss rather than making the model guess again.
+    static func editDistance(_ a: String, _ b: String) -> Int {
+        let left = Array(a), right = Array(b)
+        if left.isEmpty { return right.count }
+        if right.isEmpty { return left.count }
+        var previous = Array(0...right.count)
+        for i in 1...left.count {
+            var current = [i] + Array(repeating: 0, count: right.count)
+            for j in 1...right.count {
+                let cost = left[i - 1] == right[j - 1] ? 0 : 1
+                current[j] = min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost)
+            }
+            previous = current
+        }
+        return previous[right.count]
     }
 
     /// Stops whatever a running tool is doing. Called from the cancel path, on any thread.
