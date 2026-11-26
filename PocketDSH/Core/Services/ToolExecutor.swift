@@ -130,7 +130,7 @@ final class ToolExecutor {
     }
 
     /// Levenshtein distance, for suggesting a near miss rather than making the model guess again.
-    static func editDistance(_ a: String, _ b: String) -> Int {
+    nonisolated static func editDistance(_ a: String, _ b: String) -> Int {
         let left = Array(a), right = Array(b)
         if left.isEmpty { return right.count }
         if right.isEmpty { return left.count }
