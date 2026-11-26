@@ -8,6 +8,18 @@ public enum JSONValue: Codable, Hashable, Sendable {
     case array([JSONValue])
     case object([String: JSONValue])
 
+    /// What kind of value this is, for messages that have to say what arrived.
+    public var kindDescription: String {
+        switch self {
+        case .null: return "null"
+        case .bool: return "a boolean"
+        case .number: return "a number"
+        case .string: return "a string"
+        case .array: return "an array"
+        case .object: return "an object"
+        }
+    }
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         if container.decodeNil() {

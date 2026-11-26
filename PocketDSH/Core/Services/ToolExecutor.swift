@@ -62,8 +62,16 @@ final class ToolExecutor {
             }
         }
 
-        guard let arguments = parseArguments(argumentsJSON) else {
-            return .failure("Tool arguments must be a JSON object.")
+        let arguments: [String: JSONValue]
+        switch parseArgumentsDetailed(argumentsJSON) {
+        case .success(let parsed):
+            arguments = parsed
+        case .failure(let reason):
+            // The message has to say which way the call was wrong. "Must be a JSON object" for a
+            // malformed string tells the model nothing it can act on, so it sends the same thing
+            // again - and that is a whole turn spent on a message that could have said "unexpected
+            // end of input".
+            return .failure("Tool arguments are not usable: \(reason)")
         }
 
         do {
@@ -774,11 +782,33 @@ final class ToolExecutor {
         systemActions.prepareCall(number: number)
         return .success("Prepared a phone call for the user. Nothing was dialed. The system will ask for confirmation.")
     }
-    private func parseArguments(_ json: String) -> [String: JSONValue]? {
-        guard let data = json.data(using: .utf8),
-              let value = try? JSONDecoder().decode(JSONValue.self, from: data) else {
-            return nil
+    private enum ArgumentParse {
+        case success([String: JSONValue])
+        case failure(String)
+    }
+
+    private func parseArgumentsDetailed(_ json: String) -> ArgumentParse {
+        let trimmed = json.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return .failure("the argument string was empty; send an object such as {}")
         }
-        return value.objectValue
+        guard let data = trimmed.data(using: .utf8) else {
+            return .failure("the argument string is not valid UTF-8")
+        }
+        let decoded: JSONValue
+        do {
+            decoded = try JSONDecoder().decode(JSONValue.self, from: data)
+        } catch {
+            return .failure("\(error.localizedDescription). Received: \(trimmed.prefix(120))")
+        }
+        guard let object = decoded.objectValue else {
+            return .failure("a JSON object is required, and this was \(decoded.kindDescription)")
+        }
+        return .success(object)
+    }
+
+    private func parseArguments(_ json: String) -> [String: JSONValue]? {
+        if case .success(let object) = parseArgumentsDetailed(json) { return object }
+        return nil
     }
 }

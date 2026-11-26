@@ -70,6 +70,39 @@ final class PocketDSHTests: XCTestCase {
                              "writing under /dev/null must fail, or the test proves nothing")
     }
 
+    /// A bad argument string says how it is bad.
+    ///
+    /// "Must be a JSON object" for a malformed string tells the model nothing it can act on, so it
+    /// sends the same thing again and a turn is spent on a message that could have said what was
+    /// wrong.
+    @MainActor
+    func testMalformedArgumentsExplainThemselves() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("args-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let executor = ToolExecutor(
+            workspace: WorkspaceFileSystem(root: root),
+            luaEngine: LuaEngine(),
+            systemActions: SystemActionStore(),
+            runtimeStore: RuntimeCapabilityStore(defaults: UserDefaults(suiteName: "args")!)
+        )
+
+        let broken = await executor.execute(name: ToolNames.listFiles, argumentsJSON: "{")
+        XCTAssertTrue(broken.isError)
+        XCTAssertFalse(broken.content.contains("must be a JSON object"),
+                       "the vague message is back: \(broken.content)")
+
+        let notObject = await executor.execute(name: ToolNames.listFiles, argumentsJSON: "[1, 2]")
+        XCTAssertTrue(notObject.isError)
+        XCTAssertTrue(notObject.content.contains("array"), notObject.content)
+
+        let empty = await executor.execute(name: ToolNames.listFiles, argumentsJSON: "   ")
+        XCTAssertTrue(empty.isError)
+        XCTAssertTrue(empty.content.contains("empty"), empty.content)
+    }
+
     @MainActor
     func testListFilesCapsWhatItReturns() async throws {
         let root = FileManager.default.temporaryDirectory
