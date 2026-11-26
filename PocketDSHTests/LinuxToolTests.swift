@@ -141,6 +141,13 @@ final class LinuxToolTests: XCTestCase {
         let executor = makeExecutor(root: FileManager.default.temporaryDirectory, tier: .tierD)
         let result = await executor.execute(name: ToolNames.runLinux, argumentsJSON: "{}")
         XCTAssertTrue(result.isError)
-        XCTAssertTrue(result.content.contains("requires command"), result.content)
+        XCTAssertTrue(result.content.contains("requires a non-empty command"), result.content)
+
+        // Whitespace is not a command either: it used to run and report success with no output.
+        for blank in ["   ", "\n\t "] {
+            let spaces = await executor.execute(name: ToolNames.runLinux,
+                                                argumentsJSON: "{\"command\":\"\(blank)\"}")
+            XCTAssertTrue(spaces.isError, "whitespace ran as a command: \(spaces.content)")
+        }
     }
 }

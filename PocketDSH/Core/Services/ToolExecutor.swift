@@ -369,8 +369,13 @@ final class ToolExecutor {
 
 
     private func runLinux(_ arguments: [String: JSONValue]) async throws -> ToolExecutionResult {
-        guard let command = arguments["command"]?.stringValue, !command.isEmpty else {
-            return .failure("run_linux requires command.")
+        // Trimmed before the check: "   " passed `!command.isEmpty`, ran an empty shell command
+        // and came back as a success with no output - which reads as "the command ran and printed
+        // nothing" rather than "no command was given".
+        let command = (arguments["command"]?.stringValue ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !command.isEmpty else {
+            return .failure("run_linux requires a non-empty command.")
         }
         // Two Linux backends. Which one runs is the user's choice, and it is reported in the
         // output so a transcript never leaves it ambiguous which interpreter produced it.
