@@ -237,6 +237,13 @@ final class AgentRunner: ObservableObject {
         phase = .idle
         currentStep = 0
         errorMessage = nil
+        // The plan and the delivered files belong to the conversation that produced them. Leaving
+        // them made a fresh conversation open with the previous run's checklist and a shelf of
+        // files it had never mentioned - and the executor's own copies were not cleared either, so
+        // the next `present` would have counted them again.
+        todos = []
+        deliverables = []
+        toolExecutor.resetDeliverables()
         save()
     }
 

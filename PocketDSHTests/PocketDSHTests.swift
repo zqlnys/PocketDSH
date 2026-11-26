@@ -260,6 +260,36 @@ final class PocketDSHTests: XCTestCase {
         XCTAssertTrue("/usr/bin/python3.12".hasPrefix("/usr/bin/"))
     }
 
+    /// A new conversation does not inherit the previous one's plan or its files.
+    ///
+    /// resetConversation cleared the messages and left the todos, the deliverables and the
+    /// executor's own copy of them - so a fresh chat opened with the last run's checklist and a
+    /// shelf of files it had never mentioned, and the first `present` counted them.
+    @MainActor
+    func testResetClearsPlanAndDeliverables() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("reset-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "x".write(to: root.appendingPathComponent("a.md"), atomically: true, encoding: .utf8)
+
+        let executor = ToolExecutor(
+            workspace: WorkspaceFileSystem(root: root),
+            luaEngine: LuaEngine(),
+            systemActions: SystemActionStore(),
+            runtimeStore: RuntimeCapabilityStore(defaults: UserDefaults(suiteName: "reset")!)
+        )
+        let presented = await executor.execute(name: ToolNames.present,
+                                               argumentsJSON: #"{"path":"a.md"}"#)
+        XCTAssertFalse(presented.isError, presented.content)
+
+        executor.resetDeliverables()
+        let again = await executor.execute(name: ToolNames.present,
+                                           argumentsJSON: #"{"path":"a.md"}"#)
+        XCTAssertTrue(again.content.contains("presented 1 file"),
+                      "the old list survived the reset: \(again.content)")
+    }
+
     @MainActor
     func testListFilesCapsWhatItReturns() async throws {
         let root = FileManager.default.temporaryDirectory

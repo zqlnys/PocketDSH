@@ -195,6 +195,16 @@ final class ToolExecutor {
         return previous[right.count]
     }
 
+    /// Forgets what a previous conversation delivered.
+    ///
+    /// The list lives here as well as on the runner, and `present` counts against it - so leaving
+    /// it made the first `present` of a fresh conversation say "presented 4 file(s)" about three
+    /// files it had never seen.
+    func resetDeliverables() {
+        deliverables = []
+        onDeliverablesChanged?([])
+    }
+
     /// Stops whatever a running tool is doing. Called from the cancel path, on any thread.
     ///
     /// Only the shell has something long enough to stop; the file tools finish too quickly for it
