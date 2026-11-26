@@ -108,6 +108,33 @@ final class LinuxToolTests: XCTestCase {
         XCTAssertTrue(after.content.contains("still-works"), after.content)
     }
 
+    /// The guest starts in a UTF-8 locale, which is what CPython needs to read its own arguments.
+    ///
+    /// Under LANG=C the interpreter truncates argv to a few characters - `/workspace/a.py` becomes
+    /// `/wor` - and the bridge sets both LANG and LC_ALL for that reason. LC_ALL is the one that
+    /// wins for every category, so a script exporting LANG=C for its own children cannot drag
+    /// Python's decoding into the broken path. This checks the environment a guest actually gets.
+    @MainActor
+    func testGuestStartsWithAUTF8Locale() async throws {
+        let root = Bundle.main.url(forResource: "alpine-root", withExtension: nil)
+            ?? URL(fileURLWithPath: "/nonexistent")
+        try XCTSkipUnless(FileManager.default.isReadableFile(
+                            atPath: root.appendingPathComponent("bin/busybox").path),
+                          "needs a readable busybox in the guest root")
+
+        let project = FileManager.default.temporaryDirectory
+            .appendingPathComponent("locale-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: project) }
+
+        let executor = makeExecutor(root: project, tier: .tierD)
+        let result = await executor.execute(name: ToolNames.runLinux,
+                                            argumentsJSON: #"{"command":"env"}"#)
+        XCTAssertFalse(result.isError, result.content)
+        XCTAssertTrue(result.content.contains("LC_ALL=C.UTF-8"),
+                      "the guest did not inherit the UTF-8 locale: \(result.content)")
+    }
+
     /// The tool refuses a command it was not given, rather than running something arbitrary.
     @MainActor
     func testRunLinuxRequiresACommand() async throws {
