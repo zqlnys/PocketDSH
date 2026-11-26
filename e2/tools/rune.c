@@ -3526,6 +3526,13 @@ int e2_rune_main(int argc, char **argv) {
         // E2_LANG wins, then the host's own LANG, then C. The order matters: a host that
         // needs a UTF-8 locale must be able to say so, and CPython takes a different argv
         // conversion path per locale - one of which truncates long arguments.
+        // LC_ALL wins over LANG for every category, so when the host sets it the guest has to
+        // see it too - otherwise an LC_ALL=C.UTF-8 with LANG=C in the parent still puts the guest
+        // in the C locale, which is the configuration where CPython truncates its own argv.
+        const char *all = getenv("LC_ALL");
+        if (all != NULL && all[0] != '\0') {
+            snprintf(envs[nenv++], sizeof(envs[0]), "LC_ALL=%s", all);
+        }
         const char *lang = getenv("E2_LANG");
         if (lang == NULL) lang = getenv("LANG");
         snprintf(envs[nenv++], sizeof(envs[0]), "LANG=%s", lang ? lang : "C");

@@ -409,5 +409,28 @@ case "$sp_out" in
     *) fail=$((fail + 1)); printf '  FAIL single precision: %s\n' "$sp_out" ;;
 esac
 
+echo "locale"
+
+# Under LANG=C alone, CPython truncates its own argv: /workspace/a.py becomes /wor. LC_ALL wins for
+# every category, and the guest had never been given it - the bridge set it and the harness's
+# hand-built environment list did not pass it through, so the mitigation was a no-op.
+cp /tmp/ftest/len.py "$WORK/len.py" 2>/dev/null || \
+    printf 'import sys\nprint("arg1", len(sys.argv[1]) if len(sys.argv) > 1 else 0)\n' > "$WORK/len.py"
+loc_out=$(LC_ALL=C.UTF-8 LANG=C E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" PYTHONHOME=/usr \
+    E2_CAP=400000000 timeout 120 \
+    "$RUNE" "$ROOT/usr/bin/python3.12" /workspace/len.py abcdefghijklmnop 2>&1 | head -2)
+case "$loc_out" in
+    "arg1 16") pass=$((pass + 1)) ;;
+    *) fail=$((fail + 1)); printf '  FAIL locale argv: %s\n' "$loc_out" ;;
+esac
+
+# And the guest really does receive LC_ALL.
+env_out=$(LC_ALL=C.UTF-8 E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" timeout 60 \
+    "$RUNE" "$BUSYBOX" env 2>/dev/null)
+case "$env_out" in
+    *"LC_ALL=C.UTF-8"*) pass=$((pass + 1)) ;;
+    *) fail=$((fail + 1)); printf '  FAIL LC_ALL did not reach the guest\n' ;;
+esac
+
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -38,7 +38,7 @@ xml.etree.ElementTree  curses  curses.panel
 
 | 症状 | 影响 |
 | --- | --- |
-| **`LANG=C` 下 CPython 的命令行参数被截断** | `python3.12 /workspace/a.py` 报 `can't open file '/wor'`；24 个字符的参数只剩 4 个。**busybox 不受影响**，所以问题在 CPython 的 argv 解码路径（musl 的 `mbrtowc`）。qemu 正常。`C.UTF-8` 下同样正常，桥接层默认就设它，所以只有用户脚本自己设 `LANG=C` 才会踩到 |
+| **`LANG=C` 且没有 `LC_ALL` 时，CPython 的命令行参数被截断** | `python3.12 /workspace/a.py` 报 `can't open file '/wor'`。**已缓解**：`LC_ALL` 现在会真的传到 guest（此前桥接层设了它，但 harness 自建的环境列表没有透传，等于空操作），所以 `LC_ALL=C.UTF-8` 时参数完整。**仍会产生**：只有用户脚本显式 `unset LC_ALL; export LANG=C` 时。根因未找到——`mbrtowc` 在 C locale 下经 ctypes 实测完全正确（`setlocale` 返回 "C"，`MB_CUR_MAX` 为 1，每个字节返回长度 1） |
 | **`pow()`、`math.hypot()`、`math.log2()` 结果错误** |
 | 限制 | 原因 |
 | --- | --- |
