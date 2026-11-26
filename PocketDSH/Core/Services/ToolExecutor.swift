@@ -129,6 +129,28 @@ final class ToolExecutor {
         }
     }
 
+    /// An integer argument, and a note when the caller asked for something else.
+    ///
+    /// `arguments["depth"]?.intValue ?? 2` did two silent things: a string where a number belonged
+    /// used the default as if nothing had been asked for, and an out-of-range number was clamped
+    /// without a word. In both cases the model asked for one thing and got another, and had no way
+    /// to know - so it repeated the call.
+    static func clampedInt(_ arguments: [String: JSONValue], _ key: String,
+                           default fallback: Int, in range: ClosedRange<Int>,
+                           note: inout [String]) -> Int {
+        guard let raw = arguments[key] else { return fallback }
+        guard let value = raw.intValue else {
+            note.append("\(key) should be a number; \(raw.kindDescription) was ignored and "
+                + "\(fallback) used")
+            return fallback
+        }
+        let clamped = min(max(value, range.lowerBound), range.upperBound)
+        if clamped != value {
+            note.append("\(key) was \(value) and was clamped to \(clamped)")
+        }
+        return clamped
+    }
+
     /// A network failure, with what to do about it.
     ///
     /// The system message alone - "The internet connection appears to be offline" - leaves a model
@@ -183,7 +205,8 @@ final class ToolExecutor {
 
     private func listFiles(_ arguments: [String: JSONValue]) throws -> ToolExecutionResult {
         let path = arguments["path"]?.stringValue ?? "."
-        let depth = min(max(arguments["depth"]?.intValue ?? 2, 1), 6)
+        var notes: [String] = []
+        let depth = Self.clampedInt(arguments, "depth", default: 2, in: 1...6, note: &notes)
         let includeHidden = arguments["include_hidden"]?.boolValue ?? false
         let entries = try workspace.listFiles(
             path: path,
@@ -203,6 +226,9 @@ final class ToolExecutor {
         if entries.count > shown.count {
             text += "\n\n\(entries.count - shown.count) more entries not shown. "
                 + "Narrow the path or reduce depth to see them."
+        }
+        if !notes.isEmpty {
+            text += "\n\n" + notes.joined(separator: "\n")
         }
         return .success(text)
     }

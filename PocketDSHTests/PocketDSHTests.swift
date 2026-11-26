@@ -169,6 +169,37 @@ final class PocketDSHTests: XCTestCase {
         XCTAssertEqual(AgentRunner.capped(short), short)
     }
 
+    /// An argument the caller asked for and did not get is reported.
+    ///
+    /// A string where a number belonged used the default as if nothing had been asked for, and an
+    /// out-of-range number was clamped without a word - so the model asked for one thing, got
+    /// another, and repeated the call.
+    @MainActor
+    func testClampedArgumentsAreReported() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("clamp-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "x".write(to: root.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+
+        let executor = ToolExecutor(
+            workspace: WorkspaceFileSystem(root: root),
+            luaEngine: LuaEngine(),
+            systemActions: SystemActionStore(),
+            runtimeStore: RuntimeCapabilityStore(defaults: UserDefaults(suiteName: "clamp")!)
+        )
+
+        let clamped = await executor.execute(name: ToolNames.listFiles,
+                                             argumentsJSON: #"{"depth":99}"#)
+        XCTAssertFalse(clamped.isError)
+        XCTAssertTrue(clamped.content.contains("clamped"), clamped.content)
+
+        let wrongType = await executor.execute(name: ToolNames.listFiles,
+                                               argumentsJSON: #"{"depth":"deep"}"#)
+        XCTAssertFalse(wrongType.isError)
+        XCTAssertTrue(wrongType.content.contains("should be a number"), wrongType.content)
+    }
+
     @MainActor
     func testListFilesCapsWhatItReturns() async throws {
         let root = FileManager.default.temporaryDirectory
