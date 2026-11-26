@@ -52,6 +52,11 @@ public struct PatchFileChange: Sendable, Equatable {
     public var path: String { newPath }
 }
 
+/// A line, short enough to sit in an error message.
+private func shown(_ line: String, limit: Int = 120) -> String {
+    line.count <= limit ? "\" \(line) \"" : "\" \(line.prefix(limit))… \""
+}
+
 public enum UnifiedPatch {
     public static func parse(_ patch: String) throws -> [PatchFileChange] {
         let rawLines = patch
@@ -185,16 +190,26 @@ public enum UnifiedPatch {
                     switch line.kind {
                     case .context:
                         guard cursor < originalLines.count, originalLines[cursor] == line.text else {
+                            // The line number says where, but not what - and what is what a patch
+                            // has to be corrected against. Showing both turns a retry into an edit.
+                            let found = cursor < originalLines.count
+                                ? shown(originalLines[cursor]) : "end of file"
                             throw WorkspaceError.patchMismatch(
-                                "Context mismatch in \(change.path) at line \(cursor + 1)"
+                                "Context mismatch in \(change.path) at line \(cursor + 1):\n"
+                                    + "  expected: \(shown(line.text))\n"
+                                    + "  found:    \(found)"
                             )
                         }
                         output.append(line.text)
                         cursor += 1
                     case .remove:
                         guard cursor < originalLines.count, originalLines[cursor] == line.text else {
+                            let found = cursor < originalLines.count
+                                ? shown(originalLines[cursor]) : "end of file"
                             throw WorkspaceError.patchMismatch(
-                                "Removal mismatch in \(change.path) at line \(cursor + 1)"
+                                "Removal mismatch in \(change.path) at line \(cursor + 1):\n"
+                                    + "  expected: \(shown(line.text))\n"
+                                    + "  found:    \(found)"
                             )
                         }
                         cursor += 1

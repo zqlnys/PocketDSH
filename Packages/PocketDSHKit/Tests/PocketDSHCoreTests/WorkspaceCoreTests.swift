@@ -282,6 +282,29 @@ final class WorkspaceCoreTests: XCTestCase {
         XCTAssertNotNil(broken.failure, "an unreadable log must say so")
     }
 
+    /// A patch that does not apply says what it expected and what it found.
+    ///
+    /// The line number alone tells a writer where to look but not what to change, and a model
+    /// correcting a failed patch needs the text.
+    func testPatchMismatchShowsBothSides() throws {
+        _ = try workspace.write(path: "m.txt", content: "alpha\nbeta\ngamma", overwrite: false)
+        let patch = """
+        --- a/m.txt
+        +++ b/m.txt
+        @@ -1,3 +1,3 @@
+         alpha
+        -BETA
+        +Beta
+         gamma
+        """
+
+        XCTAssertThrowsError(try workspace.applyPatch(patch)) { error in
+            let message = error.localizedDescription
+            XCTAssertTrue(message.contains("BETA"), "the expected line is missing: \(message)")
+            XCTAssertTrue(message.contains("beta"), "the found line is missing: \(message)")
+        }
+    }
+
     func testLineDiffMarksInsertionsAndRemovals() {
         let diff = LineDiff.compute(old: "a\nb\nc", new: "a\nB\nc\nd")
         XCTAssertTrue(diff.lines.contains { $0.kind == .remove && $0.text == "b" })
