@@ -1793,11 +1793,23 @@ static int p_execve(void *ctx, e2_machine *m, const char *path, uint64_t argv,
     }
     // Same class of limit as ARG_MAX: 96 bytes per variable and eight variables
     // silently truncated a long PATH or dropped anything beyond the eighth.
+    // Bounded by the array, not by a separate guess. The loop ran to 256 while the array held 64,
+    // so a program exec'd with more than sixty-four environment variables wrote past the end of
+    // it - a stack overflow reachable by `env -i A=1 B=2 ... prog`.
     char envs[64][ARG_MAX]; int nenv = 0;
     for (int i = 0; i < 256; i++) {
         uint64_t ptr = 0;
         if (e2_memory_read(&m->mem, envp + (uint64_t)i * 8, &ptr, 8) != 0 || ptr == 0) break;
+        if (nenv >= 64) {
+            fprintf(stderr, "e2: exec was given more than 64 environment variables\n");
+            return -7;   // E2_E2BIG
+        }
         if (e2_memory_read(&m->mem, ptr, envs[nenv], sizeof(envs[0])) != 0) break;
+        if (strlen(envs[nenv]) >= sizeof(envs[0]) - 1) {
+            fprintf(stderr, "e2: an environment variable is longer than %zu bytes\n",
+                    sizeof(envs[0]) - 1);
+            return -7;
+        }
         nenv++;
     }
 

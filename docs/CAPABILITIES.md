@@ -47,6 +47,7 @@ xml.etree.ElementTree  curses  curses.panel
 | **没有线程** | 见下 |
 | **没有 `/proc/mounts` 一致性** | `df` 的 `st_dev` 与 `/proc/mounts` 对不上，`df` 输出不可信 |
 | **`prlimit64` 只报告不执行** | 设置新的 rlimit 会被接受但忽略 |
+| **exec 最多携带 64 个环境变量** | 超过时返回 `E2BIG`（真内核的上限高得多）。上限受限于每次 exec 的栈上缓冲区；`run_proc` 是嵌套的，把它调大会把栈风险换成一个更少见的错误 |
 
 ## 关于线程
 

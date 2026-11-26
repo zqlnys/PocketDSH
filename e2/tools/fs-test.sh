@@ -462,5 +462,21 @@ case "$big_out" in
     *) fail=$((fail + 1)); printf '  FAIL oversized exec argument: %s\n' "$big_out" ;;
 esac
 
+# More environment variables than the exec path can carry is refused. The loop used to run to 256
+# while the array held 64, so the sixty-fifth wrote past the end of it.
+env_out=$(E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" PYTHONHOME=/usr LANG=C.UTF-8 E2_CAP=400000000 \
+    timeout 180 "$RUNE" "$ROOT/usr/bin/python3.12" -c \
+    'import subprocess
+env = {"V%d" % i: "x" for i in range(80)}
+try:
+    subprocess.run(["/bin/busybox", "env"], env=env, capture_output=True)
+    print("ran")
+except OSError as e:
+    print("errno", e.errno)' 2>/dev/null)
+case "$env_out" in
+    *"errno 7"*) pass=$((pass + 1)) ;;
+    *) fail=$((fail + 1)); printf '  FAIL too many env vars: %s\n' "$env_out" ;;
+esac
+
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
