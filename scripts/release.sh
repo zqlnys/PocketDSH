@@ -14,6 +14,15 @@ NOTES="${4:?notes file required}"
 [ -f "$NOTES" ] || { echo "no notes file: $NOTES" >&2; exit 1; }
 
 NAME=$(basename "$IPA")
+
+# The file has to be the newest one in the directory. Twice now an older build was published under a
+# new tag, and the script had no way to notice because the version comes from the name.
+NEWEST=$(ls -t PocketDSH-*-unsigned.ipa 2>/dev/null | head -1 || true)
+if [ -n "$NEWEST" ] && [ "$NAME" != "$NEWEST" ]; then
+    echo "refusing to publish $NAME: $NEWEST is newer" >&2
+    echo "pass the newest artifact, or move the old ones out of the way" >&2
+    exit 1
+fi
 VERSION=$(printf '%s' "$NAME" | sed -n 's/^PocketDSH-\([0-9.]*\)-\([0-9]*\)-unsigned\.ipa$/\1/p')
 BUILD=$(printf '%s' "$NAME" | sed -n 's/^PocketDSH-\([0-9.]*\)-\([0-9]*\)-unsigned\.ipa$/\2/p')
 
