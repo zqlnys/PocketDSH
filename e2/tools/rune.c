@@ -638,8 +638,10 @@ static void build_proc_self_fd(void *c, const char *dir_host) {
 
 static int fs_opendir(void *c, const char *path) {
     if (strcmp(path, "/proc/self/fd") == 0 || strcmp(path, "/dev/fd") == 0) {
-            char dir_host[2048];
-        snprintf(dir_host, sizeof(dir_host), "%s/proc/self/fd", ROOT);
+        char dir_host[2048];
+        // The writable proc directory, not the root: the root is read-only on a device, and
+        // building the fd links under it silently produced an empty directory there.
+        snprintf(dir_host, sizeof(dir_host), "%s/self/fd", guest_tmp_for_proc());
         // Take the descriptor for the directory first: a real /proc/self/fd lists
         // the descriptor that is reading it, so the count would be one short
         // otherwise.
@@ -1263,12 +1265,17 @@ static void seed_proc(const char *root) {
         }
         snprintf(dir, sizeof(dir), "%s", tmp);
     }
-    // /proc/self/fd must exist as a directory: ls stats the path before listing it,
-    // and a directory that only materialises inside opendir is invisible to that.
+    // /proc/self/fd must exist as a directory: ls stats the path before listing it, and a
+    // directory that only materialises inside opendir is invisible to that.
+    //
+    // Under the writable proc directory, for the same reason as the files above: creating it under
+    // <root> made this work on the build machine and fail on a device, where the root is the
+    // read-only bundle. /proc/self/cmdline and /proc/self/status are synthesised per request, but
+    // the fd directory is a real one the guest lists.
     {
-        char p1[2048], p2[2048];
-        snprintf(p1, sizeof(p1), "%s/proc/self", root);
-        snprintf(p2, sizeof(p2), "%s/proc/self/fd", root);
+        char p1[4096], p2[4096];
+        snprintf(p1, sizeof(p1), "%.2000s/self", dir);
+        snprintf(p2, sizeof(p2), "%.2000s/self/fd", dir);
         mkdir(p1, 0555);
         mkdir(p2, 0555);
     }

@@ -508,6 +508,10 @@ check "df-root"      'df / | tail -1 | wc -l' 1
 # Through `busybox` rather than a bare name: the trimmed guest root links only some applets, so
 # `free` on PATH is "not found" while `busybox free` works.
 check "free-total"   'busybox free' '       1024000      377904      512000           0      134096      768000'
+# /proc/self is synthesised per request; the fd directory is a real one the guest lists. Both used to
+# be built under the root, which is read-only on a device.
+check "proc-self-cmdline" 'cat /proc/self/cmdline' '/bin/cat/proc/self/cmdline'
+check "proc-self-fd"      'ls /proc/self/fd | wc -l' '4'
 
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
