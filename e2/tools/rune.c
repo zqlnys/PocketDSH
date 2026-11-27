@@ -3756,6 +3756,21 @@ int e2_rune_main(int argc, char **argv) {
     g_self_path = path;
     fd_init();
     epoll_release_all();
+    // The process table is cleared at the start of a run, not only at the end of one.
+    //
+    // Without this, a run in a process that had already run something inherited its processes: a
+    // session leaves procs[1] alive, and the next run found a live process whose machine belonged to
+    // a finished one. On the command line every process runs once and never noticed; under XCTest,
+    // where a hundred runs share one process, that is what crashed the host - twice a run, right
+    // after the session test, with the session's own assertions green.
+    for (int i = 0; i < E2_MAX_PROCS; i++) {
+        if (procs[i].used) {
+            e2_machine_destroy(&procs[i].m);
+            fd_table_release(i);
+        }
+        memset(&procs[i], 0, sizeof(procs[i]));
+    }
+    memset(&procs[0], 0, sizeof(procs[0]));
     // Populate the guest's /proc once, as a kernel would. The root comes from the
     // same place host_path uses, so E2_ROOT still applies.
     {
