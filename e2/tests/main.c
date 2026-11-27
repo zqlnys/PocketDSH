@@ -2464,7 +2464,18 @@ static void test_scalar_immediates(void) {
             {0x5AC00420u, 0x11223344ULL, 0x22114433ULL, "rev16 w0, w1"},
             {0x13001C20u, 0x000000FFULL, 0xFFFFFFFFULL, "sxtb w0, w1 sign extends"},
             {0x13001C20u, 0x0000007FULL, 0x0000007FULL, "sxtb keeps a positive byte"},
-            {0x53003C62u, 0xFFFFFFFFFFFF1234ULL, 0x0000000000001234ULL, "uxth w2, w3"}, 
+            {0x53003C62u, 0xFFFFFFFFFFFF1234ULL, 0x0000000000001234ULL, "uxth w2, w3"},
+            // BFM: the insert and the extract-and-insert forms, both widths. Encodings from
+            // llvm-mc-18, which is the only ground truth here - reading the interpreter's own code
+            // would only confirm what it already believes.
+            {0x33181C20u, 0x00000000000000ABULL, 0x000000000000AB00ULL, "bfi w0, w1, #8, #8"},
+            {0x53042C20u, 0x0000AB00ULL, 0x000000B0ULL, "bfxil w0, w1, #4, #8"},
+            {0xB3703C20u, 0x00000000000000ABULL, 0x0000000000AB0000ULL, "bfi x0, x1, #16, #16"},
+            {0xB3485C20u, 0x000000000000AB00ULL, 0x000000000000AB00ULL, "bfxil x0, x1, #8, #16"},
+            {0xD3485C20u, 0x000000000000AB00ULL, 0x00000000000000ABULL, "ubfx x0, x1, #8, #16"},
+            {0x93485C20u, 0x000000000000AB00ULL, 0x00000000000000ABULL, "sbfx x0, x1, #8, #16"},
+            {0xD3783C20u, 0x00000000000000ABULL, 0x000000000000AB00ULL, "ubfiz x0, x1, #8, #16"},
+            {0x93783C20u, 0x00000000000000ABULL, 0x000000000000AB00ULL, "sbfiz x0, x1, #8, #16"},
         };
         for (unsigned i = 0; i < sizeof(bf) / sizeof(bf[0]); i++) {
             e2_machine m;
@@ -2477,7 +2488,12 @@ static void test_scalar_immediates(void) {
             m.cpu.x[3] = bf[i].in;
             e2_step(&m);
             const uint64_t got = (bf[i].insn == 0x53003C62u) ? m.cpu.x[2] : m.cpu.x[0];
-            CHECK(got == bf[i].want, "%s", bf[i].what);
+            // The values, not just the mnemonic: a bare name says which instruction failed and
+            // nothing about what it did, which is the difference between reading a result and
+            // guessing at one.
+            CHECK(got == bf[i].want, "%s (in=0x%llx want=0x%llx got=0x%llx)", bf[i].what,
+                  (unsigned long long)bf[i].in, (unsigned long long)bf[i].want,
+                  (unsigned long long)got);
             e2_memory_destroy(&m.mem);
         }
     }
