@@ -403,11 +403,14 @@ final class ToolExecutor {
             guard let e2Runtime else {
                 return .failure("Tier D is not linked in this build.")
             }
-            // The session: run_linux is where a user's `cd` and variables are meant to survive
-            // between commands. It crashed the test host until the harness stopped inheriting the
-            // previous run's process table - a hundred runs share one process under XCTest, and a
-            // session left a live process whose machine belonged to a finished run.
-            let result = await e2Runtime.runSession(command: command, workspace: workspace.root)
+            // A fresh guest per command.
+            //
+            // The session works, its own test passes, and switching the tool to it still takes the
+            // test host down - once by crashing, and after the process table was cleared, by not
+            // finishing at all. Two different failures in the same place mean the place is wrong,
+            // not the last guess: a session that outlives one call does not fit a runner that shares
+            // a process with a hundred others, and making it fit is a design job.
+            let result = await e2Runtime.run(command: command, workspace: workspace.root)
             guard !result.isError else { return result }
             return .success("Linux output (Tier D · E2):\n\(result.content)")
         default:
