@@ -457,7 +457,6 @@ final class E2BackendTests: XCTestCase {
     /// is what stops test N+1 inheriting test N's shell.
     func testSessionKeepsStateBetweenCommands() async throws {
         let runtime = await E2Runtime()
-        defer { Task { await MainActor.run { runtime.endSession() } } }
 
         let first = await runtime.runSession(command: "cd /tmp")
         XCTAssertFalse(first.isError, first.content)
@@ -470,6 +469,7 @@ final class E2BackendTests: XCTestCase {
         XCTAssertTrue(fourth.content.contains("kept"),
                       "a variable did not survive: \(fourth.content)")
         await MainActor.run { runtime.endSession() }
+        XCTAssertEqual(e2_bridge_session_alive(), 0, "the session outlived its test")
     }
 
     /// A command that fails has to say so.
