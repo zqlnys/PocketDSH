@@ -137,8 +137,15 @@ broken by it; the command path the app uses is unchanged and its tests pass.
 Two things to look at first. The session thread calls `e2_rune_main` directly, so the stdout
 redirection `e2_bridge_run_in` performs is not in place - the guest's output goes to the app's real
 stdout rather than the file the caller was given. And the harness makes its own stdin pipe, replacing
-the one the bridge set up, so there are two layers of forwarding where one was intended; whether the
-inner writer thread ever sees a write is the thing to check before anything else.
+the one the bridge set up, so there are two layers of forwarding where one was intended.
+
+**The marker's timestamp settles which of the two it is.** A wait with a twenty-second timeout reports
+failure, and the marker file appears at the moment the wait gives up - which is when the process is
+exiting and the pipe closes. So the guest did not run the command until EOF: it never saw a line while
+the session was alive. That is the second suspect, not the first. The inner writer thread is not
+forwarding, and the place to look is the harness's own session setup when it is called with a stdin
+that is already a pipe - `dup(STDIN_FILENO)` there, followed by `dup2` of a new pipe over fd 0, leaves
+the saved descriptor pointing at the bridge's pipe but replaces the one the guest reads.
 
 ## What a real attempt needs
 
