@@ -237,12 +237,14 @@ static void fd_init_tab(int tab) {
     // into the guest's output file and disappeared. That is what made the iOS suite hang for half an
     // hour twice. Pointing the guest's descriptor table at the file touches only the guest.
     {
-        const char *out = getenv("E2_SESSION_OUT");
+        // Only in a session. The variables outlive a run when a caller forgets one, and acting on
+        // them outside a session sent an ordinary run's output to a file nobody was reading.
+        const char *out = getenv("E2_SESSION") != NULL ? getenv("E2_SESSION_OUT") : NULL;
         if (out != NULL && out[0] != '\0') {
             const int fd = open(out, O_WRONLY | O_CREAT | O_TRUNC, 0644);
             if (fd >= 0) { g_fds[tab][1].host = fd; host_ref(fd); }
         }
-        const char *mark = getenv("E2_SESSION_MARK");
+        const char *mark = getenv("E2_SESSION") != NULL ? getenv("E2_SESSION_MARK") : NULL;
         if (mark != NULL && mark[0] != '\0') {
             const int fd = open(mark, O_WRONLY | O_CREAT | O_TRUNC, 0644);
             if (fd >= 0) { g_fds[tab][2].host = fd; host_ref(fd); }

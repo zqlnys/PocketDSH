@@ -228,8 +228,13 @@ void e2_bridge_session_close(void) {
         pthread_join(g_session_thread, NULL);
         g_session_running = 0;
     }
+    // Every variable the session set, not just two of the three. E2_SESSION_OUT left behind made
+    // the next one-shot run point the guest's stdout at the session's file - so its output went
+    // there and the caller got nothing, which is what made three unrelated tests fail with an empty
+    // result.
     unsetenv("E2_SESSION");
     unsetenv("E2_SESSION_MARK");
+    unsetenv("E2_SESSION_OUT");
 }
 
 int e2_bridge_session_alive(void) { return g_session_running; }
