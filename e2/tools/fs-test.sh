@@ -549,5 +549,14 @@ case "$sess_out" in
     *) fail=$((fail + 1)); printf '  FAIL persistent-session\n    got: %s\n' "$(printf '%s' "$sess_out" | tr '\n' '|')" ;;
 esac
 
+# A run with no locale named still hands the guest its whole argument. Under LANG=C the guest gets
+# one character, which is a separate and documented limitation; this checks the default.
+no_locale=$(env -u LANG -u LC_ALL E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" PYTHONHOME=/usr \
+    E2_CAP=200000000 timeout 120 "$RUNE" "$ROOT/usr/bin/python3.12" -c 'print("locale-default")' 2>&1 | head -1)
+case "$no_locale" in
+    locale-default) pass=$((pass + 1)) ;;
+    *) fail=$((fail + 1)); printf '  FAIL default-locale\n    got: %s\n' "$no_locale" ;;
+esac
+
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

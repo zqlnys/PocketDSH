@@ -323,3 +323,15 @@ Ruled out, each by fixing something real that did not change the symptom:
 `run_linux` uses a fresh guest again. The next thing to look at is what the session leaves behind that
 a *later* test cannot survive - the log points at the tests immediately following the session one, not
 at the session's own assertions.
+
+### Ruled out: the process table
+
+`procs[]` was never reset between runs in one process, so a run inherited the previous one's processes -
+a session leaves `procs[1]` alive with a machine that belonged to a finished run. That is a real defect
+and it is fixed: a run clears the table it inherited.
+
+It was not the crash. With the session on `run_linux` the suite then failed to finish at all, where it
+had previously exited unexpectedly - two different failures in the same place.
+
+That is the point to stop treating this as a bug and start treating it as a design problem: a shell
+that outlives one call does not fit a test host that shares a process with a hundred others.

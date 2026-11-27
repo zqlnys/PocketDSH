@@ -3834,7 +3834,14 @@ int e2_rune_main(int argc, char **argv) {
         }
         const char *lang = getenv("E2_LANG");
         if (lang == NULL) lang = getenv("LANG");
-        snprintf(envs[nenv++], sizeof(envs[0]), "LANG=%s", lang ? lang : "C");
+        // C.UTF-8, not C, when the caller named no locale.
+        //
+        // Under the C locale CPython converts its own argv through musl's single-byte path, and
+        // that path is wrong here: `-c 'print("abc")'` arrives as the one character `p`, and the
+        // guest reports `NameError: name 'p' is not defined`. Every argument a caller passes is
+        // damaged the same way. The app was protected because the bridge sets LC_ALL first; the
+        // command line was not, and neither is anything else that starts a run with no locale.
+        snprintf(envs[nenv++], sizeof(envs[0]), "LANG=%s", lang ? lang : "C.UTF-8");
     }
     // Pass Python's own knobs through, so the guest can be pointed at a
     // rootfs without rebuilding the harness.
