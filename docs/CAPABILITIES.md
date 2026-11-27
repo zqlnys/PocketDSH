@@ -17,7 +17,7 @@
 | 写入上限 | 运行期 64 MB `RLIMIT_FSIZE`，超出时写失败 |
 | 内存上限 | `E2_HEAP_MB` 同时约束 `brk` 与 `mmap`，超出抛 `MemoryError` |
 | 工作区挂载 | guest 的 `/workspace` 就是项目目录 |
-| **`/proc` 已种入** | `df`、`free`、`uname -a`、`nproc` 都能用；`/proc/mounts` 与 `statfs` 一致 |
+| **`/proc` 已种入** | `df`、`free`、`uname -a`、`nproc` 都能用；`/proc/mounts` 与 `statfs` 一致；`/proc` 与 `/proc/self` 都从可写目录提供，因为设备上的 rootfs 只读 |
 | 深嵌套的子 shell | 1000 层括号嵌套仍能运行 |
 | **27 个系统调用** | `tools/syscall-probe.py` 逐行与 qemu 对比：`getpid`、`stat`、`symlink`、`hardlink`、`chmod`、`listdir`、`walk`、`pipe`、`select`、`lseek`、`getcwd`、`time` 等 |
 

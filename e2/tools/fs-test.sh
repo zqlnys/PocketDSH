@@ -513,5 +513,11 @@ check "free-total"   'busybox free' '       1024000      377904      512000     
 check "proc-self-cmdline" 'cat /proc/self/cmdline' '/bin/cat/proc/self/cmdline'
 check "proc-self-fd"      'ls /proc/self/fd | wc -l' '4'
 
+# Every seeded file, in one line. The seed lists them and any one of them going missing is a reader
+# failing for no stated reason - which is how /proc/version spent rounds containing a stray "x".
+check "proc-all-seeded" \
+    'for f in meminfo uptime version stat cpuinfo filesystems mounts; do test -r /proc/$f || echo $f; done | wc -l' \
+    0
+
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
