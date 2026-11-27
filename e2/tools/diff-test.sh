@@ -358,15 +358,15 @@ cat > /tmp/dtalgo.sh 2>/dev/null <<'WRAP'
 fib() { [ $1 -le 1 ] && echo $1 || echo $(( $(fib $(($1-1))) + $(fib $(($1-2))) )); }
 echo "fib(10)=$(fib 10)"
 primes=""
-for n in $(seq 2 40); do
+for n in $(busybox seq 2 40); do
   is=1
-  for d in $(seq 2 $((n-1))); do
+  for d in $(busybox seq 2 $((n-1))); do
     [ $((n % d)) -eq 0 ] && { is=0; break; }
   done
   [ $is -eq 1 ] && primes="$primes $n"
 done
 echo "primes:$primes"
-for i in 3 1 2; do for j in 3 1 2; do echo "$i$j"; done; done | sort | head -3
+for i in 3 1 2; do for j in 3 1 2; do echo "$i$j"; done; done | busybox sort | busybox head -3
 n=10; s=0; while [ $n -gt 0 ]; do s=$((s+n)); n=$((n-1)); done; echo "sum=$s"
 WRAP
 cp /tmp/dtalgo.sh "$E2_TMP_DIR/dtalgo.sh" 2>/dev/null || true

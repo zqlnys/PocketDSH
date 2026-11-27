@@ -3784,7 +3784,12 @@ env_done:
     // from failing for a reason that has nothing to do with memory being available.
     // stderr: the exit line is a report about the run, not part of what the guest printed, and
     // anything comparing output has to filter it otherwise.
-    fprintf(stderr, "\n[exit %d] instructions=%ld regions=%u/%u%s%s\n", procs[1].exit_status,
+    // The line says what the run did, not what the guest would have exited with. It printed
+    // `exit 0` beside `FAULT reason=instruction cap` - the process returned 1, and the label said
+    // otherwise, which is how a killed command reads as a successful one.
+    fprintf(stderr, "\n[%s %d] instructions=%ld regions=%u/%u%s%s\n",
+           g_fault ? "failed" : "exit",
+           g_fault ? 1 : procs[1].exit_status,
            (long)procs[1].m.instructions, procs[1].m.mem.count, E2_MAX_REGIONS,
            g_fault ? " FAULT reason=" : "", g_fault ? g_reason : "");
 #endif
