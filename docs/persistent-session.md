@@ -52,6 +52,16 @@ shell's own prompt or a per-command sentinel echo.
 
 So the estimate in this document was wrong in the direction that matters: the expensive part is done.
 
+A first attempt at the turn-taking loop was written and taken back out. It ran the first command and
+then stopped: the shell answered, the marker for that round appeared, and the second round never
+reached it. The marker also leaked into the output the app would have seen, because the slice was
+taken at the marker rather than at the line before it.
+
+Neither is hard. Both are the kind of thing that needs the loop to be looked at as a whole rather
+than extended while it is half working - which is exactly what the first attempt at this feature did,
+and the reason this document exists. The guest half stays as measured; the loop is the next piece of
+work, not a larger one.
+
 ## What a real attempt needs
 
 `run_proc` is already resumable: it returns when its budget is exhausted and the process stays
