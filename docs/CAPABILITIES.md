@@ -64,7 +64,7 @@ xml.etree.ElementTree  curses  curses.panel
 | **没有网络** | 只支持 `socketpair`，没有任何会 `connect` 的东西。**`ssl` 能导入、CA 证书齐全，但发不出 HTTPS 请求。** |
 | **`socket.socketpair` 不可用** | 系统调用本身有，但 Python 的包装还需要 `sendmsg`/`recvmsg` 传描述符，两者返回 ENOSYS |
 | **没有线程** | 见下 |
-| **`run_linux` 还没有用上会话模式** | 会话本身已经工作（见上），但桥接层每次调用仍启动新 guest。接上去是下一步，见 `docs/persistent-session.md` |
+| **`run_linux` 还没有用上会话模式** | 会话在 harness 和桥接两层都已工作（`e2_bridge_session_start/_write/_wait/_close`），但 `run_linux` 仍每次启动新 guest。把它接上是下一步 |
 
 | **`prlimit64` 只报告不执行** | 设置新的 rlimit 会被接受但忽略 |
 | **符号链接的绝对目标不工作** | `/tmp/link -> /tmp/target` 这样的链接，`open` 会返回 `ENOENT`：目标是按**宿主**路径解析的，不经过 guest 映射。**相对目标正常**。这是真限制，不是回归 |

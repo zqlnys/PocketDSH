@@ -139,13 +139,27 @@ redirection `e2_bridge_run_in` performs is not in place - the guest's output goe
 stdout rather than the file the caller was given. And the harness makes its own stdin pipe, replacing
 the one the bridge set up, so there are two layers of forwarding where one was intended.
 
-**The marker's timestamp settles which of the two it is.** A wait with a twenty-second timeout reports
-failure, and the marker file appears at the moment the wait gives up - which is when the process is
-exiting and the pipe closes. So the guest did not run the command until EOF: it never saw a line while
-the session was alive. That is the second suspect, not the first. The inner writer thread is not
-forwarding, and the place to look is the harness's own session setup when it is called with a stdin
-that is already a pipe - `dup(STDIN_FILENO)` there, followed by `dup2` of a new pipe over fd 0, leaves
-the saved descriptor pointing at the bridge's pipe but replaces the one the guest reads.
+**The marker's timestamp settled it.** A wait with a twenty-second timeout reported failure and the
+marker file appeared at the moment the wait gave up - when the process was exiting and the pipe closed.
+The guest never saw a command while the session was alive.
+
+The cause was neither of the two suspects. The harness set its own stdin non-blocking, a leftover from
+the attempt that tried to arrange the turns from one thread: the guest read, got EAGAIN at once, the
+yield ended the run before any command had arrived, and the buffered command then executed at EOF. The
+descriptor is left blocking now, which is what a shell reading a pipe should do, and with a writer
+thread behind it the session stays alive.
+
+The bridge API works end to end:
+
+```
+cd /tmp ; pwd            -> /tmp
+X=hello ; echo "X=$X"    -> X=hello
+cd /workspace ; pwd      -> /workspace
+```
+
+Six commands leave six markers, and the output file has the commands' output and nothing else. The
+session thread redirects stdout once, where e2_bridge_run_in does it per call - a session outlives one
+call.
 
 ## What a real attempt needs
 

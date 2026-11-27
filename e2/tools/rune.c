@@ -3851,11 +3851,11 @@ env_done:
         close(session_pipe[0]);
         session_in = session_pipe[1];
         session_out = dup(STDOUT_FILENO);
-        // Non-blocking, or the harness blocks inside the host read() and can never get back to the
-        // caller that has the next command. The yield in fs_read only fires once the read returns,
-        // and a blocking read on a pipe with a live writer does not return.
-        int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
-        if (flags >= 0) fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
+        // Left blocking, deliberately. An earlier version made this non-blocking so that a read
+        // with nothing in it would return and the caller could write the next command - but the
+        // guest then got EAGAIN, the yield ended the run before any command had arrived, and the
+        // buffered command only executed at EOF. With a writer thread feeding the pipe, a blocking
+        // read is what a shell should do and what keeps the session alive.
     }
     int status = 0;
     if (g_session_mode) {

@@ -121,6 +121,16 @@ static char g_session_busybox[1024];
 
 static void *session_thread_main(void *arg) {
     (void)arg;
+    // The caller reads the guest's output from this file, so the session's stdout has to go there.
+    // e2_bridge_run_in does this per call; a session outlives one call and does it once.
+    if (g_session_out[0] != '\0') {
+        const int sink = open(g_session_out, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (sink >= 0) {
+            fflush(stdout);
+            dup2(sink, STDOUT_FILENO);
+            close(sink);
+        }
+    }
     // argv[1] is the host path to the binary: the harness loads it. The guest path is a different
     // thing and is what a program inside sees as its own argv[0].
     int argc = 3;
