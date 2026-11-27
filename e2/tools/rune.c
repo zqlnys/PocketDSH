@@ -160,6 +160,12 @@ static long proc_quantum(void) {
     return q;
 }
 static long g_proc_budget = -1;
+// Set when the guest is blocked on a read that nothing can satisfy. Only used in session mode: there
+// is a caller waiting to write the next command, and the harness has to be able to get back to it.
+// Without a session nobody will ever send more data, so returning early would end a pipeline's
+// reader before its writer had finished - which is why this is opt-in rather than always on.
+static int g_yield_requested = 0;
+static int g_session_mode = 0;
 
 // Set from another thread when the caller wants this run to stop.
 //
@@ -606,8 +612,14 @@ static long fs_read(void *c, int fd, void *b, size_t n, long long o) {
             // that trusted the host descriptor to be inside the table, and a process with more
             // than 1024 host descriptors would read past the end of it here.
             const int host = TAB(c)[fd].host;
-            if (host >= 0 && host < 1024 && g_refs[host] > 1)
+            if (host >= 0 && host < 1024 && g_refs[host] > 1) {
+                // Someone still holds the write end, so this is not end of file - it is a wait.
+                // In a session the waiter is the caller, which has the next command to write;
+                // returning EAGAIN to the guest made it spin on a read that no one could satisfy,
+                // which is why two attempts at the session loop sat there until the cap.
+                if (g_session_mode) g_yield_requested = 1;
                 return -EAGAIN;
+            }
             return 0;
         }
     }
@@ -2291,6 +2303,11 @@ static int run_proc(int idx) {
         if (g_proc_budget >= 0 && ++spent > g_proc_budget) {
             break;
         }
+        // A session's caller has the next command. Leave with the process alive so it can be given.
+        if (g_yield_requested) {
+            g_yield_requested = 0;
+            break;
+        }
         if (g_hist_on) {
         hist[hist_at].pc = p->m.cpu.pc;
         // Read the word at pc rather than ctx.instruction: ctx carries the
@@ -3758,7 +3775,20 @@ env_done:
             e2_memory_read(&procs[1].m.mem, g_watch_addr, &g_watch_prev, 8);
         }
     }
+    // Session mode only has the yield so far: the loop that uses it is the next piece of work.
+    g_session_mode = getenv("E2_SESSION") != NULL;
+    if (g_session_mode) {
+        // Non-blocking, or the harness blocks inside the host read() and can never get back to the
+        // caller that has the next command. The yield in fs_read only fires once the read returns,
+        // and a blocking read on a pipe with a live writer does not return.
+        int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
+        if (flags >= 0) fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
+    }
     const int status = run_proc(1);
+    if (g_session_mode && procs[1].alive) {
+        fprintf(stderr, "\ne2: the guest is waiting for input\n");
+        return 0;
+    }
     (void)status;
     if (getenv("E2_TRACE_WAITSUM"))
         fprintf(stderr, "[waitsum] calls=%d ok=%d echild=%d\n",

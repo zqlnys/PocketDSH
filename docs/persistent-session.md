@@ -79,8 +79,50 @@ Two things about the harness came out of it, both worth knowing before the next 
    wrong thing.
 
 The second attempt still stopped after one round with no diagnostic, which is the failure mode this
-document keeps warning about. It is taken back out rather than left in place; what is left is the
-two findings above and a shorter list of things to decide.
+document keeps warning about. It is taken back out rather than left in place.
+
+### The missing primitive, found
+
+```sh
+mkfifo /tmp/f; (printf 'echo A\n'; sleep 20) > /tmp/f &
+rune busybox sh < /tmp/f      # prints A, then runs until it is killed: exit 124 at 10 s
+```
+
+A guest shell blocked on a read, with the pipe's write end still open and no data in it, does not
+give control back. `run_proc` owns the machine until the guest exits or the instruction cap is
+reached, and `fs_read` returning EAGAIN goes to the guest, not to the caller.
+
+That is why both attempts stalled: the loop was waiting for a return that no code path produces. The
+first two ideas - a command file to poll, a marker protocol - were solutions to a problem that sits
+one layer further down.
+
+**What a session needs first is a yield.** When a blocking read would block and nothing can be run,
+the harness has to be able to leave `run_proc` and come back to it, so the caller can write the next
+command. Everything in the list below is downstream of that, and none of it is worth building until
+the yield exists.
+
+Two shapes were open: a flag that `fs_read` sets and `run_proc` checks on the way out, or a
+`run_proc` budget that expires on a blocked read instead of spinning. The first is built.
+
+### The yield, working
+
+`E2_SESSION` now makes the harness set its stdin non-blocking and turn a read that nothing can
+satisfy into a return from `run_proc`, leaving the guest alive. Measured with a FIFO that stays open:
+
+```
+timeout 20 rune busybox sh < /tmp/f7     # A, then: "e2: the guest is waiting for input"
+# exit 0, 0 seconds
+```
+
+Three facts were needed and only the third was the missing one:
+
+1. The guest side was already right - a shell on a pipe keeps its state (`cd`, variables).
+2. `lseek(SEEK_END)` on a dup of fd 1 moves the offset fd 1 shares; `fstat` does not.
+3. **The host read blocked, so `fs_read` never returned and a flag inside it could never fire.**
+   Setting the descriptor non-blocking is what makes the yield reachable.
+
+What remains is the loop itself: write the next command, watch for the marker, hand the output back.
+The primitive it needed now exists.
 
 ## What a real attempt needs
 
