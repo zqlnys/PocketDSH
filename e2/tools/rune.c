@@ -239,15 +239,30 @@ static void fd_init_tab(int tab) {
     {
         // Only in a session. The variables outlive a run when a caller forgets one, and acting on
         // them outside a session sent an ordinary run's output to a file nobody was reading.
-        const char *out = getenv("E2_SESSION") != NULL ? getenv("E2_SESSION_OUT") : NULL;
-        if (out != NULL && out[0] != '\0') {
-            const int fd = open(out, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-            if (fd >= 0) { g_fds[tab][1].host = fd; host_ref(fd); }
-        }
-        const char *mark = getenv("E2_SESSION") != NULL ? getenv("E2_SESSION_MARK") : NULL;
-        if (mark != NULL && mark[0] != '\0') {
-            const int fd = open(mark, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-            if (fd >= 0) { g_fds[tab][2].host = fd; host_ref(fd); }
+        // Opened once, appended to afterwards. Opening them here with O_TRUNC looked right and was
+        // not: this runs for every descriptor table a process creates, so each new table truncated
+        // the marker file - the markers were written and immediately wiped, and a session waited
+        // sixty seconds for one that had been there.
+        if (getenv("E2_SESSION") != NULL) {
+            static int session_out_fd = -1, session_mark_fd = -1;
+            // Reopened when the previous ones were closed: a session's descriptors are released
+            // when its processes exit, and a cached number then refers to nothing - "write error:
+            // Bad file descriptor" was a second session writing to the first one's closed handle.
+            const int reopen = (session_out_fd < 0 || fcntl(session_out_fd, F_GETFD) < 0);
+            if (reopen) {
+                const char *out = getenv("E2_SESSION_OUT");
+                session_out_fd = -1;
+                if (out != NULL && out[0] != '\0') {
+                    session_out_fd = open(out, O_WRONLY | O_CREAT | O_APPEND, 0644);
+                }
+                const char *mark = getenv("E2_SESSION_MARK");
+                session_mark_fd = -1;
+                if (mark != NULL && mark[0] != '\0') {
+                    session_mark_fd = open(mark, O_WRONLY | O_CREAT | O_APPEND, 0644);
+                }
+            }
+            if (session_out_fd >= 0) { g_fds[tab][1].host = session_out_fd; host_ref(session_out_fd); }
+            if (session_mark_fd >= 0) { g_fds[tab][2].host = session_mark_fd; host_ref(session_mark_fd); }
         }
     }
     for (int i = 0; i < E2_MAX_FDS; i++) { g_dirs[tab][i] = NULL; g_cloexec[tab][i] = 0; }
