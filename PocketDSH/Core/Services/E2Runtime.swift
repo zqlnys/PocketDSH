@@ -37,10 +37,12 @@ final class E2Runtime: ObservableObject {
 
     /// Whether to run each command in a fresh guest or feed one shell.
     ///
-    /// The session keeps its working directory, variables and background jobs between commands,
-    /// which is what a shell is for; a fresh guest is what the tool did before the session existed
-    /// and stays available because a session owns the process's stdout for its lifetime.
-    var usesSession = true
+    /// Off by default, and not for want of the session: it works when driven from the command line,
+    /// and turning it on for the app hung the iOS tests until CI gave up. Something about running it
+    /// under XCTest - the simulator's stdio, the process-wide redirect, or a thread that outlives a
+    /// test - is not the same as driving it from a small C program, and that has to be understood
+    /// before the app depends on it.
+    var usesSession = false
 
     private var sessionOut: URL?
     private var sessionMark: URL?
