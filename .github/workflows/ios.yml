@@ -142,7 +142,14 @@ jobs:
           xcrun simctl boot "$SIMULATOR_UDID" >/dev/null 2>&1 || true
           xcrun simctl bootstatus "$SIMULATOR_UDID" -b 2>&1 | tee -a "$LOG_DIR/simulator.log"
           rm -rf "$ARTIFACTS_DIR/TestResults.xcresult"
+          # Release, not the scheme default (Debug).
+          #
+          # The tests exercise the interpreter, and a Debug build compiles it at -O0: the timings
+          # they report are for a binary nobody installs. Testing the configuration that ships also
+          # means an optimiser-sensitive mistake - undefined behaviour that -O0 happens to hide -
+          # fails here rather than on a device.
           xcodebuild test \
+            -configuration Release \
             -project "$PROJECT_NAME.xcodeproj" \
             -scheme "$SCHEME" \
             -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
