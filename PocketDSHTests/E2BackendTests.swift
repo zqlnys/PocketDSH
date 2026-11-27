@@ -450,6 +450,26 @@ final class E2BackendTests: XCTestCase {
         XCTAssertEqual(E2Runtime.trimmedToUTF8(leading, fromEnd: false), Data([0x62]))
     }
 
+    /// Two commands in one shell keep their state, which is what a session is for.
+    ///
+    /// The tool used to start a fresh guest per call, so `cd` in one command and `pwd` in the next
+    /// disagreed. The bridge keeps one shell alive; this checks the thing that changed.
+    func testSessionKeepsStateBetweenCommands() async throws {
+        let runtime = await E2Runtime()
+        await MainActor.run { runtime.usesSession = true }
+        let first = await runtime.run(command: "cd /tmp")
+        XCTAssertFalse(first.isError, first.content)
+        let second = await runtime.run(command: "pwd")
+        XCTAssertTrue(second.content.contains("/tmp"),
+                      "the working directory did not survive: \(second.content)")
+        let third = await runtime.run(command: "X=kept")
+        XCTAssertFalse(third.isError, third.content)
+        let fourth = await runtime.run(command: "echo $X")
+        XCTAssertTrue(fourth.content.contains("kept"),
+                      "a variable did not survive: \(fourth.content)")
+        await MainActor.run { runtime.endSession() }
+    }
+
     /// A command that fails has to say so.
     ///
     /// The runtime only checked for a negative status, so `exit 3` and a missing command both

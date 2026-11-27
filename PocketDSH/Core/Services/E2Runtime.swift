@@ -35,6 +35,83 @@ final class E2Runtime: ObservableObject {
     /// The guest root. Bundled into the app; see prepareRootfs.
     private var rootfsURL: URL?
 
+    /// Whether to run each command in a fresh guest or feed one shell.
+    ///
+    /// The session keeps its working directory, variables and background jobs between commands,
+    /// which is what a shell is for; a fresh guest is what the tool did before the session existed
+    /// and stays available because a session owns the process's stdout for its lifetime.
+    var usesSession = true
+
+    private var sessionOut: URL?
+    private var sessionMark: URL?
+    private var sessionRound = 0
+
+    /// Starts the shell, or returns the URLs of a live one.
+    private func startSession(rootfs: URL, busybox: String) -> (out: URL, mark: URL)? {
+        if let out = sessionOut, let mark = sessionMark, e2_bridge_session_alive() != 0 {
+            return (out, mark)
+        }
+        let dir = FileManager.default.temporaryDirectory
+        let token = UUID().uuidString
+        let out = dir.appendingPathComponent("e2-session-\(token).out")
+        let mark = dir.appendingPathComponent("e2-session-\(token).mark")
+        FileManager.default.createFile(atPath: out.path, contents: nil)
+        FileManager.default.createFile(atPath: mark.path, contents: nil)
+        let workspace = resolvedWorkspacePath
+        let started = busybox.withCString { bb in
+            e2_bridge_session_start(rootfs.path, workspace, out.path, mark.path, bb)
+        }
+        guard started == 0 else {
+            return nil
+        }
+        sessionOut = out
+        sessionMark = mark
+        sessionRound = 0
+        state = .active
+        return (out, mark)
+    }
+
+    /// Ends the session, so the next command starts a fresh shell.
+    func endSession() {
+        e2_bridge_session_close()
+        if let out = sessionOut { try? FileManager.default.removeItem(at: out) }
+        if let mark = sessionMark { try? FileManager.default.removeItem(at: mark) }
+        sessionOut = nil
+        sessionMark = nil
+        sessionRound = 0
+        if case .active = state { state = .idle }
+    }
+
+    /// Runs one command in the session's shell and returns what it printed.
+    private func runInSession(command: String, out: URL, mark: URL) async -> ToolExecutionResult {
+        let before = (try? Data(contentsOf: out))?.count ?? 0
+        let round = sessionRound + 1
+        let written = command.withCString { e2_bridge_session_write($0) }
+        guard written == 0 else {
+            endSession()
+            return .failure("Tier D lost its shell. The next command will start a new one.")
+        }
+        // Bounded: a command that never finishes must be reported, not waited on forever.
+        let waited = e2_bridge_session_wait(Int32(round), Int32(60_000), mark.path)
+        if waited != 0 {
+            endSession()
+            return waited == -2
+                ? .failure("Tier D's shell exited before finishing: \(trimmedCommand(command))")
+                : .failure("Tier D's command did not finish within 60 seconds: \(trimmedCommand(command))")
+        }
+        sessionRound = round
+
+        let whole = (try? Data(contentsOf: out)) ?? Data()
+        let slice = whole.count > before ? whole.subdata(in: before..<whole.count) : Data()
+        let text = String(decoding: slice, as: UTF8.self)
+        return .success(text.isEmpty ? "(\(trimmedCommand(command)) produced no output)" : text)
+    }
+
+    private func trimmedCommand(_ command: String) -> String {
+        let flat = command.replacingOccurrences(of: "\n", with: " ")
+        return flat.count > 60 ? String(flat.prefix(60)) + "…" : flat
+    }
+
     func run(command: String, workspace: URL? = nil) async -> ToolExecutionResult {
         guard !busy else {
             return .failure("Tier D is busy. Wait for the running command to finish.")
@@ -68,6 +145,12 @@ final class E2Runtime: ObservableObject {
         }
 
         state = .starting
+        // One shell across commands, unless the caller asked for a fresh guest. The session keeps
+        // the working directory and variables a shell is for; the fresh path stays because a
+        // session owns the process's stdout for as long as it lives.
+        if usesSession, let live = startSession(rootfs: rootfs, busybox: busybox) {
+            return await runInSession(command: command, out: live.out, mark: live.mark)
+        }
         let outURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("e2-\(UUID().uuidString).out")
         defer { try? FileManager.default.removeItem(at: outURL) }
