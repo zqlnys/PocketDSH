@@ -166,6 +166,13 @@ static long g_proc_budget = -1;
 // reader before its writer had finished - which is why this is opt-in rather than always on.
 static int g_yield_requested = 0;
 static int g_session_mode = 0;
+/// Writes one command at a time to a guest shell that stays alive, and hands back its output.
+///
+/// `commands` is the app's channel, `to_guest` the write end of the shell's stdin, `from_guest` a
+/// duplicate of the file the shell's stdout goes to. The loop needs the yield in fs_read: without
+/// it a blocked shell never gives control back and the second command is never written.
+struct session_writer;
+static void *session_writer_main(void *arg);
 
 // Set from another thread when the caller wants this run to stop.
 //
@@ -3627,6 +3634,49 @@ void e2_set_root(const char *path) {
     if (path != NULL && path[0] != '\0') ROOT = path;
 }
 
+struct session_writer {
+    int commands;
+    int to_guest;
+};
+
+/// Feeds the guest shell one command at a time from the app's channel.
+///
+/// A thread rather than a loop in the main path: the guest blocks in read() until a command arrives,
+/// which is exactly what a shell should do, and the main thread stays inside run_proc. An earlier
+/// version made the descriptor non-blocking and yielded back to the caller instead - but the guest
+/// was then left retrying a read that returned EAGAIN, and spun to the instruction cap between
+/// commands.
+static void *session_writer_main(void *arg) {
+    struct session_writer *w = arg;
+    char line[4096];
+    for (;;) {
+        size_t got = 0;
+        bool have = false;
+        while (got < sizeof(line) - 1) {
+            char ch;
+            const ssize_t r = read(w->commands, &ch, 1);
+            if (r <= 0) break;
+            have = true;
+            if (ch == '\n') break;
+            line[got++] = ch;
+        }
+        line[got] = '\0';
+        if (!have && got == 0) break;
+        char framed[4300];
+        snprintf(framed, sizeof(framed), "%s\n", line);
+        if (write(w->to_guest, framed, strlen(framed)) < 0) break;
+    }
+    // End of input for the shell. Closing the write end is what lets it exit rather than wait.
+    close(w->to_guest);
+    return NULL;
+}
+
+/// Reads the guest's output back and hands each command's slice to the caller.
+///
+/// `from_guest` is a duplicate of the file the shell's stdout goes to. fstat reports how much has
+/// been written without touching the offset that descriptor shares with fd 1 - lseek(SEEK_END) moved
+/// it, and the guest's next write then landed where the seek had left off.
+
 #ifndef E2_AS_LIBRARY
 int main(int argc, char **argv) {
     // A ceiling on what the command may write, so the bridge can bound storage use. Set here as
@@ -3777,17 +3827,50 @@ env_done:
     }
     // Session mode only has the yield so far: the loop that uses it is the next piece of work.
     g_session_mode = getenv("E2_SESSION") != NULL;
+    int session_pipe[2] = {-1, -1};
+    int session_in = -1;
+    int session_out = -1, session_commands = -1;
     if (g_session_mode) {
+        // The app's channel, saved before the guest's stdin replaces fd 0. It reads command lines
+        // and the loop below turns them into writes on the guest's side.
+        session_commands = dup(STDIN_FILENO);
+        if (pipe(session_pipe) != 0) {
+            fprintf(stderr, "e2: session: pipe: %s\n", strerror(errno));
+            return 1;
+        }
+        if (dup2(session_pipe[0], STDIN_FILENO) < 0) {
+            fprintf(stderr, "e2: session: stdin: %s\n", strerror(errno));
+            return 1;
+        }
+        close(session_pipe[0]);
+        session_in = session_pipe[1];
+        session_out = dup(STDOUT_FILENO);
         // Non-blocking, or the harness blocks inside the host read() and can never get back to the
         // caller that has the next command. The yield in fs_read only fires once the read returns,
         // and a blocking read on a pipe with a live writer does not return.
         int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
         if (flags >= 0) fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
     }
-    const int status = run_proc(1);
-    if (g_session_mode && procs[1].alive) {
-        fprintf(stderr, "\ne2: the guest is waiting for input\n");
-        return 0;
+    int status = 0;
+    if (g_session_mode) {
+        struct session_writer writer = {session_commands, session_in};
+        pthread_t feeder;
+        const bool threaded = pthread_create(&feeder, NULL, session_writer_main, &writer) == 0;
+        if (!threaded) {
+            fprintf(stderr, "e2: session: no thread to feed the shell\n");
+            return 1;
+        }
+        // The guest blocks in read() until the writer has something; the run ends when it exits.
+        status = run_proc(1);
+        pthread_join(feeder, NULL);
+        if (g_fault) {
+            fprintf(stderr, "e2: session ended (%s)\n", g_reason);
+            status = 1;
+        }
+        close(session_out);
+        close(session_commands);
+    } else {
+        status = run_proc(1);
     }
     (void)status;
     if (getenv("E2_TRACE_WAITSUM"))

@@ -27,6 +27,7 @@
 | 写入上限 | 运行期 64 MB `RLIMIT_FSIZE`，超出时写失败 |
 | 内存上限 | `E2_HEAP_MB` 同时约束 `brk` 与 `mmap`，超出抛 `MemoryError` |
 | 工作区挂载 | guest 的 `/workspace` 就是项目目录 |
+| **持久会话** | `E2_SESSION=1` 时一个 guest shell 跨多条命令存活，`cd` 和变量都保持。命令由写线程分次喂入，shell 阻塞在 read 上等着——不是轮询 |
 | **`/proc` 已种入** | `df`、`free`、`uname -a`、`nproc` 都能用；`/proc/mounts` 与 `statfs` 一致；`/proc` 与 `/proc/self` 都从可写目录提供，因为设备上的 rootfs 只读 |
 | 深嵌套的子 shell | 1000 层括号嵌套仍能运行 |
 | **27 个系统调用** | `tools/syscall-probe.py` 逐行与 qemu 对比：`getpid`、`stat`、`symlink`、`hardlink`、`chmod`、`listdir`、`walk`、`pipe`、`select`、`lseek`、`getcwd`、`time` 等 |
@@ -63,7 +64,7 @@ xml.etree.ElementTree  curses  curses.panel
 | **没有网络** | 只支持 `socketpair`，没有任何会 `connect` 的东西。**`ssl` 能导入、CA 证书齐全，但发不出 HTTPS 请求。** |
 | **`socket.socketpair` 不可用** | 系统调用本身有，但 Python 的包装还需要 `sendmsg`/`recvmsg` 传描述符，两者返回 ENOSYS |
 | **没有线程** | 见下 |
-| **`run_linux` 每次是新 guest，不是持久会话** | 但 guest 里的 shell 本身能在一次运行内保持状态（`cd`、变量都能跨命令保留）。缺的是应用在两次命令之间持续写管道这一层，见 `docs/persistent-session.md` |
+| **`run_linux` 还没有用上会话模式** | 会话本身已经工作（见上），但桥接层每次调用仍启动新 guest。接上去是下一步，见 `docs/persistent-session.md` |
 
 | **`prlimit64` 只报告不执行** | 设置新的 rlimit 会被接受但忽略 |
 | **符号链接的绝对目标不工作** | `/tmp/link -> /tmp/target` 这样的链接，`open` 会返回 `ENOENT`：目标是按**宿主**路径解析的，不经过 guest 映射。**相对目标正常**。这是真限制，不是回归 |

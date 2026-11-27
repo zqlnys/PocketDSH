@@ -524,5 +524,16 @@ check "proc-all-seeded" \
     'for f in meminfo uptime version stat cpuinfo filesystems mounts; do test -r /proc/$f || echo $f; done | wc -l' \
     0
 
+echo "persistent session"
+
+# One guest shell across several commands, fed one at a time while it waits. The state a shell keeps -
+# working directory and variables - survives because the process does.
+sess_out=$(printf 'cd /tmp\npwd\nX=hello\necho "X=$X"\ncd /workspace\npwd\n' \
+    | E2_SESSION=1 E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" timeout 60 "$RUNE" "$BUSYBOX" sh 2>/dev/null)
+case "$sess_out" in
+    *"/tmp"*"X=hello"*"/workspace"*) pass=$((pass + 1)) ;;
+    *) fail=$((fail + 1)); printf '  FAIL persistent-session\n    got: %s\n' "$(printf '%s' "$sess_out" | tr '\n' '|')" ;;
+esac
+
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
