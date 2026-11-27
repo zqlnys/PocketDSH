@@ -570,5 +570,26 @@ case "$sock_out" in
     *) fail=$((fail + 1)); printf '  FAIL socketpair-roundtrip\n    got: %s\n' "$sock_out" ;;
 esac
 
+echo "asyncio"
+
+# The event loop, which needs a socketpair for its self-pipe. gather, Queue and sleep all work; a TCP
+# server does not, because nothing here connects - that is stated separately rather than implied by
+# "asyncio works".
+async_out=$(E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" PYTHONHOME=/usr LANG=C.UTF-8 E2_CAP=600000000 \
+    timeout 300 "$RUNE" "$ROOT/usr/bin/python3.12" -c 'import asyncio
+async def w(n):
+    await asyncio.sleep(0.01)
+    return n * n
+async def main():
+    r = await asyncio.gather(*[w(i) for i in range(4)])
+    q = asyncio.Queue()
+    await q.put("q")
+    print(r, await q.get())
+asyncio.run(main())' 2>&1 | sed -n '/^\[0, 1, 4, 9\] q$/p')
+case "$async_out" in
+    "[0, 1, 4, 9] q") pass=$((pass + 1)) ;;
+    *) fail=$((fail + 1)); printf '  FAIL asyncio-loop\n    got: %s\n' "$async_out" ;;
+esac
+
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
