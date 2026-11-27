@@ -800,6 +800,107 @@ e2_status e2_service_syscall(e2_machine *m, e2_syscall_env *env) {
             memcpy(dst, &ts, sizeof(ts));
             E2_RETURN(0);
         }
+        case 206:   // sendto(fd, buf, len, flags, addr, addrlen)
+        case 207: { // recvfrom(fd, buf, len, flags, addr, addrlen)
+            // What Python's send() and recv() actually reach for on an AF_UNIX socket. Both were
+            // missing, so a socketpair could be created and not used.
+            if (env->files == NULL || env->files->read == NULL || env->files->write == NULL) {
+                E2_RETURN(-E2_ENOSYS);
+            }
+            const bool sending = (m->cpu.x[8] == 206);
+            const int fd = (int)a0;
+            const uint64_t buf = a1;
+            size_t len = (size_t)a2;
+            if (len > (1u << 20)) len = 1u << 20;
+            unsigned char *tmp = malloc(len ? len : 1);
+            if (tmp == NULL) E2_RETURN(-12);   // ENOMEM
+            long done;
+            if (sending) {
+                if (e2_memory_read(&m->mem, buf, tmp, len) != 0) { free(tmp); E2_RETURN(-E2_EFAULT); }
+                done = env->files->write(env->ctx, fd, tmp, len, -1);
+            } else {
+                done = env->files->read(env->ctx, fd, tmp, len, -1);
+                if (done > 0 && e2_memory_write(&m->mem, buf, tmp, (size_t)done) != 0) {
+                    free(tmp);
+                    E2_RETURN(-E2_EFAULT);
+                }
+                // The peer address is not modelled; a caller that asked for it gets a zero length.
+                const uint64_t addrlen_ptr = m->cpu.x[5];
+                if (addrlen_ptr != 0) {
+                    uint32_t zero = 0;
+                    e2_memory_write(&m->mem, addrlen_ptr, &zero, 4);
+                }
+            }
+            free(tmp);
+            E2_RETURN(done);
+        }
+        case 211:   // sendmsg(fd, msghdr, flags)
+        case 212: { // recvmsg(fd, msghdr, flags)
+            // Python's socket objects go through these even for send() and recv() on a socketpair,
+            // so a working socketpair still failed with ENOSYS from the very next call.
+            //
+            // Only the data is handled: msg_name is ignored and no control message is passed. That
+            // is enough for every caller in the standard library that is not passing a descriptor
+            // between processes, and refusing anything else is better than pretending.
+            if (env->files == NULL || env->files->read == NULL || env->files->write == NULL) {
+                E2_RETURN(-E2_ENOSYS);
+            }
+            const int fd = (int)a0;
+            const uint64_t msg = a1;
+            if (msg == 0) E2_RETURN(-E2_EFAULT);
+            // struct msghdr on aarch64: name(8) namelen(4) pad(4) iov(8) iovlen(8)
+            //                          control(8) controllen(8) flags(4) pad(4)
+            unsigned char hdr[56];
+            if (e2_memory_read(&m->mem, msg, hdr, sizeof(hdr)) != 0) E2_RETURN(-E2_EFAULT);
+            uint64_t iov = 0, iovlen = 0, control = 0, controllen = 0;
+            memcpy(&iov, hdr + 16, 8);
+            memcpy(&iovlen, hdr + 24, 8);
+            memcpy(&control, hdr + 32, 8);
+            memcpy(&controllen, hdr + 40, 8);
+            if (control != 0 && controllen != 0) {
+                // Said plainly rather than silently dropped: a caller that asked to pass a
+                // descriptor and got its data delivered without it would be worse off.
+                E2_RETURN(-E2_ENOTSUP);
+            }
+            if (iovlen > 64) E2_RETURN(-E2_EINVAL);
+            const bool sending = (m->cpu.x[8] == 211);
+            long total = 0;
+            for (uint64_t i = 0; i < iovlen; i++) {
+                uint64_t base = 0, len = 0;
+                unsigned char one[16];
+                if (e2_memory_read(&m->mem, iov + i * 16, one, sizeof(one)) != 0) break;
+                memcpy(&base, one, 8);
+                memcpy(&len, one + 8, 8);
+                if (len == 0) continue;
+                if (len > (1u << 20)) len = 1u << 20;
+                unsigned char *buf = malloc((size_t)len);
+                if (buf == NULL) break;
+                long done;
+                if (sending) {
+                    if (e2_memory_read(&m->mem, base, buf, (size_t)len) != 0) { free(buf); break; }
+                    done = env->files->write(env->ctx, fd, buf, (size_t)len, -1);
+                } else {
+                    done = env->files->read(env->ctx, fd, buf, (size_t)len, -1);
+                    if (done > 0 && e2_memory_write(&m->mem, base, buf, (size_t)done) != 0) {
+                        free(buf);
+                        break;
+                    }
+                }
+                free(buf);
+                if (done < 0) {
+                    if (total == 0) E2_RETURN(done);
+                    break;
+                }
+                total += done;
+                if ((size_t)done < len) break;
+            }
+            // msg_flags: nothing outstanding, no truncation.
+            {
+                uint32_t zero = 0;
+                e2_memory_write(&m->mem, msg + 48, &zero, 4);
+            }
+            E2_RETURN(total);
+        }
         case 204: {  // getsockname(fd, addr, addrlen)
             // Python's socket.socketpair calls this on each end before returning them, so without
             // it a working socketpair still surfaced as ENOSYS - the error came from the call

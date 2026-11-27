@@ -558,5 +558,17 @@ case "$no_locale" in
     *) fail=$((fail + 1)); printf '  FAIL default-locale\n    got: %s\n' "$no_locale" ;;
 esac
 
+echo "socketpair"
+
+# A socketpair that can be created and not used is not a socketpair. Python's send() and recv()
+# reach sendto and recvfrom, neither of which existed - the error came from the call after the one
+# that had succeeded, which is why socketpair() looked supported.
+sock_out=$(E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" PYTHONHOME=/usr LANG=C.UTF-8 E2_CAP=400000000 \
+    timeout 180 "$RUNE" "$ROOT/usr/bin/python3.12" -c 'import socket; a,b=socket.socketpair(); a.send(b"ping"); print(b.recv(16)); a.close(); b.close()' 2>&1 | head -1)
+case "$sock_out" in
+    "b'ping'") pass=$((pass + 1)) ;;
+    *) fail=$((fail + 1)); printf '  FAIL socketpair-roundtrip\n    got: %s\n' "$sock_out" ;;
+esac
+
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

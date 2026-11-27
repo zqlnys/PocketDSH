@@ -62,7 +62,7 @@ xml.etree.ElementTree  curses  curses.panel
 | 限制 | 原因 |
 | --- | --- |
 | **没有网络** | 只支持 `socketpair`，没有任何会 `connect` 的东西。**`ssl` 能导入、CA 证书齐全，但发不出 HTTPS 请求。** |
-| **`socket.socketpair` 不可用** | 系统调用本身有，但 Python 的包装还需要 `sendmsg`/`recvmsg` 传描述符，两者返回 ENOSYS |
+| **`socket.socketpair` 可以收发数据** | `sendto`(206)、`recvfrom`(207)、`sendmsg`(211)、`recvmsg`(212) 都已实现，往返数据通过。**`SCM_RIGHTS`（传描述符）仍不支持，带控制消息的调用返回 `ENOTSUP`——明说而不是悄悄丢掉** |
 | **没有线程** | 见下 |
 | **`run_linux` 还没有用上会话模式** | 会话在 harness 和桥接两层都已工作（`e2_bridge_session_start/_write/_wait/_close`），但 `run_linux` 仍每次启动新 guest。把它接上是下一步 |
 
