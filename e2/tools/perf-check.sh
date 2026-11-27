@@ -31,18 +31,32 @@ fi
 if [ -x "${E2_PERF_PYTHON:-/tmp/ftest/usr/bin/python3.12}" ]; then
     py=${E2_PERF_PYTHON:-/tmp/ftest/usr/bin/python3.12}
     root=${E2_PERF_ROOT:-/tmp/ftest}
-    start=$(date +%s%N)
-    insns=$(E2_ROOT="$root" PYTHONHOME=/usr E2_CAP=400000000 LANG=C.UTF-8 \
-        ./tools/rune "$py" -c pass 2>&1 | sed -n 's/.*instructions=\([0-9]*\).*/\1/p')
-    end=$(date +%s%N)
+    # Five runs, best one reported. The instruction count is deterministic, so the spread between
+    # runs is the machine's, not the code's - and the minimum is the estimator that shrugs it off.
+    # Single samples varied between 75 and 81 ns (8%); the best of five lands in 74-77 (4%), which
+    # is the resolution any further change has to beat.
+    best_ms=999999
+    insns=""
+    attempt=0
+    while [ "$attempt" -lt 5 ]; do
+        attempt=$((attempt + 1))
+        start=$(date +%s%N)
+        n=$(E2_ROOT="$root" PYTHONHOME=/usr E2_CAP=400000000 LANG=C.UTF-8 \
+            ./tools/rune "$py" -c pass 2>&1 | sed -n 's/.*instructions=\([0-9]*\).*/\1/p')
+        end=$(date +%s%N)
+        if [ -n "$n" ]; then
+            ms=$(( (end - start) / 1000000 ))
+            insns="$n"
+            [ "$ms" -lt "$best_ms" ] && best_ms=$ms
+        fi
+    done
     # Measured noise floor: repeated runs of the same binary vary between 75 and 81 ns for the
     # real workload, about seven percent. A change smaller than that cannot be told from noise by
     # this script, and three separate optimisations this session were within it - including a
     # four-entry region cache that read as 75-76 against 73 and was reverted.
     if [ -n "$insns" ] && [ "$insns" -gt 0 ]; then
-        ms=$(( (end - start) / 1000000 ))
-        printf 'perf-check: real workload %s instructions in %s ms = %s ns/instruction\n' \
-            "$insns" "$ms" "$(( ms * 1000000 / insns ))"
+        printf 'perf-check: real workload %s instructions in %s ms (best of 5) = %s ns/instruction\n' \
+            "$insns" "$best_ms" "$(( best_ms * 1000000 / insns ))"
     fi
 else
     echo "perf-check: no CPython root for the real-workload measurement"
