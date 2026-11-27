@@ -129,7 +129,7 @@ targets:
         # loop whose cost is what the user feels on every command, and the size it saves is small
         # next to a 34 MB guest root. The build machine has always measured with -O2, so the numbers
         # in the capability list were not the numbers a device ran.
-        GCC_OPTIMIZATION_LEVEL: "-O2"
+        GCC_OPTIMIZATION_LEVEL: "2"
         OTHER_LDFLAGS:
           - "$(inherited)"
           - -framework
