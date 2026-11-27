@@ -350,7 +350,7 @@ cp /tmp/dtre /tmp/alpine-root/tmp/dtre 2>/dev/null || true
 cat > /tmp/dtlnk.sh 2>/dev/null <<'WRAP'
 rm -rf /tmp/dtlnk; mkdir -p /tmp/dtlnk; ln -s target /tmp/dtlnk/l; ls /tmp/dtlnk | wc -l
 rm -rf /tmp/dtlnk; mkdir -p /tmp/dtlnk; ln -s target /tmp/dtlnk/l; rm -rf /tmp/dtlnk; ls -d /tmp/dtlnk 2>&1
-rm -rf /tmp/dtlnk; mkdir -p /tmp/dtlnk/a; ln -s ../missing /tmp/dtlnk/a/l; find /tmp/dtlnk | sort
+rm -rf /tmp/dtlnk; mkdir -p /tmp/dtlnk/a; ln -s ../missing /tmp/dtlnk/a/l; busybox find /tmp/dtlnk | busybox sort
 WRAP
 cp /tmp/dtlnk.sh "$E2_TMP_DIR/dtlnk.sh" 2>/dev/null || true
 cp /tmp/dtlnk.sh /tmp/alpine-root/tmp/dtlnk.sh 2>/dev/null || true
@@ -422,6 +422,8 @@ cp /tmp/dtreal2.sh "$E2_TMP_DIR/dtreal2.sh" 2>/dev/null || true
 cp /tmp/dtreal2.sh /tmp/alpine-root/tmp/dtreal2.sh 2>/dev/null || true
 pass=0
 fail=0
+# Cases where both sides failed, so agreeing proves nothing.
+suspect=0
 empty=
 while IFS= read -r cmd; do
     [ -z "$cmd" ] && continue
@@ -456,6 +458,25 @@ while IFS= read -r cmd; do
         rm -rf "$ROOT/tmp/$created" 2>/dev/null
     done
 
+    # Agreement between two failures is not agreement.
+    #
+    # A case whose fixture never reached the guest made both backends answer "can't open", and the
+    # comparison counted that as the same result - `sh /tmp/dtalgo.sh` passed that way and had never
+    # run a line. Anything both sides report as an error is counted separately, so it cannot sit in
+    # the "same" column looking like evidence.
+    # Every line an error, not merely one of them: some cases print a failure deliberately - a
+    # script that removes a directory and then lists it expects "No such file or directory" - and
+    # flagging those would make the check noise nobody reads.
+    all_errors() {
+        [ -n "$1" ] || return 1
+        printf '%s\n' "$1" | grep -qvE "can.t open|not found|No such file|Permission denied|^$" && return 1
+        return 0
+    }
+    if all_errors "$mine" && all_errors "$theirs"; then
+        suspect=$((suspect + 1))
+        printf 'SUSPECT [%s]\n  both: %s\n' "$cmd" "$(printf '%s' "$mine" | head -2 | tr '\n' '|')"
+        continue
+    fi
     if [ "$mine" = "$theirs" ]; then
         pass=$((pass + 1))
         # Both sides empty is a pass that proves very little: a case whose command was
@@ -751,7 +772,10 @@ printf 'a\nb\nc\n' | sed -n '$p'
 seq 5 | awk 'NR==3{print}'
 echo abc | cut -c2-3
 seq 3 | awk '{sum+=$1}END{print sum}'
-echo test | base32 2>&1 | head -1
+# base32 was here and tested nothing: neither the guest root nor the static busybox has the applet,
+# so both sides answered "applet not found" and the comparison counted that as agreement. Removed
+# rather than left as a case that cannot fail. base64 covers the same code path and does exist.
+echo test | busybox base64
 # Root filesystem paths a program may probe. Under chroot both sides see the same ones.
 cat /etc/hosts | head -1
 cat /etc/group | head -1 | cut -d: -f1
