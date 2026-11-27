@@ -424,6 +424,8 @@ pass=0
 fail=0
 # Cases where both sides failed, so agreeing proves nothing.
 suspect=0
+# Cases where both sides printed nothing, which proves nothing either.
+empties=0
 empty=
 while IFS= read -r cmd; do
     [ -z "$cmd" ] && continue
@@ -472,6 +474,14 @@ while IFS= read -r cmd; do
         printf '%s\n' "$1" | grep -qvE "can.t open|not found|No such file|Permission denied|SyntaxError|Traceback|applet not found|^$" && return 1
         return 0
     }
+    # Two empty outputs agree about nothing. Some commands legitimately print nothing, so this is
+    # reported rather than failed - a case whose command is `true` and a case whose command silently
+    # did nothing look the same from here, and only a person can tell which it is.
+    if [ -z "$mine" ] && [ -z "$theirs" ]; then
+        empties=$((empties + 1))
+        printf 'EMPTY [%s]\n' "$cmd"
+        continue
+    fi
     if all_errors "$mine" && all_errors "$theirs"; then
         suspect=$((suspect + 1))
         printf 'SUSPECT [%s]\n  both: %s\n' "$cmd" "$(printf '%s' "$mine" | head -2 | tr '\n' '|')"
