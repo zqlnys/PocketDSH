@@ -8,8 +8,12 @@
 // Everything here is ordinary file and descriptor work, which iOS allows inside the sandbox.
 
 #include <fcntl.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <unistd.h>
 
 #include "E2Bridge.h"
 
@@ -96,6 +100,128 @@ int e2_bridge_run(const char *rootfs, const char *out_path,
                   int argc, char **argv) {
     return e2_bridge_run_in(rootfs, NULL, out_path, argc, argv);
 }
+
+// A session: one guest shell kept alive across commands.
+//
+// The bridge redirects this process's own stdout and stderr to files, so a session owns them for as
+// long as it lives. Only one session at a time, and nothing else may print while it runs - which is
+// true of the app, where a run happens on a background thread and the UI does not write to stdout.
+//
+// A thread rather than turn-taking inside one call: the guest blocks in read() until the writer
+// thread feeds it the next command, which is what a shell does. Three earlier designs tried to
+// arrange the turns from one thread and each stalled for a different reason, all of them recorded in
+// docs/persistent-session.md.
+
+static pthread_t g_session_thread;
+static int g_session_stdin = -1;
+static volatile int g_session_running = 0;
+static char g_session_out[1024];
+
+static char g_session_busybox[1024];
+
+static void *session_thread_main(void *arg) {
+    (void)arg;
+    // argv[1] is the host path to the binary: the harness loads it. The guest path is a different
+    // thing and is what a program inside sees as its own argv[0].
+    int argc = 3;
+    char *argv[3] = { (char *)"e2", g_session_busybox, (char *)"sh" };
+    e2_rune_main(argc, argv);
+    g_session_running = 0;
+    return NULL;
+}
+
+/// Starts a guest shell that stays alive. Returns 0, or -1 with nothing left behind.
+int e2_bridge_session_start(const char *rootfs, const char *workspace,
+                            const char *out_path, const char *mark_path,
+                            const char *busybox) {
+    if (g_session_running) return -1;
+    if (workspace != NULL && workspace[0] != '\0') setenv("E2_WORKSPACE", workspace, 1);
+    else unsetenv("E2_WORKSPACE");
+    if (rootfs != NULL) e2_set_root(rootfs);
+    e2_configure_environment();
+    setenv("E2_SESSION", "1", 1);
+    if (mark_path != NULL) setenv("E2_SESSION_MARK", mark_path, 1);
+    else unsetenv("E2_SESSION_MARK");
+    snprintf(g_session_out, sizeof(g_session_out), "%s", out_path != NULL ? out_path : "");
+
+    int fds[2];
+    if (pipe(fds) != 0) return -1;
+    // The thread's stdin is the pipe; the write end stays here for e2_bridge_session_write.
+    if (dup2(fds[0], STDIN_FILENO) < 0) {
+        close(fds[0]); close(fds[1]);
+        return -1;
+    }
+    close(fds[0]);
+    g_session_stdin = fds[1];
+
+    snprintf(g_session_busybox, sizeof(g_session_busybox), "%s",
+             busybox != NULL ? busybox : "/bin/busybox");
+
+    g_session_running = 1;
+    if (pthread_create(&g_session_thread, NULL, session_thread_main, NULL) != 0) {
+        g_session_running = 0;
+        close(g_session_stdin);
+        g_session_stdin = -1;
+        return -1;
+    }
+    return 0;
+}
+
+/// Sends one command line to the guest shell. Returns 0 on success.
+int e2_bridge_session_write(const char *line) {
+    if (g_session_stdin < 0 || line == NULL) return -1;
+    const size_t n = strlen(line);
+    if (write(g_session_stdin, line, n) != (ssize_t)n) return -1;
+    if (n == 0 || line[n - 1] != '\n') {
+        if (write(g_session_stdin, "\n", 1) != 1) return -1;
+    }
+    return 0;
+}
+
+/// Waits until the marker file has at least `round` lines, or the timeout expires.
+///
+/// The marker file is how a caller knows a command finished; the output file says what it printed.
+/// Polling is the honest implementation here - the harness owns no notification channel - and the
+/// interval is short enough that a command's cost dominates.
+int e2_bridge_session_wait(int round, int timeout_ms, const char *mark_path) {
+    if (mark_path == NULL) return -1;
+    const int step = 5;
+    for (int waited = 0; waited <= timeout_ms; waited += step) {
+        int lines = 0;
+        FILE *f = fopen(mark_path, "r");
+        if (f != NULL) {
+            int ch, prev = '\n';
+            while ((ch = fgetc(f)) != EOF) {
+                if (ch == '\n') lines++;
+                prev = ch;
+            }
+            if (prev != '\n') lines++;   // a marker written without its newline yet
+            fclose(f);
+        }
+        if (lines >= round) return 0;
+        if (!g_session_running) return lines >= round ? 0 : -2;
+        struct timespec ts = { 0, (long)step * 1000000L };
+        nanosleep(&ts, NULL);
+    }
+    return -1;
+}
+
+/// Ends the session and waits for the shell to go.
+void e2_bridge_session_close(void) {
+    if (g_session_stdin >= 0) {
+        // Closing the write end is what tells the shell there are no more commands.
+        close(g_session_stdin);
+        g_session_stdin = -1;
+    }
+    if (g_session_running) {
+        pthread_join(g_session_thread, NULL);
+        g_session_running = 0;
+    }
+    unsetenv("E2_SESSION");
+    unsetenv("E2_SESSION_MARK");
+}
+
+int e2_bridge_session_alive(void) { return g_session_running; }
 
 /// Stops the run in progress, from any thread.
 void e2_bridge_cancel(void) { e2_request_cancel(); }

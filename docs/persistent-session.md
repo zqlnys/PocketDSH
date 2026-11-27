@@ -124,6 +124,22 @@ Three facts were needed and only the third was the missing one:
 What remains is the loop itself: write the next command, watch for the marker, hand the output back.
 The primitive it needed now exists.
 
+### Where it stands
+
+The harness side works and is tested: `E2_SESSION=1` keeps one shell across commands, and
+`E2_SESSION_MARK` sends the completion marker to its own file so the output has no framing in it. The
+filesystem suite checks both - six commands, six markers, no marker text in stdout.
+
+The bridge has the API for it - `e2_bridge_session_start`, `_write`, `_wait`, `_alive`, `_close` - and
+it does not work yet: the first `_wait` times out with no marker. Nothing calls it, so nothing is
+broken by it; the command path the app uses is unchanged and its tests pass.
+
+Two things to look at first. The session thread calls `e2_rune_main` directly, so the stdout
+redirection `e2_bridge_run_in` performs is not in place - the guest's output goes to the app's real
+stdout rather than the file the caller was given. And the harness makes its own stdin pipe, replacing
+the one the bridge set up, so there are two layers of forwarding where one was intended; whether the
+inner writer thread ever sees a write is the thing to check before anything else.
+
 ## What a real attempt needs
 
 `run_proc` is already resumable: it returns when its budget is exhausted and the process stays
