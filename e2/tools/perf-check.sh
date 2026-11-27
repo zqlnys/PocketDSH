@@ -35,6 +35,10 @@ if [ -x "${E2_PERF_PYTHON:-/tmp/ftest/usr/bin/python3.12}" ]; then
     insns=$(E2_ROOT="$root" PYTHONHOME=/usr E2_CAP=400000000 LANG=C.UTF-8 \
         ./tools/rune "$py" -c pass 2>&1 | sed -n 's/.*instructions=\([0-9]*\).*/\1/p')
     end=$(date +%s%N)
+    # Measured noise floor: repeated runs of the same binary vary between 75 and 81 ns for the
+    # real workload, about seven percent. A change smaller than that cannot be told from noise by
+    # this script, and three separate optimisations this session were within it - including a
+    # four-entry region cache that read as 75-76 against 73 and was reverted.
     if [ -n "$insns" ] && [ "$insns" -gt 0 ]; then
         ms=$(( (end - start) / 1000000 ))
         printf 'perf-check: real workload %s instructions in %s ms = %s ns/instruction\n' \
