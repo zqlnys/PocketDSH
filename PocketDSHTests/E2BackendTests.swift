@@ -60,7 +60,16 @@ final class E2BackendTests: XCTestCase {
         let status = pointers.withUnsafeMutableBufferPointer { buffer -> Int32 in
             e2_bridge_run(root.path, out.path, Int32(argv.count), buffer.baseAddress)
         }
-        let text = (try? String(contentsOf: out, encoding: .utf8)) ?? ""
+        // An output file that cannot be read is not an empty output. Returning "" for both made a
+        // failed run and a silent one indistinguishable, and every assertion then failed with
+        // "expected X, got nothing" whether the command produced nothing or never ran.
+        let text: String
+        do {
+            text = try String(contentsOf: out, encoding: .utf8)
+        } catch {
+            XCTFail("the harness wrote no readable output to \(out.lastPathComponent): \(error)")
+            text = ""
+        }
         return (status, text)
     }
 
