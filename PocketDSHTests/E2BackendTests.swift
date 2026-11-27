@@ -10,6 +10,17 @@ import XCTest
 final class E2BackendTests: XCTestCase {
 
     /// The guest root the app ships. Resolved from the test host's bundle, which is the app.
+    /// Where the guest's /tmp actually is on disk.
+    ///
+    /// It is $TMPDIR/e2-tmp rather than <root>/tmp: the root is the read-only app bundle on a device,
+    /// so a script written there was never visible to the guest.
+    private func guestTmpDirectory() -> URL {
+        let url = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("e2-tmp", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
     private func guestRoot() throws -> URL {
         let bundle = Bundle(for: type(of: self))
         let candidates = [bundle, Bundle.main]
@@ -103,7 +114,7 @@ final class E2BackendTests: XCTestCase {
         // single-byte path, which returns four characters and stops. The bridge sets a UTF-8
         // locale, which takes the other branch, so this now covers a realistic path instead of
         // tiptoeing around the bug.
-        let script = root.appendingPathComponent("tmp/e2-python-smoke.py")
+        let script = guestTmpDirectory().appendingPathComponent("e2-python-smoke.py")
         try? FileManager.default.createDirectory(at: script.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: script) }
@@ -151,7 +162,7 @@ final class E2BackendTests: XCTestCase {
         try XCTSkipUnless(FileManager.default.fileExists(atPath: python),
                           "this build's guest root has no CPython")
 
-        let script = root.appendingPathComponent("tmp/e2-fork.py")
+        let script = guestTmpDirectory().appendingPathComponent("e2-fork.py")
         try? FileManager.default.createDirectory(at: script.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: script) }
@@ -224,7 +235,7 @@ final class E2BackendTests: XCTestCase {
         try XCTSkipUnless(FileManager.default.isReadableFile(atPath: python),
                           "this build's guest root has no CPython")
 
-        let script = root.appendingPathComponent("tmp/e2-asyncio.py")
+        let script = guestTmpDirectory().appendingPathComponent("e2-asyncio.py")
         try? FileManager.default.createDirectory(at: script.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: script) }
@@ -260,7 +271,7 @@ final class E2BackendTests: XCTestCase {
         try XCTSkipUnless(FileManager.default.isReadableFile(atPath: python),
                           "this build's guest root has no CPython")
 
-        let script = root.appendingPathComponent("tmp/e2-sub.py")
+        let script = guestTmpDirectory().appendingPathComponent("e2-sub.py")
         try? FileManager.default.createDirectory(at: script.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: script) }
@@ -461,10 +472,10 @@ final class E2BackendTests: XCTestCase {
     func testGuestWritesAFile() throws {
         let root = try guestRoot()
         let busybox = root.appendingPathComponent("bin/busybox").path
-        // The guest's /tmp maps under the guest root, so the result is read from there. Aiming
-        // at the host's temporary directory tests a path the guest cannot reach.
+        // The guest's /tmp is $TMPDIR/e2-tmp, not <root>/tmp - the root is the read-only bundle on
+        // a device, which is why this test failed there and passed here.
         let name = "e2-written-\(UUID().uuidString).txt"
-        let target = root.appendingPathComponent("tmp").appendingPathComponent(name)
+        let target = guestTmpDirectory().appendingPathComponent(name)
         try? FileManager.default.createDirectory(at: target.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: target) }
