@@ -450,6 +450,29 @@ final class E2BackendTests: XCTestCase {
         XCTAssertEqual(E2Runtime.trimmedToUTF8(leading, fromEnd: false), Data([0x62]))
     }
 
+    /// Two commands in one shell keep their state.
+    ///
+    /// Opted in rather than default, because a session owns the process's stdout while it lives and
+    /// a suite shares one process. The run path ends any session left over before it starts - that
+    /// is what stops test N+1 inheriting test N's shell.
+    func testSessionKeepsStateBetweenCommands() async throws {
+        let runtime = await E2Runtime()
+        await MainActor.run { runtime.usesSession = true }
+        defer { Task { await MainActor.run { runtime.endSession() } } }
+
+        let first = await runtime.run(command: "cd /tmp")
+        XCTAssertFalse(first.isError, first.content)
+        let second = await runtime.run(command: "pwd")
+        XCTAssertTrue(second.content.contains("/tmp"),
+                      "the working directory did not survive: \(second.content)")
+        let third = await runtime.run(command: "X=kept")
+        XCTAssertFalse(third.isError, third.content)
+        let fourth = await runtime.run(command: "echo $X")
+        XCTAssertTrue(fourth.content.contains("kept"),
+                      "a variable did not survive: \(fourth.content)")
+        await MainActor.run { runtime.endSession() }
+    }
+
     /// A command that fails has to say so.
     ///
     /// The runtime only checked for a negative status, so `exit 3` and a missing command both

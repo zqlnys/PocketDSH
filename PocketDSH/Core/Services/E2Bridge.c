@@ -17,6 +17,9 @@
 
 #include "E2Bridge.h"
 
+int e2_bridge_session_alive(void);
+void e2_bridge_session_close(void);
+
 // Declared by the harness under E2_AS_LIBRARY.
 void e2_request_cancel(void);
 void e2_clear_cancel(void);
@@ -238,6 +241,14 @@ void e2_bridge_cancel(void) { e2_request_cancel(); }
 
 int e2_bridge_run_in(const char *rootfs, const char *workspace, const char *out_path,
                      int argc, char **argv) {
+    // A session keeps a thread inside e2_rune_main, and that function is not re-entrant: it resets
+    // the descriptor table, the process table and the machine. A run that started while a session
+    // was alive would corrupt both - which is what hung the iOS tests, where every test shares one
+    // process and a session left over from an earlier one was still there. Ending it first makes
+    // that impossible rather than merely unlikely.
+    if (e2_bridge_session_alive()) {
+        e2_bridge_session_close();
+    }
     // A caller that named a workspace wins over the scratch directory: the guest's /workspace is
     // then the project the command was about, not a temporary folder nothing else can see.
     // Set every call, including when there is no workspace: the variable outlives this function,
