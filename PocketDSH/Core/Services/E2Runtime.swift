@@ -48,6 +48,7 @@ final class E2Runtime: ObservableObject {
     var usesSession = true
 
     private var sessionOut: URL?
+    private var sessionWorkspacePath: String = ""
     private var sessionMark: URL?
     private var sessionRound = 0
 
@@ -63,6 +64,7 @@ final class E2Runtime: ObservableObject {
         FileManager.default.createFile(atPath: out.path, contents: nil)
         FileManager.default.createFile(atPath: mark.path, contents: nil)
         let workspace = resolvedWorkspacePath
+        sessionWorkspacePath = workspace
         let started = busybox.withCString { bb in
             e2_bridge_session_start(rootfs.path, workspace, out.path, mark.path, bb)
         }
@@ -83,6 +85,7 @@ final class E2Runtime: ObservableObject {
         if let mark = sessionMark { try? FileManager.default.removeItem(at: mark) }
         sessionOut = nil
         sessionMark = nil
+        sessionWorkspacePath = ""
         sessionRound = 0
         if case .active = state { state = .idle }
     }
@@ -106,10 +109,37 @@ final class E2Runtime: ObservableObject {
         }
         sessionRound = round
 
-        let whole = (try? Data(contentsOf: out)) ?? Data()
-        let slice = whole.count > before ? whole.subdata(in: before..<whole.count) : Data()
-        let text = String(decoding: slice, as: UTF8.self)
-        return .success(text.isEmpty ? "(\(trimmedCommand(command)) produced no output)" : text)
+        // Capped like a one-shot run. Reading the whole file meant a command that floods filled the
+        // tool result - and the session's file keeps growing across commands, so it is larger than
+        // any single one produced.
+        guard let handle = try? FileHandle(forReadingFrom: out) else {
+            return .failure("Tier D finished but its output could not be read. The command may have "
+                + "run; nothing of what it printed survived.")
+        }
+        defer { try? handle.close() }
+        let total = (try? handle.seekToEnd()) ?? 0
+        let start = UInt64(before)
+        let produced = total > start ? total - start : 0
+        if produced == 0 {
+            return .success("(\(trimmedCommand(command)) produced no output)")
+        }
+        // The same head/tail shape readCapped uses: enough to see what happened at both ends, with
+        // the middle stated as omitted rather than silently missing.
+        let headBytes: UInt64 = 24_000, tailBytes: UInt64 = 8_000
+        var text = ""
+        if produced <= headBytes + tailBytes {
+            try? handle.seek(toOffset: start)
+            text = String(decoding: (try? handle.readToEnd()) ?? Data(), as: UTF8.self)
+        } else {
+            try? handle.seek(toOffset: start)
+            let first = (try? handle.read(upToCount: Int(headBytes))) ?? Data()
+            try? handle.seek(toOffset: total - tailBytes)
+            let last = (try? handle.readToEnd()) ?? Data()
+            text = String(decoding: first, as: UTF8.self)
+                + "\n… \(produced - headBytes - tailBytes) bytes omitted …\n"
+                + String(decoding: last, as: UTF8.self)
+        }
+        return .success(text)
     }
 
     private func trimmedCommand(_ command: String) -> String {
@@ -153,6 +183,11 @@ final class E2Runtime: ObservableObject {
         // One shell across commands, unless the caller asked for a fresh guest. The session keeps
         // the working directory and variables a shell is for; the fresh path stays because a
         // session owns the process's stdout for as long as it lives.
+        // A session's /workspace is fixed when it starts, so a different project means a different
+        // session. Sharing one made a command look at the previous project's files.
+        if usesSession, let want = workspace?.path, want != sessionWorkspacePath {
+            endSession()
+        }
         if usesSession, let live = startSession(rootfs: rootfs, busybox: busybox) {
             return await runInSession(command: command, out: live.out, mark: live.mark)
         }
