@@ -125,6 +125,11 @@ targets:
         GCC_PREPROCESSOR_DEFINITIONS:
           - "$(inherited)"
           - E2_AS_LIBRARY
+        # Release defaults to -Os, which is the wrong choice for the interpreter: it is a dispatch
+        # loop whose cost is what the user feels on every command, and the size it saves is small
+        # next to a 34 MB guest root. The build machine has always measured with -O2, so the numbers
+        # in the capability list were not the numbers a device ran.
+        GCC_OPTIMIZATION_LEVEL: "-O2"
         OTHER_LDFLAGS:
           - "$(inherited)"
           - -framework

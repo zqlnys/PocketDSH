@@ -236,6 +236,17 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             2>&1 | tee "$LOG_DIR/release-build.log"
+          # The interpreter is a dispatch loop, and Release defaults to -Os. The numbers in the
+          # capability list were measured on the build machine with -O2, so this checks that the
+          # artifact was compiled the way the figures were taken.
+          if grep -q "rune.c" "$LOG_DIR/release-build.log" 2>/dev/null; then
+            if ! grep "rune.c" "$LOG_DIR/release-build.log" | grep -q -- "-O2"; then
+              echo "::error::rune.c was not compiled with -O2; the performance figures were measured with it"
+              exit 1
+            fi
+            echo "rune.c compiled with -O2" | tee -a "$LOG_DIR/version.log"
+          fi
+
           APP_PATH="$DERIVED_DATA/Build/Products/Release-iphoneos/$PROJECT_NAME.app"
           # The artifact's own version, checked here rather than in a unit test: a test runs inside
           # the xctest host and sees that bundle's constant, not the one a person installs.
