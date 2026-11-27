@@ -229,15 +229,16 @@ int e2_bridge_session_wait(int round, int timeout_ms, const char *mark_path) {
 
 /// Ends the session and waits for the shell to go.
 void e2_bridge_session_close(void) {
+    // The lock covers the state, not the wait. Holding it across pthread_join deadlocked the whole
+    // suite: the join waits for a thread that may be inside a syscall, and every other session call
+    // was then blocked behind the lock.
     pthread_mutex_lock(&g_session_lock);
+    const int had_thread = g_session_running;
+    g_session_running = 0;
     if (g_session_stdin >= 0) {
         // Closing the write end is what tells the shell there are no more commands.
         close(g_session_stdin);
         g_session_stdin = -1;
-    }
-    if (g_session_running) {
-        pthread_join(g_session_thread, NULL);
-        g_session_running = 0;
     }
     // Every variable the session set, not just two of the three. E2_SESSION_OUT left behind made
     // the next one-shot run point the guest's stdout at the session's file - so its output went
@@ -247,6 +248,11 @@ void e2_bridge_session_close(void) {
     unsetenv("E2_SESSION_MARK");
     unsetenv("E2_SESSION_OUT");
     pthread_mutex_unlock(&g_session_lock);
+    // Joined outside the lock: this waits for a thread that may be inside a syscall, and holding the
+    // lock across it blocked every other session call behind it - which hung a whole CI run.
+    if (had_thread) {
+        pthread_join(g_session_thread, NULL);
+    }
 }
 
 int e2_bridge_session_alive(void) { return g_session_running; }
