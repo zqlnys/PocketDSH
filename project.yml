@@ -130,6 +130,10 @@ targets:
         # next to a 34 MB guest root. The build machine has always measured with -O2, so the numbers
         # in the capability list were not the numbers a device ran.
         GCC_OPTIMIZATION_LEVEL: "2"
+        # Release turns testability off, which a @testable import needs. The tests run against this
+        # configuration so that what they measure is what ships; the symbols it keeps are debug
+        # metadata and cost nothing at run time.
+        ENABLE_TESTABILITY: YES
         OTHER_LDFLAGS:
           - "$(inherited)"
           - -framework
