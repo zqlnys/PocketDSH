@@ -305,7 +305,19 @@ static const char *guest_tmp(void) {
     return value;
 }
 
+static const char *guest_tmp_for_proc(void);
+
 static void host_path(char *out, size_t n, const char *p) {
+    // /proc is served from the writable directory the seed fills, not from the root - which is the
+    // read-only app bundle on a device.
+    if (strncmp(p, "/proc/", 6) == 0) {
+        const char *proc_dir = guest_tmp_for_proc();
+        if (proc_dir != NULL) {
+            const size_t room = (n > strlen(proc_dir) + 2) ? n - strlen(proc_dir) - 2 : 0;
+            snprintf(out, n, "%s/%.*s", proc_dir, (int)room, p + 6);
+            return;
+        }
+    }
     const char *dev = host_device(p);
     if (dev != NULL) {
         snprintf(out, n, "%s", dev);
@@ -1178,6 +1190,15 @@ static const e2_file_ops FS = {
 // synthesises these; the harness states them once at start-up for the same reason.
 // Only written when the directory already exists, so a root without /proc is left
 // exactly as it was.
+/// Where the seeded /proc lives: writable, and outside the read-only root.
+static const char *guest_tmp_for_proc(void) {
+    static char path[1024];
+    if (path[0] != '\0') return path;
+    const char *tmp = getenv("TMPDIR");
+    snprintf(path, sizeof(path), "%s/e2-proc", tmp != NULL ? tmp : "/tmp");
+    return path;
+}
+
 static void seed_proc(const char *root) {
     static const struct { const char *path; const char *body; } files[] = {
         {"/proc/meminfo",
@@ -1226,17 +1247,21 @@ static void seed_proc(const char *root) {
         {"/proc/filesystems", "\tnodev\nsysfs\nproc\next4\ntmpfs\n"},
     };
     char dir[2048];
-    snprintf(dir, sizeof(dir), "%s/proc", root);
-    struct stat st;
-    // Created if absent. Returning here meant that a root without /proc got nothing seeded at
-    // all - no meminfo, no mounts, no version - and every reader of them failed as though the file
-    // simply did not exist, because it did not. The trimmed Alpine root has no /proc, so this was
-    // the normal case rather than the edge one.
-    if (stat(dir, &st) != 0 || !S_ISDIR(st.st_mode)) {
-        if (mkdir(dir, 0555) != 0 && errno != EEXIST) {
-            fprintf(stderr, "e2: could not create %s\n", dir);
+    (void)root;
+    // Seeded into a writable directory, not into the root.
+    //
+    // The root is the app bundle on a device and is read-only, so creating <root>/proc cannot work
+    // there - and the early return that used to be here hid that by seeding nothing at all. The
+    // files are served from $TMPDIR/e2-proc instead, which host_path maps /proc onto.
+    {
+        const char *tmp = getenv("E2_PROC_DIR");
+        if (tmp == NULL) tmp = guest_tmp_for_proc();
+        if (tmp == NULL) return;
+        if (mkdir(tmp, 0700) != 0 && errno != EEXIST) {
+            fprintf(stderr, "e2: could not create %s\n", tmp);
             return;
         }
+        snprintf(dir, sizeof(dir), "%s", tmp);
     }
     // /proc/self/fd must exist as a directory: ls stats the path before listing it,
     // and a directory that only materialises inside opendir is invisible to that.
@@ -1249,7 +1274,8 @@ static void seed_proc(const char *root) {
     }
     for (size_t i = 0; i < sizeof(files) / sizeof(files[0]); i++) {
         char full[2048];
-        snprintf(full, sizeof(full), "%s%s", root, files[i].path);
+        // Under the writable proc directory now, with the "/proc" prefix stripped from the path.
+        snprintf(full, sizeof(full), "%s%s", dir, files[i].path + 5);
         // Create the parent directories first. A file whose directory does not exist
         // makes fopen fail, and the failure was silent - /proc/sys/kernel/hostname was
         // added to the list and simply never appeared.
@@ -1259,7 +1285,7 @@ static void seed_proc(const char *root) {
             char *slash = strrchr(parent, '/');
             if (slash != NULL) {
                 *slash = '\0';
-                for (char *q = parent + strlen(root) + 1; *q != '\0'; q++) {
+                for (char *q = parent + strlen(dir) + 1; *q != '\0'; q++) {
                     if (*q == '/') {
                         *q = '\0';
                         mkdir(parent, 0555);
