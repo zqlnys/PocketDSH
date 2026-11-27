@@ -3637,6 +3637,7 @@ void e2_set_root(const char *path) {
 struct session_writer {
     int commands;
     int to_guest;
+    char sentinel[64];
 };
 
 /// Feeds the guest shell one command at a time from the app's channel.
@@ -3648,6 +3649,7 @@ struct session_writer {
 /// commands.
 static void *session_writer_main(void *arg) {
     struct session_writer *w = arg;
+    unsigned long long round = 0;
     char line[4096];
     for (;;) {
         size_t got = 0;
@@ -3662,8 +3664,12 @@ static void *session_writer_main(void *arg) {
         }
         line[got] = '\0';
         if (!have && got == 0) break;
-        char framed[4300];
-        snprintf(framed, sizeof(framed), "%s\n", line);
+        // The marker goes to the shell's stderr, which a session sends to its own file. Putting it
+        // on stdout put it in the same file the caller reads, which is why the first attempt's
+        // framing could not be separated from the output it was framing.
+        round++;
+        char framed[4400];
+        snprintf(framed, sizeof(framed), "%s\necho %s_%llu >&2\n", line, w->sentinel, round);
         if (write(w->to_guest, framed, strlen(framed)) < 0) break;
     }
     // End of input for the shell. Closing the write end is what lets it exit rather than wait.
@@ -3853,7 +3859,35 @@ env_done:
     }
     int status = 0;
     if (g_session_mode) {
-        struct session_writer writer = {session_commands, session_in};
+        // stderr goes to its own file when the caller names one, so the completion marker never
+        // lands in the output.
+        const char *mark_path = getenv("E2_SESSION_MARK");
+        int mark_fd = -1;
+        int saved_err = -1;
+        if (mark_path != NULL) {
+            mark_fd = open(mark_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (mark_fd >= 0) {
+                // The harness's own diagnostics go to the original stderr, not into the marker
+                // file: the summary line and a blank line were being counted as markers.
+                saved_err = dup(STDERR_FILENO);
+                dup2(mark_fd, STDERR_FILENO);
+            }
+        }
+
+        char sentinel[64];
+        unsigned long long seed = 0;
+        unsigned char rnd[8] = {0};
+        FILE *ur = fopen("/dev/urandom", "rb");
+        if (ur != NULL) {
+            if (fread(rnd, 1, sizeof(rnd), ur) != sizeof(rnd)) memset(rnd, 0, sizeof(rnd));
+            fclose(ur);
+        }
+        for (int i = 0; i < 8; i++) seed = (seed << 8) | rnd[i];
+        if (seed == 0) seed = (unsigned long long)time(NULL) ^ ((unsigned long long)getpid() << 32);
+        snprintf(sentinel, sizeof(sentinel), "__e2_%llx__", seed);
+
+        struct session_writer writer = {session_commands, session_in, ""};
+        snprintf(writer.sentinel, sizeof(writer.sentinel), "%s", sentinel);
         pthread_t feeder;
         const bool threaded = pthread_create(&feeder, NULL, session_writer_main, &writer) == 0;
         if (!threaded) {
@@ -3863,6 +3897,11 @@ env_done:
         // The guest blocks in read() until the writer has something; the run ends when it exits.
         status = run_proc(1);
         pthread_join(feeder, NULL);
+        if (saved_err >= 0) {
+            fflush(stderr);
+            dup2(saved_err, STDERR_FILENO);
+            close(saved_err);
+        }
         if (g_fault) {
             fprintf(stderr, "e2: session ended (%s)\n", g_reason);
             status = 1;

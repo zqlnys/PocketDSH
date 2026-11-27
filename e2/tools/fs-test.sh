@@ -528,8 +528,22 @@ echo "persistent session"
 
 # One guest shell across several commands, fed one at a time while it waits. The state a shell keeps -
 # working directory and variables - survives because the process does.
+# The completion marker goes to its own file, so the output the caller reads has no framing in it.
+sess_mark=$(mktemp)
 sess_out=$(printf 'cd /tmp\npwd\nX=hello\necho "X=$X"\ncd /workspace\npwd\n' \
-    | E2_SESSION=1 E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" timeout 60 "$RUNE" "$BUSYBOX" sh 2>/dev/null)
+    | E2_SESSION=1 E2_SESSION_MARK="$sess_mark" E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" \
+      timeout 60 "$RUNE" "$BUSYBOX" sh 2>/dev/null)
+# Six commands, six markers - and nothing else in the file, which is the part that matters: the
+# harness's own diagnostics were landing there and being counted.
+case "$(wc -l < "$sess_mark" 2>/dev/null || echo 0)" in
+    6) pass=$((pass + 1)) ;;
+    *) fail=$((fail + 1)); printf '  FAIL session-markers\n    wanted 6, got %s\n' "$(wc -l < "$sess_mark" 2>/dev/null)" ;;
+esac
+case "$sess_out" in
+    *__e2_*) fail=$((fail + 1)); printf '  FAIL session-clean-output: a marker reached stdout\n' ;;
+    *) pass=$((pass + 1)) ;;
+esac
+rm -f "$sess_mark"
 case "$sess_out" in
     *"/tmp"*"X=hello"*"/workspace"*) pass=$((pass + 1)) ;;
     *) fail=$((fail + 1)); printf '  FAIL persistent-session\n    got: %s\n' "$(printf '%s' "$sess_out" | tr '\n' '|')" ;;
