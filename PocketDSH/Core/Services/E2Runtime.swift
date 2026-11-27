@@ -157,6 +157,19 @@ final class E2Runtime: ObservableObject {
         return flat.count > 60 ? String(flat.prefix(60)) + "…" : flat
     }
 
+    /// Runs a command in a shell kept across calls.
+    ///
+    /// Separate from `run` rather than a flag on it, because the two answer different questions.
+    /// `run` is one command and a guest that starts for it; this is a shell, with what a shell
+    /// remembers. The tool wants the second and the tests want the first, and making that explicit
+    /// is what kept the suite from having to opt out of a default it never asked for.
+    func runSession(command: String, workspace: URL? = nil) async -> ToolExecutionResult {
+        let previous = usesSession
+        usesSession = true
+        defer { usesSession = previous }
+        return await run(command: command, workspace: workspace)
+    }
+
     func run(command: String, workspace: URL? = nil) async -> ToolExecutionResult {
         guard !busy else {
             return .failure("Tier D is busy. Wait for the running command to finish.")

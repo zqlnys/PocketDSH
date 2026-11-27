@@ -457,17 +457,16 @@ final class E2BackendTests: XCTestCase {
     /// is what stops test N+1 inheriting test N's shell.
     func testSessionKeepsStateBetweenCommands() async throws {
         let runtime = await E2Runtime()
-        await MainActor.run { runtime.usesSession = true }
         defer { Task { await MainActor.run { runtime.endSession() } } }
 
-        let first = await runtime.run(command: "cd /tmp")
+        let first = await runtime.runSession(command: "cd /tmp")
         XCTAssertFalse(first.isError, first.content)
-        let second = await runtime.run(command: "pwd")
+        let second = await runtime.runSession(command: "pwd")
         XCTAssertTrue(second.content.contains("/tmp"),
                       "the working directory did not survive: \(second.content)")
-        let third = await runtime.run(command: "X=kept")
+        let third = await runtime.runSession(command: "X=kept")
         XCTAssertFalse(third.isError, third.content)
-        let fourth = await runtime.run(command: "echo $X")
+        let fourth = await runtime.runSession(command: "echo $X")
         XCTAssertTrue(fourth.content.contains("kept"),
                       "a variable did not survive: \(fourth.content)")
         await MainActor.run { runtime.endSession() }
