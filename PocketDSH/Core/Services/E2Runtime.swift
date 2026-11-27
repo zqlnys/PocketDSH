@@ -63,7 +63,7 @@ final class E2Runtime: ObservableObject {
     private var sessionRound = 0
 
     /// Starts the shell, or returns the URLs of a live one.
-    private func startSession(rootfs: URL, busybox: String) -> (out: URL, mark: URL)? {
+    private func startSession(rootfs: URL, busybox: String, workspace: String) -> (out: URL, mark: URL)? {
         if let out = sessionOut, let mark = sessionMark, e2_bridge_session_alive() != 0 {
             return (out, mark)
         }
@@ -73,7 +73,10 @@ final class E2Runtime: ObservableObject {
         let mark = dir.appendingPathComponent("e2-session-\(token).mark")
         FileManager.default.createFile(atPath: out.path, contents: nil)
         FileManager.default.createFile(atPath: mark.path, contents: nil)
-        let workspace = resolvedWorkspacePath
+        // The workspace this command is about, not the one the runtime happens to resolve: the
+        // comparison below has to be against the same string, or every call looks like a different
+        // project and a session is torn down and rebuilt each time - with two of them overlapping
+        // when the tool is called concurrently.
         sessionWorkspacePath = workspace
         let started = busybox.withCString { bb in
             e2_bridge_session_start(rootfs.path, workspace, out.path, mark.path, bb)
@@ -208,10 +211,15 @@ final class E2Runtime: ObservableObject {
         // session owns the process's stdout for as long as it lives.
         // A session's /workspace is fixed when it starts, so a different project means a different
         // session. Sharing one made a command look at the previous project's files.
-        if usesSession, let want = workspace?.path, want != sessionWorkspacePath {
+        let sessionWorkspace = workspace?.path ?? resolvedWorkspacePath
+        if usesSession, sessionOut != nil, sessionWorkspace != sessionWorkspacePath {
             endSession()
         }
-        if usesSession, let live = startSession(rootfs: rootfs, busybox: busybox) {
+        // Serialised at the bridge: two sessions at once would have two threads inside a function
+        // that is not re-entrant.
+
+        if usesSession,
+           let live = startSession(rootfs: rootfs, busybox: busybox, workspace: sessionWorkspace) {
             return await runInSession(command: command, out: live.out, mark: live.mark)
         }
         let outURL = FileManager.default.temporaryDirectory

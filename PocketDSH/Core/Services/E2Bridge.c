@@ -140,10 +140,18 @@ static void *session_thread_main(void *arg) {
 }
 
 /// Starts a guest shell that stays alive. Returns 0, or -1 with nothing left behind.
+// One session at a time, enforced rather than assumed: two threads inside e2_rune_main wreck each
+// other, and a tool layer that calls this from more than one task is exactly how that happens.
+static pthread_mutex_t g_session_lock = PTHREAD_MUTEX_INITIALIZER;
+
 int e2_bridge_session_start(const char *rootfs, const char *workspace,
                             const char *out_path, const char *mark_path,
                             const char *busybox) {
-    if (g_session_running) return -1;
+    pthread_mutex_lock(&g_session_lock);
+    if (g_session_running) {
+        pthread_mutex_unlock(&g_session_lock);
+        return -1;
+    }
     if (workspace != NULL && workspace[0] != '\0') setenv("E2_WORKSPACE", workspace, 1);
     else unsetenv("E2_WORKSPACE");
     if (rootfs != NULL) e2_set_root(rootfs);
@@ -173,8 +181,10 @@ int e2_bridge_session_start(const char *rootfs, const char *workspace,
         g_session_running = 0;
         close(g_session_stdin);
         g_session_stdin = -1;
+        pthread_mutex_unlock(&g_session_lock);
         return -1;
     }
+    pthread_mutex_unlock(&g_session_lock);
     return 0;
 }
 
@@ -219,6 +229,7 @@ int e2_bridge_session_wait(int round, int timeout_ms, const char *mark_path) {
 
 /// Ends the session and waits for the shell to go.
 void e2_bridge_session_close(void) {
+    pthread_mutex_lock(&g_session_lock);
     if (g_session_stdin >= 0) {
         // Closing the write end is what tells the shell there are no more commands.
         close(g_session_stdin);
@@ -235,6 +246,7 @@ void e2_bridge_session_close(void) {
     unsetenv("E2_SESSION");
     unsetenv("E2_SESSION_MARK");
     unsetenv("E2_SESSION_OUT");
+    pthread_mutex_unlock(&g_session_lock);
 }
 
 int e2_bridge_session_alive(void) { return g_session_running; }
