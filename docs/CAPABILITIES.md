@@ -67,7 +67,7 @@ xml.etree.ElementTree  curses  curses.panel
 | **没有线程** | 见下 |
 | **`run_linux` 还没有用上会话模式** | 会话在 harness 和桥接两层都已工作（`e2_bridge_session_start/_write/_wait/_close`），但 `run_linux` 仍每次启动新 guest。把它接上是下一步 |
 
-| **`time.gmtime()` 对小值算错** | `gmtime(0)` 给出 `1969-12-31 48:00`，`gmtime(3600)` 给出 `01:00` 变成 `25:00`，`gmtime(86400)` 的日期差一天；`gmtime(1700000000)` 正确。**Python 层的 `//` 和 `%` 已验证正确**，所以问题在 musl 的 `gmtime_r`。后果：`strftime` 抛 `ValueError: hour out of range`。**这是普查方法发现的，不是猜的** |
+| **`time.gmtime()` 对小值算错** | `gmtime(0)` 给出 `1969-12-31 48:00`，`gmtime(3600)` 给出 `01:00` 变成 `25:00`，`gmtime(86400)` 的日期差一天；`gmtime(1700000000)` 正确。**Python 层的 `//` 和 `%` 已验证正确**，所以问题在 musl 的 `gmtime_r`。后果：`strftime` 抛 `ValueError: hour out of range`。**边界在 2^30**：`t < 1073741824` 时 `tm_hour` 比正确值**恒多 24**，`t ≥ 2^30` 时完全正确。2^30 正是 CPython 单 digit 小整数的上限，所以问题出在小整数这条路径上，而**不是** musl 的时间计算——`//`、`%` 和 `SMULH`/`UMULH` 都已验证正确并加进了单指令测试。普查方法发现的，不是猜的 |
 | **`prlimit64` 只报告不执行** | 设置新的 rlimit 会被接受但忽略 |
 | **符号链接的绝对目标不工作** | `/tmp/link -> /tmp/target` 这样的链接，`open` 会返回 `ENOENT`：目标是按**宿主**路径解析的，不经过 guest 映射。**相对目标正常**。这是真限制，不是回归 |
 | **exec 最多携带 32 个参数和 64 个环境变量** | 超过时返回 `E2BIG`（真内核的上限高得多）。上限受限于每次 exec 的栈上缓冲区；`run_proc` 是嵌套的，把它调大会把栈风险换成一个更少见的错误 |
