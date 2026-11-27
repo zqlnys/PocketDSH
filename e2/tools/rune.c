@@ -225,9 +225,29 @@ static void *g_dirs[E2_MAX_PROCS][E2_MAX_FDS];
 static unsigned char g_cloexec[E2_MAX_PROCS][E2_MAX_FDS];
 #define TAB(c) (g_fds[((const procctx *)(c))->fdtab])
 #define DIRTAB(c) (g_dirs[((const procctx *)(c))->fdtab])
+static void host_ref(int h);
+
 static void fd_init_tab(int tab) {
     for (int i = 0; i < E2_MAX_FDS; i++) { g_fds[tab][i].used = 0; g_fds[tab][i].host = -1; }
     for (int i = 0; i < 3; i++) { g_fds[tab][i].used = 1; g_fds[tab][i].host = i; }
+    // A session sends the guest's streams to files of their own instead of redirecting the process's.
+    //
+    // Redirecting fd 1 with dup2 looked simpler and broke everything else in the process: the
+    // redirect is process-wide, so the caller's own output - a test runner's, an app's log - went
+    // into the guest's output file and disappeared. That is what made the iOS suite hang for half an
+    // hour twice. Pointing the guest's descriptor table at the file touches only the guest.
+    {
+        const char *out = getenv("E2_SESSION_OUT");
+        if (out != NULL && out[0] != '\0') {
+            const int fd = open(out, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (fd >= 0) { g_fds[tab][1].host = fd; host_ref(fd); }
+        }
+        const char *mark = getenv("E2_SESSION_MARK");
+        if (mark != NULL && mark[0] != '\0') {
+            const int fd = open(mark, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (fd >= 0) { g_fds[tab][2].host = fd; host_ref(fd); }
+        }
+    }
     for (int i = 0; i < E2_MAX_FDS; i++) { g_dirs[tab][i] = NULL; g_cloexec[tab][i] = 0; }
 }
 // fork shares the open file description, so a close in one process must not

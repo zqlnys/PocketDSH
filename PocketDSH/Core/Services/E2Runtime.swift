@@ -37,16 +37,15 @@ final class E2Runtime: ObservableObject {
 
     /// Whether to run each command in a fresh guest or feed one shell.
     ///
-    /// Off by default, and the reason is measured rather than suspected.
+    /// On by default.
     ///
-    /// With the session on for every call the suite hung twice: once before the guard that ends a
-    /// leftover session, and once after it. The guard fixed the first cause - `e2_rune_main` is not
-    /// re-entrant - so a second one is behind it, and the obvious candidate is `_close`, which joins
-    /// the session thread: a close that blocks makes every one-shot run behind it block too.
-    ///
-    /// The session works when a caller opts in and ends it, which the test does. Until closing cannot
-    /// block, leaving this on would trade a hang in the suite for a hang in the app.
-    var usesSession = false
+    /// Two hangs stood in the way and both are now understood. The first: `e2_rune_main` is not
+    /// re-entrant, and a session left by one test was still inside it when the next ran - the run
+    /// path ends any live session first. The second: the bridge redirected the process's stdout to
+    /// the guest's output file, which is process-wide, so the test runner's own output went there
+    /// and vanished. The guest's descriptor table points at the files now and nothing else in the
+    /// process is touched.
+    var usesSession = true
 
     private var sessionOut: URL?
     private var sessionMark: URL?

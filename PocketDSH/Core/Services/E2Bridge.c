@@ -126,14 +126,10 @@ static void *session_thread_main(void *arg) {
     (void)arg;
     // The caller reads the guest's output from this file, so the session's stdout has to go there.
     // e2_bridge_run_in does this per call; a session outlives one call and does it once.
-    if (g_session_out[0] != '\0') {
-        const int sink = open(g_session_out, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-        if (sink >= 0) {
-            fflush(stdout);
-            dup2(sink, STDOUT_FILENO);
-            close(sink);
-        }
-    }
+    // Nothing to redirect here: the harness points the guest's own descriptor table at the files
+    // named by E2_SESSION_OUT and E2_SESSION_MARK. Redirecting this process's stdout used to do it
+    // and swallowed every other writer in the process - including a test runner's - which is what
+    // hung the iOS suite twice.
     // argv[1] is the host path to the binary: the harness loads it. The guest path is a different
     // thing and is what a program inside sees as its own argv[0].
     int argc = 3;
@@ -155,6 +151,8 @@ int e2_bridge_session_start(const char *rootfs, const char *workspace,
     setenv("E2_SESSION", "1", 1);
     if (mark_path != NULL) setenv("E2_SESSION_MARK", mark_path, 1);
     else unsetenv("E2_SESSION_MARK");
+    if (out_path != NULL) setenv("E2_SESSION_OUT", out_path, 1);
+    else unsetenv("E2_SESSION_OUT");
     snprintf(g_session_out, sizeof(g_session_out), "%s", out_path != NULL ? out_path : "");
 
     int fds[2];
