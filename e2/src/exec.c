@@ -1879,16 +1879,15 @@ not_a_shift:;
     // --- SIMD: SHLL / SSHLL / USHLL (shift left long, widening) ---
     // printf's integer formatting path widens lanes with sshll before doing
     // arithmetic on them, so this appears as soon as a shell prints a number.
-    if ((insn & 0x9F80FC00u) == 0x0F00A400u) {
+    // immh == 0 is not this family at all: it is the movi/mvni encoding, which shares the mask.
+    // Reporting it as an invalid SHLL did two wrong things - refused an instruction that has an
+    // implementation further down, and named the wrong instruction while doing it.
+    if ((insn & 0x9F80FC00u) == 0x0F00A400u && BITS(insn, 22, 19) != 0) {
         const bool q = BIT(insn, 30) != 0;
         const bool is_unsigned = BIT(insn, 29) != 0;
         const unsigned immh = BITS(insn, 22, 19);
         const unsigned immb = BITS(insn, 18, 16);
         const unsigned rn2 = BITS(insn, 9, 5);
-        if (immh == 0) {
-            machine->ctx.reason = "invalid SHLL immh";
-            return E2_UNIMPL;
-        }
         // The highest set bit of immh picks the source element width: 1->8,
         // 2->16, 4->32, 8->64. The 7-bit immh:immb is the shift plus that width.
         unsigned hi_bit = 0;

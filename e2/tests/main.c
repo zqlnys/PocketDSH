@@ -2476,6 +2476,10 @@ static void test_scalar_immediates(void) {
             {0x93485C20u, 0x000000000000AB00ULL, 0x00000000000000ABULL, "sbfx x0, x1, #8, #16"},
             {0xD3783C20u, 0x00000000000000ABULL, 0x000000000000AB00ULL, "ubfiz x0, x1, #8, #16"},
             {0x93783C20u, 0x00000000000000ABULL, 0x000000000000AB00ULL, "sbfiz x0, x1, #8, #16"},
+            // movi with a shifted modified immediate. The SHLL decoder claimed this encoding - both
+            // have immh == 0 - and rejected it as an invalid SHLL, so a movi that has an
+            // implementation never reached it, and the error named the wrong instruction.
+
         };
         for (unsigned i = 0; i < sizeof(bf) / sizeof(bf[0]); i++) {
             e2_machine m;
@@ -2496,6 +2500,24 @@ static void test_scalar_immediates(void) {
                   (unsigned long long)got);
             e2_memory_destroy(&m.mem);
         }
+    }
+
+    {
+        // movi with a shifted modified immediate, which the SHLL decoder used to claim and reject.
+        // A vector result lives in cpu->v, so this does not fit the x-register table above.
+        e2_machine m;
+        e2_machine_init(&m, 0, 1 << 20);
+        const uint64_t at = 0x30000000ULL;
+        e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+        const uint32_t insn = 0x4F00A480u;   // movi v0.8h, #4, lsl #8
+        e2_memory_write(&m.mem, at, &insn, 4);
+        m.cpu.pc = at;
+        const e2_status st = e2_step(&m);
+        CHECK(m.cpu.v[0][0] == 0x0400040004000400ULL,
+              "movi v0.8h, #4, lsl #8 (step=%d reason=%s got 0x%llx)", (int)st,
+              m.ctx.reason != NULL ? m.ctx.reason : "-",
+              (unsigned long long)m.cpu.v[0][0]);
+        e2_memory_destroy(&m.mem);
     }
 
     {
