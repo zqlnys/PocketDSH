@@ -3715,6 +3715,13 @@ int e2_rune_main(int argc, char **argv) {
     // rootfs without rebuilding the harness.
     {
         static const char *passthrough[] = {"PYTHONHOME", "PYTHONPATH", "PYTHONNOUSERSITE"};
+    // PYTHONPYCACHEPREFIX is deliberately not passed through.
+    //
+    // The bridge sets it and this list drops it, which looked like an oversight. Passing it through
+    // made `import asyncio` take 155 seconds against 24, because the writable prefix has no compiled
+    // bytecode: Python recompiled the standard library and wrote the results, while the bundle's own
+    // __pycache__ - which it would otherwise have used - sat unread. The inert setting is what makes
+    // the shipped bytecode the one that gets used.
         for (unsigned i = 0; i < sizeof(passthrough) / sizeof(passthrough[0]); i++) {
             const char *v = getenv(passthrough[i]);
             if (v != NULL && nenv < 64) {

@@ -30,6 +30,8 @@ xml.etree.ElementTree  curses  curses.panel
 
 **`gdbm` 不行**——缺的是 Python 侧的模块（裁剪时去掉了），不是共享库。构建脚本会报告这件事，不会静默跳过。
 
+**`PYTHONPYCACHEPREFIX` 故意不传给 guest**：指向可写前缀会让 Python 重新编译标准库并写出结果，而包里已有的预编译字节码反而不用。实测 `import asyncio` 是 155 秒对 24 秒。
+
 ## 已知错误
 
 | 症状 | 影响 |
