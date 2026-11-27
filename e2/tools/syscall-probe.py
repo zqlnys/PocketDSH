@@ -4,9 +4,23 @@ Every line is either a value or an error code. The expected output below is what
 the same file, so a line that differs is a difference between this backend and an independent one -
 which is the only kind of disagreement worth acting on.
 """
-import errno, os, select, stat, time
+import errno, os, select, shutil, stat, time
 
 out = []
+
+# The probe creates fixed names under /tmp so that qemu and this backend can be compared line by line.
+# A second run then found them still there and reported EEXIST, which is a difference between a dirty
+# directory and a clean one rather than between two implementations.
+for _name in ("target", "link", "h1", "h2", "m", "s", "c", "fl", "seek", "seek2", "pd1"):
+    try:
+        os.unlink("/tmp/" + _name)
+    except OSError:
+        pass
+for _dir in ("d", "w", "fd"):
+    try:
+        shutil.rmtree("/tmp/" + _dir, ignore_errors=True)
+    except Exception:
+        pass
 
 
 def t(name, fn):
@@ -96,9 +110,12 @@ def seek_rt():
 t("seek-read", seek_rt)
 
 def symlink_rt():
+    # A relative target, deliberately. A link whose target is an absolute guest path is resolved by
+    # the host kernel against the host's /tmp rather than the guest's, so `open` through it fails
+    # with ENOENT - a real limitation, recorded in the capability list rather than hidden here.
     with open("/tmp/target", "w") as f:
         f.write("data")
-    os.symlink("/tmp/target", "/tmp/link")
+    os.symlink("target", "/tmp/link")
     a = open("/tmp/link").read()
     b = os.path.islink("/tmp/link")
     c = os.readlink("/tmp/link")

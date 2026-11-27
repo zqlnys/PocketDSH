@@ -305,13 +305,53 @@ static const char *guest_tmp(void) {
     return value;
 }
 
+static const char *guest_tmp_dir(void);
+
 static const char *guest_tmp_for_proc(void);
 
 static void host_path(char *out, size_t n, const char *p) {
-    // The scratch file behind /proc/self/* lives beside the seeded /proc for the same reason.
+    // A relative name is resolved against the working directory once, here, so the branches below
+    // do not each have to repeat it. They did not: `mkdir dtst` after `cd /tmp` matched none of
+    // them and fell through to <root>/tmp/dtst, which is inside the read-only bundle on a device.
+    char resolved[2048];
+    // "." too: it resolves to the working directory, which is then mapped like any other path.
+    // Skipping it left `ls` with no argument asking for <root>/tmp/dtfs, a directory inside the
+    // read-only bundle.
+    if (strcmp(p, ".") == 0) {
+        snprintf(resolved, sizeof(resolved), "%.1000s", g_cur_cwd);
+        p = resolved;
+    } else if (p[0] != '/') {
+        if (strcmp(p, "..") == 0) {
+            snprintf(resolved, sizeof(resolved), "%.1000s/..", g_cur_cwd);
+        } else {
+            snprintf(resolved, sizeof(resolved), "%.1000s/%.1000s", g_cur_cwd, p);
+        }
+        p = resolved;
+    }
+    // The guest's /tmp is a writable directory of its own, not <root>/tmp.
+    //
+    // The root is the read-only app bundle on a device, so anything writing to /tmp failed there -
+    // and Python's tempfile is only the most visible user of it: mkstemp, NamedTemporaryFile and
+    // everything built on them go through /tmp first. On the build machine the root is writable, so
+    // this worked and gave no hint that it could not.
+    // The scratch file behind /proc/self/* lives beside the seeded /proc, before the general /tmp
+    // mapping below - which would otherwise send it somewhere else and the writer and the reader
+    // would disagree about where it is.
     if (strcmp(p, "/tmp/.e2-proc-self") == 0) {
         snprintf(out, n, "%.2000s/.self", guest_tmp_for_proc());
         return;
+    }
+    if (strncmp(p, "/tmp/", 5) == 0 || strcmp(p, "/tmp") == 0) {
+        const char *tmp_root = guest_tmp_dir();
+        if (tmp_root != NULL) {
+            // `/tmp` itself, not `/tmp/...`: the suffix starts after the slash only when there is
+            // one, and p + 5 on the bare path read past the terminator - so `ls /tmp` asked for a
+            // directory whose name was whatever followed the string in memory.
+            const char *suffix = (p[4] == '/') ? p + 5 : "";
+            const size_t room = (n > strlen(tmp_root) + 2) ? n - strlen(tmp_root) - 2 : 0;
+            snprintf(out, n, "%s/%.*s", tmp_root, (int)room, suffix);
+            return;
+        }
     }
     // /proc is served from the writable directory the seed fills, not from the root - which is the
     // read-only app bundle on a device.
@@ -334,11 +374,10 @@ static void host_path(char *out, size_t n, const char *p) {
         // still a path in /tmp.
         char absolute[2048];
         const char *want = p;
-        if (p[0] != '/') {
-            if (strcmp(p, ".") == 0) snprintf(absolute, sizeof(absolute), "%s", g_cur_cwd);
-            else snprintf(absolute, sizeof(absolute), "%s/%s", g_cur_cwd, p);
-            want = absolute;
-        }
+        // p is already absolute by the time this runs, so the resolution that used to happen here
+        // is gone; the variable stays because the workspace branch below reads it.
+        want = p;
+        (void)absolute;
         if (strncmp(want, "/workspace", 10) == 0 && (want[10] == '/' || want[10] == '\0')) {
             // Resolve . and .. before handing the path to the host. Without this,
             // /workspace/../../etc/hostname resolved to the host's /etc/hostname: the workspace
@@ -378,7 +417,7 @@ static void host_path(char *out, size_t n, const char *p) {
     } else if (strcmp(p, ".") == 0) {
         snprintf(out, n, "%s%s", ROOT, g_cur_cwd);
     } else {
-        snprintf(out, n, "%s%s/%s", ROOT, g_cur_cwd, p);
+        snprintf(out, n, "%.1000s%.1000s", ROOT, p);
     }
 }
 // /dev/stdin, /dev/stdout, /dev/stderr and /dev/fd/N are descriptor aliases, not
@@ -467,7 +506,7 @@ static int fs_open(void *c, const char *path, int fl, int m) {
             // Written beside the seeded /proc rather than under the root, which is the read-only
             // bundle on a device: every /proc/self read there failed with ENOENT while working on
             // the build machine. host_path maps this guest path to that directory.
-            snprintf(self_host, sizeof(self_host), "%.2000s/.self", guest_tmp_for_proc());
+            host_path(self_host, sizeof(self_host), self_tmp);
             FILE *f = fopen(self_host, "wb");
             if (f == NULL) return -ENOENT;
             fwrite(body, 1, body_len, f);
@@ -1200,6 +1239,15 @@ static const e2_file_ops FS = {
 // synthesises these; the harness states them once at start-up for the same reason.
 // Only written when the directory already exists, so a root without /proc is left
 // exactly as it was.
+/// Where the guest's /tmp lives: writable, and outside the read-only root.
+static const char *guest_tmp_dir(void) {
+    static char path[1024];
+    if (path[0] != '\0') return path;
+    const char *tmp = getenv("TMPDIR");
+    snprintf(path, sizeof(path), "%s/e2-tmp", tmp != NULL ? tmp : "/tmp");
+    return path;
+}
+
 /// Where the seeded /proc lives: writable, and outside the read-only root.
 static const char *guest_tmp_for_proc(void) {
     static char path[1024];
@@ -3602,6 +3650,9 @@ int e2_rune_main(int argc, char **argv) {
     // same place host_path uses, so E2_ROOT still applies.
     {
         const char *root = getenv("E2_ROOT");
+        // Both writable directories, created before anything tries to open a file inside them.
+        mkdir(guest_tmp_dir(), 0700);
+        mkdir(guest_tmp_for_proc(), 0700);
         seed_proc(root != NULL ? root : "/tmp/alpine-root");
     }
     e2_machine m;

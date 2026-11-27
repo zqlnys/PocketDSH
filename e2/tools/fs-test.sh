@@ -376,8 +376,8 @@ time True
 monotonic True
 lseek ok
 seek-read cd
-symlink E17
-hardlink E17
+symlink data True target
+hardlink True
 mode 0o640
 listdir ['a', 'b', 'c']
 walk 3

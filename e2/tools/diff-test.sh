@@ -44,7 +44,13 @@ fi
 
 # The fixture lives in both places: the guest root for this implementation, and
 # the host root for qemu, which only remaps the loader path.
-for f in /tmp/alpine-root/tmp /tmp; do
+# The guest's /tmp is a writable directory of its own now, because the root is read-only on a device.
+# This suite used to rely on <root>/tmp being writable, which is exactly the assumption that broke
+# there - so the fixtures go to all three places: the harness's directory, the root it used to use,
+# and the host /tmp that qemu reads.
+E2_TMP_DIR="${TMPDIR:-/tmp}/e2-tmp"
+mkdir -p "$E2_TMP_DIR" 2>/dev/null || true
+for f in "$E2_TMP_DIR" /tmp/alpine-root/tmp /tmp; do
     printf 'a 1\nb 2\na 3\n' > "$f/dta" 2>/dev/null || true
     printf 'abc\ndef\nghi\n' > "$f/dtb" 2>/dev/null || true
     printf '  spaced  \n\ttab\n' > "$f/dtc" 2>/dev/null || true
@@ -66,6 +72,8 @@ printf '%s\n' a b c | wc -l
 case x in x) echo matched;; esac
 while [ "$#" -gt 0 ]; do echo "arg=$1"; shift; done
 SCRIPT
+cp /tmp/dtsh "$E2_TMP_DIR/dtsh" 2>/dev/null || true
+cp /tmp/dtsh "$E2_TMP_DIR/dtsh" 2>/dev/null || true
 cp /tmp/dtsh /tmp/alpine-root/tmp/dtsh 2>/dev/null || true
 cat > /tmp/dtbig 2>/dev/null <<'BIGSCRIPT'
 set -e
@@ -81,6 +89,7 @@ for n in $(tail -n +2 s.csv | cut -d, -f1); do echo "hi $n"; done
 cd /tmp && rm -rf dtwork
 echo done
 BIGSCRIPT
+cp /tmp/dtbig "$E2_TMP_DIR/dtbig" 2>/dev/null || true
 cp /tmp/dtbig /tmp/alpine-root/tmp/dtbig 2>/dev/null || true
 # qemu's -L names a loader; it is not a chroot. A PATH lookup inside the guest
 # therefore resolves to the HOST's binaries, so `sh -c "sed"` ran GNU sed on one side
@@ -137,10 +146,11 @@ echo "len: ${#upper}"
 cd /tmp && rm -rf dtst
 echo done
 STRESS
+cp /tmp/dts "$E2_TMP_DIR/dts" 2>/dev/null || true
 cp /tmp/dts /tmp/alpine-root/tmp/dts 2>/dev/null || true
 # Fixtures for find/grep: created in both roots, so qemu (not chrooted) sees the
 # same tree this backend does.
-for r in /tmp/dtfind "$ROOT/tmp/dtfind"; do
+for r in "$E2_TMP_DIR/dtfind" /tmp/dtfind "$ROOT/tmp/dtfind"; do
     rm -rf "$r"; mkdir -p "$r/a" "$r/b"
     echo 1 > "$r/a/x.txt"; echo 2 > "$r/b/y.txt"
 done
@@ -168,6 +178,7 @@ p
 q
 EOF
 OUTER
+cp /tmp/dther "$E2_TMP_DIR/dther" 2>/dev/null || true
 cp /tmp/dther /tmp/alpine-root/tmp/dther 2>/dev/null || true
 cat > /tmp/dtf 2>/dev/null <<'WRAP'
 f() { return 7; }; f; echo "ret=$?"
@@ -186,6 +197,7 @@ printf '%s\n' one two three | while read -r l; do echo "<$l>"; done
 x=5; [ $x -gt 3 ] && [ $x -lt 10 ] && echo range
 echo $((0x10 + 010))
 WRAP
+cp /tmp/dtf "$E2_TMP_DIR/dtf" 2>/dev/null || true
 cp /tmp/dtf /tmp/alpine-root/tmp/dtf 2>/dev/null || true
 cat > /tmp/dtj 2>/dev/null <<'WRAP'
 sleep 0.01 & wait; echo "waited=$?"
@@ -198,6 +210,7 @@ for i in 1 2 3; do ( echo "sub$i" ) >> /tmp/dtjout & done; wait; sort /tmp/dtjou
 true && echo and || echo or
 ! false && echo negated
 WRAP
+cp /tmp/dtj "$E2_TMP_DIR/dtj" 2>/dev/null || true
 cp /tmp/dtj /tmp/alpine-root/tmp/dtj 2>/dev/null || true
 cat > /tmp/dt-rp.sh 2>/dev/null <<'WRAP'
 cd /tmp && rm -rf dtrp && mkdir dtrp && cd dtrp
@@ -219,6 +232,7 @@ cut -d, -f3 data.csv | sort | uniq -c | sort -nr
 cd /tmp && rm -rf dtrp
 echo done
 WRAP
+cp /tmp/dt-rp.sh "$E2_TMP_DIR/dt-rp.sh" 2>/dev/null || true
 cp /tmp/dt-rp.sh /tmp/alpine-root/tmp/dt-rp.sh 2>/dev/null || true
 cat > /tmp/dtar 2>/dev/null <<'WRAP'
 echo $((2147483647 + 1))
@@ -233,6 +247,7 @@ echo $((5 & 3)) $((5 | 3)) $((5 ^ 3))
 echo $((1 == 1)) $((1 != 1))
 echo $((0x7fffffff + 1))
 WRAP
+cp /tmp/dtar "$E2_TMP_DIR/dtar" 2>/dev/null || true
 cp /tmp/dtar /tmp/alpine-root/tmp/dtar 2>/dev/null || true
 cat > /tmp/dtu 2>/dev/null <<'WRAP'
 printf 'héllo\n' | wc -c
@@ -244,9 +259,10 @@ printf 'ＡＢ\n' | od -An -tx1
 echo 'ñ' | tr 'ñ' 'n' | od -An -c
 printf '%s\n' '①' '②' | wc -l
 WRAP
+cp /tmp/dtu "$E2_TMP_DIR/dtu" 2>/dev/null || true
 cp /tmp/dtu /tmp/alpine-root/tmp/dtu 2>/dev/null || true
-rm -rf /tmp/dtfs /tmp/alpine-root/tmp/dtfs
-mkdir -p /tmp/dtfs /tmp/alpine-root/tmp/dtfs
+rm -rf /tmp/dtfs /tmp/alpine-root/tmp/dtfs "$E2_TMP_DIR/dtfs"
+mkdir -p /tmp/dtfs /tmp/alpine-root/tmp/dtfs "$E2_TMP_DIR/dtfs"
 cat > /tmp/dtfs.sh 2>/dev/null <<'WRAP'
 cd /tmp/dtfs 2>/dev/null || { cd /tmp && rm -rf dtfs && mkdir dtfs && cd dtfs; }
 echo a > 'file with spaces.txt'
@@ -263,6 +279,7 @@ cat a/b/c/d/e/f.txt
 wc -c < "$name.txt"
 cd /tmp && rm -rf dtfs
 WRAP
+cp /tmp/dtfs.sh "$E2_TMP_DIR/dtfs.sh" 2>/dev/null || true
 cp /tmp/dtfs.sh /tmp/alpine-root/tmp/dtfs.sh 2>/dev/null || true
 cat > /tmp/dtpf 2>/dev/null <<'WRAP'
 printf '%d|%5d|%-5d|%05d\n' 42 42 42 42
@@ -278,6 +295,7 @@ printf '%5.2s|\n' abcdef
 printf '%+d|% d\n' 5 5
 printf '%i\n' 42
 WRAP
+cp /tmp/dtpf "$E2_TMP_DIR/dtpf" 2>/dev/null || true
 cp /tmp/dtpf /tmp/alpine-root/tmp/dtpf 2>/dev/null || true
 cat > /tmp/dtex 2>/dev/null <<'WRAP'
 expr 1 + 2
@@ -303,6 +321,7 @@ expr "a:b:c" : '.*:\([a-z]*\)'
 test -e /etc && echo exists
 test ! -e /nonexistent && echo missing
 WRAP
+cp /tmp/dtex "$E2_TMP_DIR/dtex" 2>/dev/null || true
 cp /tmp/dtex /tmp/alpine-root/tmp/dtex 2>/dev/null || true
 cat > /tmp/dtre 2>/dev/null <<'WRAP'
 echo abc | grep '^a'
@@ -326,12 +345,14 @@ echo 'aab' | sed 's/a*/X/'
 echo 'abc' | sed -E 's/(a)(b)/\2\1/'
 echo 'aaa' | grep -c 'a'
 WRAP
+cp /tmp/dtre "$E2_TMP_DIR/dtre" 2>/dev/null || true
 cp /tmp/dtre /tmp/alpine-root/tmp/dtre 2>/dev/null || true
 cat > /tmp/dtlnk.sh 2>/dev/null <<'WRAP'
 rm -rf /tmp/dtlnk; mkdir -p /tmp/dtlnk; ln -s target /tmp/dtlnk/l; ls /tmp/dtlnk | wc -l
 rm -rf /tmp/dtlnk; mkdir -p /tmp/dtlnk; ln -s target /tmp/dtlnk/l; rm -rf /tmp/dtlnk; ls -d /tmp/dtlnk 2>&1
 rm -rf /tmp/dtlnk; mkdir -p /tmp/dtlnk/a; ln -s ../missing /tmp/dtlnk/a/l; find /tmp/dtlnk | sort
 WRAP
+cp /tmp/dtlnk.sh "$E2_TMP_DIR/dtlnk.sh" 2>/dev/null || true
 cp /tmp/dtlnk.sh /tmp/alpine-root/tmp/dtlnk.sh 2>/dev/null || true
 cat > /tmp/dtalgo.sh 2>/dev/null <<'WRAP'
 fib() { [ $1 -le 1 ] && echo $1 || echo $(( $(fib $(($1-1))) + $(fib $(($1-2))) )); }
@@ -348,6 +369,7 @@ echo "primes:$primes"
 for i in 3 1 2; do for j in 3 1 2; do echo "$i$j"; done; done | sort | head -3
 n=10; s=0; while [ $n -gt 0 ]; do s=$((s+n)); n=$((n-1)); done; echo "sum=$s"
 WRAP
+cp /tmp/dtalgo.sh "$E2_TMP_DIR/dtalgo.sh" 2>/dev/null || true
 cp /tmp/dtalgo.sh /tmp/alpine-root/tmp/dtalgo.sh 2>/dev/null || true
 cat > /tmp/dtstress.sh 2>/dev/null <<'WRAP'
 echo "$(echo "$(echo "$(echo deep)")")"
@@ -359,6 +381,7 @@ echo $(seq 50 | tail -1)
 seq 100 | awk 'BEGIN{m=0} {if($1>m)m=$1} END{print "max="m}'
 for i in 1 2; do for j in 3 4; do for k in 5 6; do echo "$i$j$k"; done; done; done | wc -l
 WRAP
+cp /tmp/dtstress.sh "$E2_TMP_DIR/dtstress.sh" 2>/dev/null || true
 cp /tmp/dtstress.sh /tmp/alpine-root/tmp/dtstress.sh 2>/dev/null || true
 cat > /tmp/dtreal.sh 2>/dev/null <<'WRAP'
 printf 'the quick brown fox\njumps over the lazy dog\nthe fox runs\n' | tr ' ' '\n' | sort | uniq -c | sort -rn | head -3
@@ -371,6 +394,7 @@ EOF
 echo "words=$n chars=$sum avg=$((sum / n))"
 printf '%s\n' "$(( (10 * sum) / n ))" | awk '{printf "%.1f\n", $1/10}' 
 WRAP
+cp /tmp/dtreal.sh "$E2_TMP_DIR/dtreal.sh" 2>/dev/null || true
 cp /tmp/dtreal.sh /tmp/alpine-root/tmp/dtreal.sh 2>/dev/null || true
 cat > /tmp/dtreal2.sh 2>/dev/null <<'WRAP'
 keys="host port user"; vals="example.com 8080 admin"
@@ -394,6 +418,7 @@ tries=0; ok=0
 while [ $tries -lt 3 ]; do tries=$((tries+1)); [ $tries -eq 2 ] && ok=1 && break; done
 echo "tries=$tries ok=$ok"
 WRAP
+cp /tmp/dtreal2.sh "$E2_TMP_DIR/dtreal2.sh" 2>/dev/null || true
 cp /tmp/dtreal2.sh /tmp/alpine-root/tmp/dtreal2.sh 2>/dev/null || true
 pass=0
 fail=0
