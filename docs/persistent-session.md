@@ -31,6 +31,27 @@ and that is cold code and data in the guest, which a lookup hint cannot touch.
 Ten busybox commands take 0.12 s in total - 12 ms each. A persistent shell would save perhaps 10 ms
 per command. Not worth a session protocol.
 
+## Measured later: the shell half already works
+
+The note above assumed the guest side needed building. It does not:
+
+```sh
+printf 'cd /tmp\npwd\nX=hello\necho "X=$X"\n' | rune busybox sh
+# /tmp
+# X=hello
+```
+
+One guest shell reads commands from a pipe on its stdin and keeps its state between them - the
+working directory, the variables, everything a session is for. Nothing on the guest side has to
+change; `run_proc` already handles a shell blocked on a read.
+
+What is missing is the turn-taking: the app has to be able to write the next command after the shell
+has finished the previous one, rather than sending them all before the run starts. That is the same
+four decisions listed below, minus the first two - the channel exists and the framing can be the
+shell's own prompt or a per-command sentinel echo.
+
+So the estimate in this document was wrong in the direction that matters: the expensive part is done.
+
 ## What a real attempt needs
 
 `run_proc` is already resumable: it returns when its budget is exhausted and the process stays

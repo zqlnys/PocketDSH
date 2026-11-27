@@ -63,6 +63,7 @@ xml.etree.ElementTree  curses  curses.panel
 | **没有网络** | 只支持 `socketpair`，没有任何会 `connect` 的东西。**`ssl` 能导入、CA 证书齐全，但发不出 HTTPS 请求。** |
 | **`socket.socketpair` 不可用** | 系统调用本身有，但 Python 的包装还需要 `sendmsg`/`recvmsg` 传描述符，两者返回 ENOSYS |
 | **没有线程** | 见下 |
+| **`run_linux` 每次是新 guest，不是持久会话** | 但 guest 里的 shell 本身能在一次运行内保持状态（`cd`、变量都能跨命令保留）。缺的是应用在两次命令之间持续写管道这一层，见 `docs/persistent-session.md` |
 
 | **`prlimit64` 只报告不执行** | 设置新的 rlimit 会被接受但忽略 |
 | **符号链接的绝对目标不工作** | `/tmp/link -> /tmp/target` 这样的链接，`open` 会返回 `ENOENT`：目标是按**宿主**路径解析的，不经过 guest 映射。**相对目标正常**。这是真限制，不是回归 |
