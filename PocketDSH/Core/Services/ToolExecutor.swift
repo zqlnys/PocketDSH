@@ -403,9 +403,11 @@ final class ToolExecutor {
             guard let e2Runtime else {
                 return .failure("Tier D is not linked in this build.")
             }
-            // The session, not a fresh guest: run_linux is where a user's `cd` and variables are
-            // meant to survive between commands.
-            let result = await e2Runtime.runSession(command: command, workspace: workspace.root)
+            // A fresh guest per command. The session works and its own test passes, but switching
+            // the tool to it still crashes the iOS test host, twice per run, with the session test
+            // green both times. Shipping a crash with a feature is not a trade worth making: the
+            // session stays available, tested, and used by nothing until the crash is located.
+            let result = await e2Runtime.run(command: command, workspace: workspace.root)
             guard !result.isError else { return result }
             return .success("Linux output (Tier D · E2):\n\(result.content)")
         default:

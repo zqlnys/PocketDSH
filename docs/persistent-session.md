@@ -300,3 +300,26 @@ firing, and an `sigsuspend` that belonged to a shell wrapper rather than the har
 The default is honest and safe — `RuntimeError: can't start new thread`, which a program can catch
 and degrade from — and every regression suite passes. Continuing to spend rounds on this while
 calling the result progress would be the dishonest option.
+
+
+## Open: the session crashes the iOS test host
+
+The harness keeps a shell across commands, the bridge feeds it, and the device test that uses it
+passes. Switching `run_linux` to it makes the test host exit unexpectedly - "Restarting after unexpected
+exit, crash, or test timeout" - twice per run, some forty seconds after the session's own test, which is
+green both times. 103 of 106 tests report.
+
+Ruled out, each by fixing something real that did not change the symptom:
+
+| Suspect | What was wrong | Still crashed |
+| --- | --- | --- |
+| `e2_rune_main` re-entered by two runs | It is not re-entrant; a run now ends a live session first | yes |
+| Two sessions at once | Nothing serialised them; a mutex does now | yes |
+| The mutex held across `pthread_join` | Deadlocked a whole run for 26 minutes | yes, after moving it out |
+| Process-wide stdout redirect | Swallowed the caller's output entirely | yes, after the guest's own table replaced it |
+| Marker file truncated per table | Written and wiped; a session waited 60 s for it | yes, after opening once |
+| Cached stream descriptors | Pointed at a closed handle on the second session | yes, after reopening |
+
+`run_linux` uses a fresh guest again. The next thing to look at is what the session leaves behind that
+a *later* test cannot survive - the log points at the tests immediately following the session one, not
+at the session's own assertions.
