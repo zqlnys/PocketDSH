@@ -469,7 +469,7 @@ while IFS= read -r cmd; do
     # flagging those would make the check noise nobody reads.
     all_errors() {
         [ -n "$1" ] || return 1
-        printf '%s\n' "$1" | grep -qvE "can.t open|not found|No such file|Permission denied|^$" && return 1
+        printf '%s\n' "$1" | grep -qvE "can.t open|not found|No such file|Permission denied|SyntaxError|Traceback|applet not found|^$" && return 1
         return 0
     }
     if all_errors "$mine" && all_errors "$theirs"; then
@@ -775,6 +775,12 @@ seq 3 | awk '{sum+=$1}END{print sum}'
 # base32 was here and tested nothing: neither the guest root nor the static busybox has the applet,
 # so both sides answered "applet not found" and the comparison counted that as agreement. Removed
 # rather than left as a case that cannot fail. base64 covers the same code path and does exist.
+# 64-bit integer bit operations, which is where the bitfield instructions surface in a real program:
+# shifts, masks, rotations and a negative operand through Python's own arithmetic.
+# One line, because this file is split by line: a multi-line command became six fragments that each
+# failed to parse on both sides and were counted as six agreements.
+python3 -c 'x=0xDEADBEEFCAFEBABE; print(hex(x & 0xFFFFFFFF), hex(x | 0x11111111), hex(x ^ 0xFFFF), hex(x << 12 & 0xFFFFFFFFFFFFFFFF), hex(x >> 16)); print(hex(((x << 20) | (x >> 44)) & 0xFFFFFFFFFFFFFFFF), 0 > 1); y=-1234567; print(y >> 3, y & 0xFFFF, x.bit_length(), y.bit_length())' 2>&1
+
 echo test | busybox base64
 # Root filesystem paths a program may probe. Under chroot both sides see the same ones.
 cat /etc/hosts | head -1
