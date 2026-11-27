@@ -37,15 +37,25 @@ final class E2Runtime: ObservableObject {
 
     /// Whether to run each command in a fresh guest or feed one shell.
     ///
-    /// On by default.
+    /// Off by default, opted into by the session test.
     ///
-    /// Two hangs stood in the way and both are now understood. The first: `e2_rune_main` is not
+    /// Two causes of the earlier hangs are fixed and understood: `e2_rune_main` is not re-entrant, so
+    /// a run ends any live session first; and the bridge redirected the process's stdout, so the
+    /// guest's streams come from its own descriptor table now.
+    ///
+    /// What keeps it off is not a hang but semantics: several tests are written against a guest that
+    /// starts fresh per command - a pipe between two guest processes, and a flood whose output file
+    /// is expected to begin empty. Those pass with a fresh guest and fail with a shell that remembers
+    /// the last one. Turning it on means deciding, per caller, which of the two is wanted; that is a
+    /// design question, not a switch.
+    ///
+    /// Earlier note, kept because both causes are still worth knowing: The first: `e2_rune_main` is not
     /// re-entrant, and a session left by one test was still inside it when the next ran - the run
     /// path ends any live session first. The second: the bridge redirected the process's stdout to
     /// the guest's output file, which is process-wide, so the test runner's own output went there
     /// and vanished. The guest's descriptor table points at the files now and nothing else in the
     /// process is touched.
-    var usesSession = true
+    var usesSession = false
 
     private var sessionOut: URL?
     private var sessionWorkspacePath: String = ""
