@@ -512,6 +512,9 @@ check "free-total"   'busybox free' '       1024000      377904      512000     
 # be built under the root, which is read-only on a device.
 check "proc-self-cmdline" 'cat /proc/self/cmdline' '/bin/cat/proc/self/cmdline'
 check "proc-self-fd"      'ls /proc/self/fd | wc -l' '4'
+# The status body is written to a scratch file before the guest reads it. That file used to live under
+# the root, which is read-only on a device - so /proc/self/status worked here and failed there.
+check "proc-self-status"  'head -1 /proc/self/status' 'Name:	busybox'
 
 # Every seeded file, in one line. The seed lists them and any one of them going missing is a reader
 # failing for no stated reason - which is how /proc/version spent rounds containing a stray "x".

@@ -308,6 +308,11 @@ static const char *guest_tmp(void) {
 static const char *guest_tmp_for_proc(void);
 
 static void host_path(char *out, size_t n, const char *p) {
+    // The scratch file behind /proc/self/* lives beside the seeded /proc for the same reason.
+    if (strcmp(p, "/tmp/.e2-proc-self") == 0) {
+        snprintf(out, n, "%.2000s/.self", guest_tmp_for_proc());
+        return;
+    }
     // /proc is served from the writable directory the seed fills, not from the root - which is the
     // read-only app bundle on a device.
     if (strncmp(p, "/proc/", 6) == 0) {
@@ -459,7 +464,10 @@ static int fs_open(void *c, const char *path, int fl, int m) {
             // and a per-pid name left one file behind for every pid ever used.
             snprintf(self_tmp, sizeof(self_tmp), "/tmp/.e2-proc-self");
             char self_host[2096];
-            host_path(self_host, sizeof(self_host), self_tmp);
+            // Written beside the seeded /proc rather than under the root, which is the read-only
+            // bundle on a device: every /proc/self read there failed with ENOENT while working on
+            // the build machine. host_path maps this guest path to that directory.
+            snprintf(self_host, sizeof(self_host), "%.2000s/.self", guest_tmp_for_proc());
             FILE *f = fopen(self_host, "wb");
             if (f == NULL) return -ENOENT;
             fwrite(body, 1, body_len, f);
