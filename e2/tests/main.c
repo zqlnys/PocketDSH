@@ -2503,6 +2503,37 @@ static void test_scalar_immediates(void) {
     }
 
     {
+        // SMULH / UMULH, which is how a compiler turns division by a constant into multiplication.
+        // If these are wrong, `secs / 86400` in libc's gmtime is wrong while Python's own division -
+        // which uses the divide instruction - stays right, which is exactly the split observed.
+        static const struct {
+            uint32_t insn; uint64_t a, b, want; const char *what;
+        } mh[] = {
+            {0x9B427C20u, 1, 2, 0, "smulh 1*2"},
+            {0x9B427C20u, (uint64_t)-1, 2, (uint64_t)-1, "smulh -1*2 is -1 in the high half"},
+            {0x9B427C20u, 1700000000ULL, 2951479051793528259ULL, 0x10366400ULL, "smulh for seconds/86400"},
+            {0x9B427C20u, (uint64_t)-1, (uint64_t)-1, 0, "smulh -1*-1 has a zero high half"},
+            {0x9B427C20u, 1ULL << 62, 4, 1, "smulh 2^62*4"},
+            {0x9BC27C20u, ~0ULL, ~0ULL, 0xFFFFFFFFFFFFFFFEULL, "umulh of the maximum by itself"},
+            {0x9BC27C20u, 86400, 2951479051793528259ULL, 0x3600ULL, "umulh for seconds/86400"},
+        };
+        for (unsigned i = 0; i < sizeof(mh) / sizeof(mh[0]); i++) {
+            e2_machine m;
+            e2_machine_init(&m, 0, 1 << 20);
+            const uint64_t at = 0x30000000ULL;
+            e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+            e2_memory_write(&m.mem, at, &mh[i].insn, 4);
+            m.cpu.pc = at;
+            m.cpu.x[1] = mh[i].a;
+            m.cpu.x[2] = mh[i].b;
+            e2_step(&m);
+            CHECK(m.cpu.x[0] == mh[i].want, "%s (got 0x%llx)", mh[i].what,
+                  (unsigned long long)m.cpu.x[0]);
+            e2_memory_destroy(&m.mem);
+        }
+    }
+
+    {
         // movi with a shifted modified immediate, which the SHLL decoder used to claim and reject.
         // A vector result lives in cpu->v, so this does not fit the x-register table above.
         e2_machine m;
