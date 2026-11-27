@@ -2,7 +2,7 @@
 
 这份文件说的每一件事都有对应的测试；数字是本地实测的，不是估计。
 
-**最后核对：2026-11-26，版本 0.1.20261126 (963)。**
+**最后核对：2026-11-27，版本 0.1.20261127 (986)。**
 
 ## 能用
 
@@ -68,10 +68,21 @@ xml.etree.ElementTree  curses  curses.panel
 
 ## 性能
 
+**构建机上（`-O2`，`perf-check`）：**
+
 ```
 合成循环       49–52 ns/指令
-真实负载       73 ns/指令（CPython 启动，3910 万条指令）
+真实负载       74–77 ns/指令（CPython 启动，3910 万条指令）
 ```
+
+**设备上（Release，iOS 模拟器，实测单测耗时）：**
+
+```
+import asyncio          25.4 秒   （-Os 构建时是 68.0 秒）
+python3 -c 'pass' 级别   3.2–7.2 秒
+```
+
+**这两个是不同的问题，之前混在一起：构建机上的数字一直是 `-O2`，而设备上跑的是 `-Os`，差 2.8 倍。现在两处都是 `-O2`，CI 会守住它。**
 
 **分发不是瓶颈**：Python 负载上每条指令只有 2.0 次守卫比较（加前门判别前是 33.6 次）。剩下的差距是缓存行为。
 
@@ -91,7 +102,7 @@ xml.etree.ElementTree  curses  curses.panel
 cd e2
 make test                                    # 334 条指令级检查
 ./tools/diff-test.sh <busybox.static> ./tools/rune   # 384 条与 qemu 对比
-./tools/fs-test.sh                           # 77 条端到端
+./tools/fs-test.sh                           # 86 条端到端
 ./tools/perf-check.sh                        # 两个性能数字
 ```
 
