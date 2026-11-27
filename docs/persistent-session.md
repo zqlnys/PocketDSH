@@ -62,6 +62,26 @@ than extended while it is half working - which is exactly what the first attempt
 and the reason this document exists. The guest half stays as measured; the loop is the next piece of
 work, not a larger one.
 
+### What the second attempt found
+
+A slow writer proves the guest is fine: feeding a FIFO that pauses two seconds between commands runs
+both, so a shell blocked on a pipe really does stay alive and keep its state.
+
+Two things about the harness came out of it, both worth knowing before the next attempt:
+
+1. **`lseek(fd, 0, SEEK_END)` on a duplicate of fd 1 moves the offset fd 1 shares.** The first
+   attempt used it to find how much the guest had written, which put the guest's next write where
+   the seek had left off. `fstat` reports the size without touching the offset.
+2. **In the command-line harness, fd 1 is the terminal.** The guest's output goes straight there and
+   reading back through a duplicate of a terminal returns nothing useful, so the loop only has a
+   channel when the bridge has redirected stdout to a file. Threading the loop through the bridge -
+   where the file exists - is the honest way to test it; testing it from the command line tests the
+   wrong thing.
+
+The second attempt still stopped after one round with no diagnostic, which is the failure mode this
+document keeps warning about. It is taken back out rather than left in place; what is left is the
+two findings above and a shorter list of things to decide.
+
 ## What a real attempt needs
 
 `run_proc` is already resumable: it returns when its budget is exhausted and the process stays
