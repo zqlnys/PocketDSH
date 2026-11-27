@@ -37,12 +37,14 @@ final class E2Runtime: ObservableObject {
 
     /// Whether to run each command in a fresh guest or feed one shell.
     ///
-    /// Off by default, and not for want of the session: it works when driven from the command line,
-    /// and turning it on for the app hung the iOS tests until CI gave up. Something about running it
-    /// under XCTest - the simulator's stdio, the process-wide redirect, or a thread that outlives a
-    /// test - is not the same as driving it from a small C program, and that has to be understood
-    /// before the app depends on it.
-    var usesSession = false
+    /// On by default now.
+    ///
+    /// Turning it on hung the iOS tests until CI gave up, and the cause was a session left behind by
+    /// one test still holding a thread inside `e2_rune_main` when the next one ran - that function
+    /// resets the descriptor and process tables and is not re-entrant. `e2_bridge_run_in` ends any
+    /// live session before it starts, which makes the overlap impossible; the session test passes on
+    /// CI, and this is what the tool was missing.
+    var usesSession = true
 
     private var sessionOut: URL?
     private var sessionMark: URL?
