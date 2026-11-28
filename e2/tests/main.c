@@ -2537,6 +2537,50 @@ static void test_scalar_immediates(void) {
     }
 
     {
+        // dl_fast_sum, the compensated add the vector_norm loop uses to accumulate squares. The correction
+        // term is what carries the bits the addition would otherwise drop.
+        static const uint32_t fs[] = { 0x1E612802u, 0x1E623803u, 0x1E612864u };
+        e2_machine m;
+        e2_machine_init(&m, 0, 1 << 20);
+        const uint64_t base = 0x30000000ULL;
+        e2_memory_map_at(&m.mem, base, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+        e2_memory_write(&m.mem, base, fs, sizeof(fs));
+        m.cpu.pc = base;
+        m.cpu.v[0][0] = 0x3FF0000000000000ULL;                     /* a = 1.0 */
+        m.cpu.v[1][0] = 0x3FC2000000000000ULL;                     /* b = 0.140625 */
+        for (unsigned i = 0; i < sizeof(fs) / sizeof(fs[0]); i++) e2_step(&m);
+        double hi = 0, lo = 0;
+        memcpy(&hi, &m.cpu.v[2][0], 8);
+        memcpy(&lo, &m.cpu.v[4][0], 8);
+        CHECK(hi == 1.140625, "dl_fast_sum hi (got %.17g)", hi);
+        CHECK(lo == 0.0, "dl_fast_sum correction (got %.17g)", lo);
+        e2_memory_destroy(&m.mem);
+    }
+
+    {
+        // dl_mul from CPython's math module, written out instruction by instruction: Dekker splitting of
+        // both arguments, then the two-product combination. With x = y = 0.1 the correction term is not
+        // zero, so it checks the part that exact splits would not.
+        static const uint32_t dlm[] = { 0x1E620803u, 0x1E603864u, 0x1E643865u, 0x1E653810u, 0x1E620831u, 0x1E613A32u, 0x1E723A33u, 0x1E733834u, 0x1E7308B5u, 0x1E7408B6u, 0x1E730A17u, 0x1E772AD8u, 0x1E782AA6u, 0x1E663AB9u, 0x1E782B39u, 0x1E740A1Au, 0x1E7A2B27u };
+        e2_machine m;
+        e2_machine_init(&m, 0, 1 << 20);
+        const uint64_t base = 0x30000000ULL;
+        e2_memory_map_at(&m.mem, base, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+        e2_memory_write(&m.mem, base, dlm, sizeof(dlm));
+        m.cpu.pc = base;
+        m.cpu.v[0][0] = 0x3FB999999999999AULL;   /* d0 = 0.1 */
+        m.cpu.v[1][0] = 0x3FB999999999999AULL;   /* d1 = 0.1 */
+        m.cpu.v[2][0] = 0x419A000002000000ULL;   /* d2 = 2^27 + 1 */
+        for (unsigned i = 0; i < sizeof(dlm) / sizeof(dlm[0]); i++) e2_step(&m);
+        double z = 0, zz = 0;
+        memcpy(&z, &m.cpu.v[6][0], 8);
+        memcpy(&zz, &m.cpu.v[7][0], 8);
+        CHECK(z == 0.01, "dl_mul 0.1*0.1 product (got %.17g)", z);
+        CHECK(zz == 9.020562075079397e-19, "dl_mul 0.1*0.1 correction (got %.17g)", zz);
+        e2_memory_destroy(&m.mem);
+    }
+
+    {
         // dl_split as CPython's math module compiles it when fma is unavailable - the version that is
         // actually in math.so, which imports no fma and contains no fmsub. Split 0.75 and the two halves
         // must be 0.75 and 0.0 exactly; a wrong hi or lo here feeds a wrong correction into vector_norm
