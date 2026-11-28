@@ -115,7 +115,9 @@ sub   x0, x0, x2, asr #63     ← 带移位寄存器的 SUB
 
 **调用形式已排除**：位置参数、star-args、`__new__` 直接调用、以及把类绑定到别的名字再调用，四种都给全零。而 `datetime.time`、`datetime.timedelta`、`datetime.date` 都正常。**所以问题在 `datetime.datetime` 的构造函数内部，与调用约定无关**
 
-**再往下排除一层**：`_datetime.datetime.__new__(C.datetime, 2021, 7, 15, 11, 22, 33, 0, None)` 也得到 `0000-00-00T11:22:33`，**所以不是 `datetime.py` 的 Python 包装，是 C 模块里 `new_datetime_ex2` 这一层**。同时 `d.ctime()` 输出里有乱码字符，`d.replace(year=2022)` 抛异常 |
+**再往下排除一层**：`_datetime.datetime.__new__(C.datetime, 2021, 7, 15, 11, 22, 33, 0, None)` 也得到 `0000-00-00T11:22:33`，**所以不是 `datetime.py` 的 Python 包装，是 C 模块里 `new_datetime_ex2` 这一层**。同时 `d.ctime()` 输出里有乱码字符，`d.replace(year=2022)` 抛异常
+
+**参数确实被收到了**：给年、月、日或时传字符串，五种情况都正确抛 `TypeError`，与 qemu 一致。**所以不是「参数没传进来」，是校验之后、存进去之前变成了零。**`date` 也走同一个 `check_date_fields`，而它是对的 |
 | **`prlimit64` 只报告不执行** | 设置新的 rlimit 会被接受但忽略 |
 | **符号链接的绝对目标不工作** | `/tmp/link -> /tmp/target` 这样的链接，`open` 会返回 `ENOENT`：目标是按**宿主**路径解析的，不经过 guest 映射。**相对目标正常**。这是真限制，不是回归 |
 | **exec 最多携带 32 个参数和 64 个环境变量** | 超过时返回 `E2BIG`（真内核的上限高得多）。上限受限于每次 exec 的栈上缓冲区；`run_proc` 是嵌套的，把它调大会把栈风险换成一个更少见的错误 |
