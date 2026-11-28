@@ -53,7 +53,9 @@ xml.etree.ElementTree  curses  curses.panel
 
 | 症状 | 影响 |
 | --- | --- |
-| **`math.hypot()` 两个及以上参数返回 `nan`** | `math.hypot(3.0)` 得到 3.0（正确），`math.hypot(3.0, 4.0)` 得到 `nan`，qemu 是 5.0；`math.dist` 同样受影响。**`libm.hypot` 经 ctypes 直接调用返回 5.0，`frexp`、`ldexp`（含负指数）、`sqrt`、`fabs` 全部正确** —— 所以问题在 CPython 自己的 `vector_norm` 循环里，不在 musl。**这是 41 项逐值普查里唯一一项不一致** |
+| **`math.hypot()` 两个及以上参数返回 `nan`** | `math.hypot(3.0)` 得到 3.0（正确），`math.hypot(3.0, 4.0)` 得到 `nan`，qemu 是 5.0；`math.dist` 同样受影响。**`libm.hypot` 经 ctypes 直接调用返回 5.0——musl 是对的**，而 `math.hypot(3.0, 4.0)` 返回 `nan`。**所以问题在 CPython 的 `math.hypot` 包装里，它两个及以上参数时走自己的 `vector_norm` 而根本不调 libm。**（此前几轮我按「musl 的 hypot」去读反汇编，方向错了——那些结论对 `libm.hypot` 仍然成立，只是那里本来就没坏。）
+
+**`frexp`、`ldexp`（含负指数）、`sqrt`、`fabs` 全部正确**，`CCMP` 也正确，`hypot` 调 `sqrt` 之前那三十条指令的累加在 E2 里精确算出 `25.0`。**这些都排除了，剩下 `vector_norm` 自己的缩放循环——但 `math.so` 和 `libpython` 都没有符号可读。****这是 41 项逐值普查里唯一一项不一致** |
 
 ## 已知错误
 
