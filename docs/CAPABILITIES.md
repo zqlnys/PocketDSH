@@ -111,7 +111,7 @@ sub   x0, x0, x2, asr #63     ← 带移位寄存器的 SUB
 ```
 
 **`x0` 是 `t / 86400`；它错了，余数就错，小时就错。**下一步该测的是**带移位操作数的 `SUB`**（`sub xD, xN, xM, asr #63`）这种形式。
-| **`datetime.datetime` 完全忽略关键字参数** | `datetime.datetime(year=2020, month=1, day=1)` 得到 `0000-00-00 00:00:00`（全零），qemu 得到 `2020-01-01 00:00:00`。**位置参数正常**，而同一模块的 `datetime.date(year=..., month=..., day=...)` **正常**。后果：`tzinfo=` 被丢弃，于是 `datetime.fromtimestamp(ts, timezone.utc)` 抛 `ValueError: fromutc: dt.tzinfo is not self`。**其它 C 层关键字（`sorted`、`int`、`str.split`、`round`、`pow`、`bytes.hex`）都正常** |
+| **`datetime.datetime` 的前三个字段恒为零** | **位置参数也一样**——不是关键字参数的问题，上一轮记错了。规律很精确：`datetime(2020,1,1,5,6,7)` 得到年 0、月 0、日 0，而时 5、分 6、秒 7 **正确**。`datetime.date(2020,5,6)` 三个参数**全对**。后果：`fromtimestamp(ts, timezone.utc)` 抛 `ValueError: fromutc: dt.tzinfo is not self`（它拿到的 tzinfo 是 `None`）。**其它 C 层关键字（`sorted`、`int`、`str.split`、`round`、`pow`、`bytes.hex`）都正常** |
 | **`prlimit64` 只报告不执行** | 设置新的 rlimit 会被接受但忽略 |
 | **符号链接的绝对目标不工作** | `/tmp/link -> /tmp/target` 这样的链接，`open` 会返回 `ENOENT`：目标是按**宿主**路径解析的，不经过 guest 映射。**相对目标正常**。这是真限制，不是回归 |
 | **exec 最多携带 32 个参数和 64 个环境变量** | 超过时返回 `E2BIG`（真内核的上限高得多）。上限受限于每次 exec 的栈上缓冲区；`run_proc` 是嵌套的，把它调大会把栈风险换成一个更少见的错误 |
