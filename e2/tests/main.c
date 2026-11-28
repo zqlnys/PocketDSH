@@ -2537,6 +2537,34 @@ static void test_scalar_immediates(void) {
     }
 
     {
+        // The three operations at the top of musl's log2, with the encodings taken from the library
+        // itself rather than assembled: ubfx to pick a table index out of the exponent bits, a mask
+        // that isolates them, and the subtract that removes them. A wrong ubfx here chooses the wrong
+        // polynomial and produces exactly the constant offset observed.
+        static const struct {
+            uint32_t insn; uint64_t in, want; const char *what;
+        } lg[] = {
+            {0xD36ECC23u, 0x3FE6A09E00000000ULL, 0x1Au, "ubfx x3,x1,#46,#6 of 1.0's neighbour"},
+            {0xD36ECC23u, 0x40095F6200000000ULL, 0x25u, "ubfx x3,x1,#46,#6 of a reduced value"},
+            {0x924C2C25u, 0x3FE6A09E00000000ULL, 0x3FE0000000000000ULL, "and x5,x1,#0xfff0000000000000"},
+            {0x924C2C25u, 0x40095F6200000000ULL, 0x4000000000000000ULL, "and keeps only the top bits"},
+        };
+        for (unsigned i = 0; i < sizeof(lg) / sizeof(lg[0]); i++) {
+            e2_machine m;
+            e2_machine_init(&m, 0, 1 << 20);
+            const uint64_t at = 0x30000000ULL;
+            e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+            e2_memory_write(&m.mem, at, &lg[i].insn, 4);
+            m.cpu.pc = at;
+            m.cpu.x[1] = lg[i].in;
+            e2_step(&m);
+            const uint64_t got = (lg[i].insn == 0xD36ECC23u) ? m.cpu.x[3] : m.cpu.x[5];
+            CHECK(got == lg[i].want, "%s (got 0x%llx)", lg[i].what, (unsigned long long)got);
+            e2_memory_destroy(&m.mem);
+        }
+    }
+
+    {
         // Building a 64-bit constant from movz and four movks. The compiler materialises every large
         // constant this way, and log2's range reduction adds one; a movk with the wrong shift gives a
         // constant that is subtly wrong, which is exactly what a range reduction landing on the wrong
