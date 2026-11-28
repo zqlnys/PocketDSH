@@ -2503,6 +2503,40 @@ static void test_scalar_immediates(void) {
     }
 
     {
+        // The exact three instructions libc's gmtime uses to get the hour out of the seconds:
+        // remainder by 86400 with msub, then the 0x91a2b3c5 multiply and shift that divides by 3600.
+        // Checked as a sequence rather than one instruction at a time, because the hour being wrong
+        // while the minute and second are right means the fault is in the combination.
+        static const struct { uint64_t t; uint64_t rem, hour; } hr[] = {
+            {100, 100, 0}, {6399, 6399, 1}, {12800, 12800, 3},
+            {66880, 66880, 18}, {67712, 67712, 18}, {2000000000ULL, 12800, 3},
+        };
+        for (unsigned i = 0; i < sizeof(hr) / sizeof(hr[0]); i++) {
+            e2_machine m;
+            e2_machine_init(&m, 0, 1 << 20);
+            const uint64_t at = 0x30000000ULL;
+            e2_memory_map_at(&m.mem, at, 0x2000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+            const uint32_t seq[3] = {0x9B038802u, 0x9BA97CE8u, 0xD36BFD08u};
+            e2_memory_write(&m.mem, at, seq, sizeof(seq));
+            m.cpu.pc = at;
+            // msub x2, x0, x3, x2 with x0 = t/86400 (quotient), x2 = t, x3 = 86400.
+            m.cpu.x[0] = hr[i].t / 86400;
+            m.cpu.x[2] = hr[i].t;
+            m.cpu.x[3] = 86400;
+            m.cpu.x[9] = 0x91A2B3C5u;
+            e2_step(&m);   // msub
+            CHECK(m.cpu.x[2] == hr[i].rem, "msub remainder for %llu (got %llu)",
+                  (unsigned long long)hr[i].t, (unsigned long long)m.cpu.x[2]);
+            m.cpu.x[7] = m.cpu.x[2] & 0xFFFFFFFFu;
+            e2_step(&m);   // umull
+            e2_step(&m);   // lsr
+            CHECK(m.cpu.x[8] == hr[i].hour, "hour for %llu (got %llu)",
+                  (unsigned long long)hr[i].t, (unsigned long long)m.cpu.x[8]);
+            e2_memory_destroy(&m.mem);
+        }
+    }
+
+    {
         // TBZ / TBNZ at bit 63 against bit 31. The bit number is split across two fields; getting it
         // wrong would make libc's `tbnz x2, #63` - which is how gmtime decides a remainder is
         // negative - test bit 31 instead.
