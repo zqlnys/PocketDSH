@@ -2503,6 +2503,40 @@ static void test_scalar_immediates(void) {
     }
 
     {
+        // TBZ / TBNZ at bit 63 against bit 31. The bit number is split across two fields; getting it
+        // wrong would make libc's `tbnz x2, #63` - which is how gmtime decides a remainder is
+        // negative - test bit 31 instead.
+        //
+        // The encodings come from the assembler, by assembling to an object and disassembling it so
+        // the branch offset is resolved. Hand-computing them, as I did first, produced three
+        // instructions that were not TBZ at all.
+        static const struct {
+            uint32_t insn; uint64_t value; const char *what; bool branches;
+        } tb[] = {
+            {0xB7F80042u, 1ULL << 63, "tbnz x2,#63 with bit 63 set", true},
+            {0xB7F80042u, 1ULL << 31, "tbnz x2,#63 with only bit 31 set", false},
+            {0x37F80042u, 1ULL << 31, "tbnz w2,#31 with bit 31 set", true},
+            {0x37F80042u, 1ULL << 63, "tbnz w2,#31 with only bit 63 set", false},
+            {0xB6F80042u, 1ULL << 63, "tbz x2,#63 with bit 63 set", false},
+            {0xB6F80042u, 1ULL << 31, "tbz x2,#63 with only bit 31 set", true},
+        };
+        for (unsigned i = 0; i < sizeof(tb) / sizeof(tb[0]); i++) {
+            e2_machine m;
+            e2_machine_init(&m, 0, 1 << 20);
+            const uint64_t at = 0x30000000ULL;
+            e2_memory_map_at(&m.mem, at, 0x2000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+            e2_memory_write(&m.mem, at, &tb[i].insn, 4);
+            m.cpu.pc = at;
+            m.cpu.x[2] = tb[i].value;
+            e2_step(&m);
+            const bool branched = (m.cpu.pc == at + 8);
+            CHECK(branched == tb[i].branches, "%s (pc=0x%llx)", tb[i].what,
+                  (unsigned long long)m.cpu.pc);
+            e2_memory_destroy(&m.mem);
+        }
+    }
+
+    {
         // SMULH / UMULH, which is how a compiler turns division by a constant into multiplication.
         // If these are wrong, `secs / 86400` in libc's gmtime is wrong while Python's own division -
         // which uses the divide instruction - stays right, which is exactly the split observed.
