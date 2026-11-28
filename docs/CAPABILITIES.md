@@ -59,7 +59,19 @@ xml.etree.ElementTree  curses  curses.panel
 
 **一个决定性的证据：`math.so` 的导入表里没有 `hypot`**，只有 `frexp`、`ldexp`、`log2`、`pow`、`sqrt`。**所以 `math.hypot` 不调 musl 的 `hypot`——它是 `vector_norm` 的薄封装，无论几个参数。**
 
-**而 `math.hypot(3.0)`（一个参数）正确、`math.hypot(3.0, 4.0)` 是 `nan`**，所以问题在那个循环处理第二个元素时。`math.so` 与 `libpython` 都没有符号可读，**所以下一步只能靠行为推断，不能靠反汇编。****这是 41 项逐值普查里唯一一项不一致** |
+**分界不在数值上，在参数个数上：**
+
+```
+hypot(3.0)            3.0     正确
+hypot(3.0, 4.0)       nan
+hypot(1.0, 1.0)       nan     ← 相等的参数
+hypot(0.5, 0.5)       nan     ← 很小的值
+hypot(3.0, 4.0, 0.0)  nan
+```
+
+**任何两个及以上参数都是 `nan`，而一个参数正确。**这不是数据相关的计算误差——**更像坐标数组的第二个元素读进来就是 `NaN`，于是 `vector_norm` 走 `found_nan` 分支直接返回 `Py_NAN`。**
+
+`math.so` 与 `libpython` 都没有符号可读，**所以下一步只能靠行为推断，不能靠反汇编。****这是 41 项逐值普查里唯一一项不一致** |
 
 ## 已知错误
 
