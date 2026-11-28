@@ -2,7 +2,7 @@
 
 这份文件说的每一件事都有对应的测试；数字是本地实测的，不是估计。
 
-**最后核对：2026-11-27，版本 0.1.20261127 (990)。**
+**最后核对：2026-11-28，版本 0.1.20261128 (1060)。**
 
 ## 这些证据是在哪测的
 
@@ -18,7 +18,7 @@
 
 | 能力 | 证据 |
 | --- | --- |
-| busybox 全套 applet | 384 条差分用例与 qemu 逐字一致（1 条已知差异，见下） |
+| busybox 全套 applet | 385 条差分用例与 qemu 逐字一致（1 条已知差异，见下） |
 | CPython 3.12 + 标准库 | 30 个模块的广度探针、13 行窄探针，输出与 qemu 逐字一致 |
 | `fork` / `exec` / `wait4` | 一个进程里 fork + wait 100 次；`subprocess` 可运行；失败的 `exec` 返回 `ENOENT`，过长的参数返回 `E2BIG` |
 | 管道、`epoll`、`select` | shell 管道、`select.epoll` 建 12 个、`select.select` 与 `selectors` 与 qemu 一致 |
@@ -217,9 +217,9 @@ python3 -c 'pass' 级别   3.2–7.2 秒
 
 ```sh
 cd e2
-make test                                    # 334 条指令级检查
+make test                                    # 412 条指令级检查
 ./tools/diff-test.sh <busybox.static> ./tools/rune   # 384 条与 qemu 对比
-./tools/fs-test.sh                           # 86 条端到端
+./tools/fs-test.sh                           # 95 条端到端
 ./tools/perf-check.sh                        # 两个性能数字
 ```
 
