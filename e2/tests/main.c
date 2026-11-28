@@ -2537,6 +2537,26 @@ static void test_scalar_immediates(void) {
     }
 
     {
+        // The body of musl's hypot up to the call to sqrt: a Dekker split of both squares and their
+        // accumulation. With d0 = 3 and d3 = 4 the value handed to sqrt must be 25; a small negative
+        // there would make sqrt return nan, which is the observed behaviour.
+        static const uint32_t body[] = { 0xD2A04000u, 0x1E600806u, 0xF2E83400u, 0x9E670004u, 0x1E630867u, 0x1E640805u, 0x1E640864u, 0x1E653802u, 0x1E643861u, 0x1E652842u, 0x1E642821u, 0x1E623800u, 0x1E612824u, 0x1E613863u, 0x1E622845u, 0x1E610821u, 0x1E620842u, 0x1E6008A5u, 0x1E630870u, 0x1E663842u, 0x1E630883u, 0x1E673821u, 0x1E600800u, 0x1E652842u, 0x1E632821u, 0x1E602842u, 0x1E702820u, 0x1E622800u, 0x1E672800u, 0x1E662800u };
+        e2_machine m;
+        e2_machine_init(&m, 0, 1 << 20);
+        const uint64_t base = 0x30000000ULL;
+        e2_memory_map_at(&m.mem, base, 0x2000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+        e2_memory_write(&m.mem, base, body, sizeof(body));
+        m.cpu.pc = base;
+        m.cpu.v[0][0] = 0x4008000000000000ULL;   /* d0 = 3.0 */
+        m.cpu.v[3][0] = 0x4010000000000000ULL;   /* d3 = 4.0 */
+        for (unsigned i = 0; i < sizeof(body) / sizeof(body[0]); i++) e2_step(&m);
+        double got = 0;
+        memcpy(&got, &m.cpu.v[0][0], 8);
+        CHECK(got == 25.0, "the value hypot hands to sqrt (got %.17g)", got);
+        e2_memory_destroy(&m.mem);
+    }
+
+    {
         // CCMP, which libc's hypot uses to decide between the finite and non-finite paths without
         // branching: `cmp x2,#0x7ff` then `ccmp x0,#0x0,#0x4,ne` then `b.eq`. If the conditional
         // compare sets the wrong flags, that branch goes to the infinity-and-nan path for ordinary
