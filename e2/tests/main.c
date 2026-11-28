@@ -2537,6 +2537,60 @@ static void test_scalar_immediates(void) {
     }
 
     {
+        // AND with a 64-bit logical immediate. The immediate is encoded as a bitmask (N, immr, imms)
+        // rather than a literal, and log2 masks a double's exponent bits with one. A wrong decode
+        // makes the mask itself wrong, which would explain a reduced value whose low half is garbage
+        // while every register-to-register operation stays correct.
+        static const struct { uint32_t insn; uint64_t in, want; const char *what; } li[] = {
+            {0x9240CC20u, 0x40095F6200000000ULL, 0x00095F6200000000ULL, "and x0,x1,#0xfffffffffffff"},
+            {0x92407C20u, 0x40095F6200000000ULL, 0x0000000000000000ULL, "and x0,x1,#0xffffffff keeps none of it"},
+            {0x92407C20u, 0x40095F62ABCDEF01ULL, 0x00000000ABCDEF01ULL, "and x0,x1,#0xffffffff keeps the low half"},
+            {0x92403C20u, 0x40095F62ABCDEF01ULL, 0x000000000000EF01ULL, "and x0,x1,#0xffff"},
+        };
+        for (unsigned i = 0; i < sizeof(li) / sizeof(li[0]); i++) {
+            e2_machine m;
+            e2_machine_init(&m, 0, 1 << 20);
+            const uint64_t at = 0x30000000ULL;
+            e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+            e2_memory_write(&m.mem, at, &li[i].insn, 4);
+            m.cpu.pc = at;
+            m.cpu.x[1] = li[i].in;
+            e2_step(&m);
+            CHECK(m.cpu.x[0] == li[i].want, "%s (got 0x%llx)", li[i].what,
+                  (unsigned long long)m.cpu.x[0]);
+            e2_memory_destroy(&m.mem);
+        }
+    }
+
+    {
+        // fmov between a general register and a floating one, which is how libc moves a double's bit
+        // pattern into integer registers to reduce its range - log2 does exactly this. A wrong
+        // transfer here would make the reduced value garbage while every arithmetic instruction
+        // stayed correct.
+        static const struct { uint32_t insn; uint64_t in, want; const char *what; } fm[] = {
+            {0x9E670020u, 0x3FF0000000000000ULL, 0x3FF0000000000000ULL, "fmov d0,x1 then back"},
+            {0x9E670020u, 0x00095F6200000000ULL, 0x00095F6200000000ULL, "a non-double bit pattern"},
+            {0x1E270020u, 0x3F800000u, 0x3F800000u, "fmov s0,w1 then back"},
+        };
+        for (unsigned i = 0; i < sizeof(fm) / sizeof(fm[0]); i++) {
+            e2_machine m;
+            e2_machine_init(&m, 0, 1 << 20);
+            const uint64_t at = 0x30000000ULL;
+            e2_memory_map_at(&m.mem, at, 0x2000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+            const bool is32 = (fm[i].insn & 0x80000000u) == 0;
+            const uint32_t seq[2] = {fm[i].insn, is32 ? 0x1E260001u : 0x9E660001u};
+            e2_memory_write(&m.mem, at, seq, sizeof(seq));
+            m.cpu.pc = at;
+            m.cpu.x[1] = fm[i].in;
+            e2_step(&m);
+            e2_step(&m);
+            const uint64_t got = is32 ? (m.cpu.x[1] & 0xFFFFFFFFu) : m.cpu.x[1];
+            CHECK(got == fm[i].want, "%s (got 0x%llx)", fm[i].what, (unsigned long long)got);
+            e2_memory_destroy(&m.mem);
+        }
+    }
+
+    {
         // The quotient t/86400 as libc computes it: smulh, asr, then a subtract whose third operand
         // is a register shifted by 63. That last form is the one no test covered, and it is the
         // correction term for negative inputs - `sub x0, x0, x2, asr #63` adds one when x2 is
