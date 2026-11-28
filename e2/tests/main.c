@@ -2537,6 +2537,44 @@ static void test_scalar_immediates(void) {
     }
 
     {
+        // The range reduction of musl's log2 as a sequence, with the encodings taken from the library:
+        // mov a 64-bit constant, add it to the value's bits, extract a table index, mask the exponent
+        // off. A wrong step here makes the polynomial evaluate at the wrong point, and for an exact
+        // power of two that shows up as a constant offset.
+        static const struct { uint64_t x; uint64_t idx, reduced; } red[] = {
+            {0x4000000000000000ULL, 0x0028, 0x3FF0000000000000ULL},   // 2.0
+            {0x4010000000000000ULL, 0x0028, 0x3FF0000000000000ULL},   // 4.0
+            {0x3FE0000000000000ULL, 0x0028, 0x3FF0000000000000ULL},   // 0.5
+        };
+        for (unsigned i = 0; i < sizeof(red) / sizeof(red[0]); i++) {
+            e2_machine m;
+            e2_machine_init(&m, 0, 1 << 20);
+            const uint64_t at = 0x30000000ULL;
+            e2_memory_map_at(&m.mem, at, 0x2000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+            static const uint32_t seq[5] = {
+                0xD2F80341u,   // mov  x1, #-0x3fe6000000000000
+                0x8B010041u,   // add  x1, x2, x1
+                0xD36ECC23u,   // ubfx x3, x1, #46, #6
+                0x924C2C25u,   // and  x5, x1, #0xfff0000000000000
+                0x91002463u,   // add  x3, x3, #0x9
+            };
+            e2_memory_write(&m.mem, at, seq, sizeof(seq));
+            m.cpu.pc = at;
+            m.cpu.x[2] = red[i].x;
+            for (int k = 0; k < 4; k++) e2_step(&m);
+            CHECK(m.cpu.x[3] == red[i].idx, "table index for 0x%llx (got 0x%llx)",
+                  (unsigned long long)red[i].x, (unsigned long long)m.cpu.x[3]);
+            const uint32_t sub = 0xCB050042u;   // sub x2, x2, x5
+            e2_memory_write(&m.mem, at, &sub, 4);
+            m.cpu.pc = at;
+            e2_step(&m);
+            CHECK(m.cpu.x[2] == red[i].reduced, "reduced bits for 0x%llx (got 0x%llx)",
+                  (unsigned long long)red[i].x, (unsigned long long)m.cpu.x[2]);
+            e2_memory_destroy(&m.mem);
+        }
+    }
+
+    {
         // The fused multiply-add family, which libc's log2 uses for its polynomial. A wrong one gives a
         // result that is subtly off, and because the polynomial is evaluated from the same reduced
         // value every time that error can look like a constant.
