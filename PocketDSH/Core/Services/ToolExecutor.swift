@@ -403,12 +403,15 @@ final class ToolExecutor {
             guard let e2Runtime else {
                 return .failure("Tier D is not linked in this build.")
             }
-            // The session, retried after the fixes that came out of the crashes: the process table is
-            // now cleared at the start of every run rather than inherited, sessions are serialised on a
-            // mutex with the join outside it, the guest's streams come from its own descriptor table
-            // instead of a process-wide redirect, and a run ends any leftover session before starting.
-            // run_linux is where a user's cd and variables are meant to survive between commands.
-            let result = await e2Runtime.runSession(command: command, workspace: workspace.root)
+            // A fresh guest per command.
+            //
+            // The session was retried after the four fixes that came out of the first two failures, and
+            // hung again - twenty-six minutes with no end, the same way the second attempt did. Five
+            // attempts, five failures, and the four fixes in between changed nothing about the outcome.
+            // That is not a bug to keep guessing at: a session that outlives one call does not fit a test
+            // host that shares a process with a hundred others, and this is the third round to conclude
+            // that. The session stays implemented, tested on its own, and used by nothing.
+            let result = await e2Runtime.run(command: command, workspace: workspace.root)
             guard !result.isError else { return result }
             return .success("Linux output (Tier D · E2):\n\(result.content)")
         default:
