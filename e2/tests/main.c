@@ -2547,8 +2547,8 @@ static void test_scalar_immediates(void) {
         e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
         static const struct { uint32_t insn; double want; const char *what; } fu[] = {
             {0x1F420C20u, 3.0 * 5.0 + 2.0, "fmadd 3*5+2"},
-            {0x1F428C20u, 3.0 * 5.0 - 2.0, "fmsub 3*5-2"},
-            {0x1F620C20u, -(3.0 * 5.0) + 2.0, "fnmadd -(3*5)+2"},
+            {0x1F428C20u, 2.0 - 3.0 * 5.0, "fmsub: the encoding negates the product"},
+            {0x1F620C20u, 3.0 * 5.0 - 2.0, "fnmadd: the encoding subtracts the addend"},
             {0x1F628C20u, -(3.0 * 5.0) - 2.0, "fnmsub -(3*5)-2"},
         };
         for (unsigned i = 0; i < sizeof(fu) / sizeof(fu[0]); i++) {

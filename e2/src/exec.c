@@ -1531,15 +1531,15 @@ not_a_shift:;
     }
 
     // --- Floating-point, three sources: FMADD / FMSUB / FNMADD / FNMSUB ---
-    // One group selected by two bits, and the mapping between the two is the opposite of the obvious
-    // one: bit 15 (o0) negates the addend and bit 21 (o1) negates the product. Having them the other
-    // way round made `fmsub` compute c - a*b and `fnmadd` compute a*b - c, while `fmadd` and
-    // `fnmsub` - which set neither bit or both - came out right. That is what made the mistake hard
-    // to see: half the family worked. It surfaced through log2, whose polynomial is a chain of these.
+    // One group, selected by two bits: bit 15 negates the product and bit 21 subtracts the addend.
+    // Swapping them looked right when I read the encodings off my own test - and made awk's `7 % 3`
+    // come out as -1, because awk computes the remainder with fmsub. The differential suite caught it
+    // in one line. The multiply and the add are fused, so the product is not rounded before the
+    // addition - that is the whole point of using these.
     if ((insn & 0xFF800000u) == 0x1F000000u) {
         const bool single = (BITS(insn, 23, 22) == 0);
-        const bool negate_product = BIT(insn, 21) != 0;
-        const bool subtract = BIT(insn, 15) != 0;
+        const bool negate_product = BIT(insn, 15) != 0;
+        const bool subtract = BIT(insn, 21) != 0;
         const unsigned rm = BITS(insn, 20, 16);
         const unsigned ra = BITS(insn, 14, 10);
         const unsigned rn2 = BITS(insn, 9, 5);
