@@ -55,7 +55,11 @@ xml.etree.ElementTree  curses  curses.panel
 | --- | --- |
 | **`math.hypot()` 两个及以上参数返回 `nan`** | `math.hypot(3.0)` 得到 3.0（正确），`math.hypot(3.0, 4.0)` 得到 `nan`，qemu 是 5.0；`math.dist` 同样受影响。**`libm.hypot` 经 ctypes 直接调用返回 5.0——musl 是对的**，而 `math.hypot(3.0, 4.0)` 返回 `nan`。**所以问题在 CPython 的 `math.hypot` 包装里，它两个及以上参数时走自己的 `vector_norm` 而根本不调 libm。**（此前几轮我按「musl 的 hypot」去读反汇编，方向错了——那些结论对 `libm.hypot` 仍然成立，只是那里本来就没坏。）
 
-**`frexp`、`ldexp`（含负指数）、`sqrt`、`fabs` 全部正确**，`CCMP` 也正确，`hypot` 调 `sqrt` 之前那三十条指令的累加在 E2 里精确算出 `25.0`。**这些都排除了，剩下 `vector_norm` 自己的缩放循环——但 `math.so` 和 `libpython` 都没有符号可读。****这是 41 项逐值普查里唯一一项不一致** |
+**`frexp`、`ldexp`（含负指数）、`sqrt`、`fabs` 全部正确**，`CCMP` 也正确，`hypot` 调 `sqrt` 之前那三十条指令的累加在 E2 里精确算出 `25.0`。**这些都排除了，剩下 `vector_norm` 自己的缩放循环。**
+
+**一个决定性的证据：`math.so` 的导入表里没有 `hypot`**，只有 `frexp`、`ldexp`、`log2`、`pow`、`sqrt`。**所以 `math.hypot` 不调 musl 的 `hypot`——它是 `vector_norm` 的薄封装，无论几个参数。**
+
+**而 `math.hypot(3.0)`（一个参数）正确、`math.hypot(3.0, 4.0)` 是 `nan`**，所以问题在那个循环处理第二个元素时。`math.so` 与 `libpython` 都没有符号可读，**所以下一步只能靠行为推断，不能靠反汇编。****这是 41 项逐值普查里唯一一项不一致** |
 
 ## 已知错误
 
