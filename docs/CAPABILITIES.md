@@ -61,7 +61,7 @@ xml.etree.ElementTree  curses  curses.panel
 | **没有网络** | 只支持 `socketpair`，没有任何会 `connect` 的东西。**`ssl` 能导入、CA 证书齐全，但发不出 HTTPS 请求。** |
 | **`socket.socketpair` 可以收发数据** | `sendto`(206)、`recvfrom`(207)、`sendmsg`(211)、`recvmsg`(212) 都已实现，往返数据通过。**`SCM_RIGHTS`（传描述符）仍不支持，带控制消息的调用返回 `ENOTSUP`——明说而不是悄悄丢掉** |
 | **没有线程** | 见下 |
-| **`run_linux` 还没有用上会话模式** | 会话在 harness 和桥接两层都已工作（`e2_bridge_session_start/_write/_wait/_close`），但 `run_linux` 仍每次启动新 guest。把它接上是下一步 |
+| **`run_linux` 还没有用上会话模式** | 会话在 harness 和桥接两层都已工作并有独立测试，但接到 `run_linux` 上**试过五次、失败五次**（崩、挂、崩、挂、挂）。其间修掉四个真实缺陷——进程表继承、互斥锁跨 `join`、进程级 stdout 重定向、残留会话——而结果不变。**所以这不是还没找到的 bug，是一个活得比一次调用久的 shell 不适合与上百个测试共享进程的测试宿主。** 会话保留、有测试、没有调用方 |
 
 
 ## 关于线程
