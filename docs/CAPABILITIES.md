@@ -29,6 +29,7 @@
 | 工作区挂载 | guest 的 `/workspace` 就是项目目录 |
 | **持久会话** | `E2_SESSION=1` 时一个 guest shell 跨多条命令存活，`cd` 和变量都保持。命令由写线程分次喂入，shell 阻塞在 read 上等着——不是轮询。完成标记走 `E2_SESSION_MARK` 指向的独立文件，输出里没有分帧痕迹 |
 | **`asyncio` 事件循环** | `sleep`、`gather`、`Queue`、`run_until_complete` 都可用——它需要的 socketpair 自管道现在能收发。**TCP 服务端不行**，因为没有东西能 `connect`（见「没有网络」） |
+| **`time.gmtime` / `strftime`** | 与 qemu 逐字段一致，包括 `tm_wday`。文件系统套件跑六个数并直接与 qemu 的输出比对 |
 | **`/proc` 已种入** | `df`、`free`、`uname -a`、`nproc` 都能用；`/proc/mounts` 与 `statfs` 一致；`/proc` 与 `/proc/self` 都从可写目录提供，因为设备上的 rootfs 只读 |
 | 深嵌套的子 shell | 1000 层括号嵌套仍能运行 |
 | **27 个系统调用** | `tools/syscall-probe.py` 逐行与 qemu 对比：`getpid`、`stat`、`symlink`、`hardlink`、`chmod`、`listdir`、`walk`、`pipe`、`select`、`lseek`、`getcwd`、`time` 等 |
@@ -67,7 +68,6 @@ xml.etree.ElementTree  curses  curses.panel
 | **没有线程** | 见下 |
 | **`run_linux` 还没有用上会话模式** | 会话在 harness 和桥接两层都已工作（`e2_bridge_session_start/_write/_wait/_close`），但 `run_linux` 仍每次启动新 guest。把它接上是下一步 |
 
-| **`time.gmtime()` 对小值算错** | `gmtime(0)` 给出 `1969-12-31 48:00`，`gmtime(3600)` 给出 `01:00` 变成 `25:00`，`gmtime(86400)` 的日期差一天；`gmtime(1700000000)` 正确。**Python 层的 `//` 和 `%` 已验证正确**，所以问题在 musl 的 `gmtime_r`。后果：`strftime` 抛 `ValueError: hour out of range`。**边界在 2^30**，`t ≥ 2^30` 完全正确，小于时有两处固定偏移：`tm_hour` **恒多 24**，`tm_wday` **恒少 1**（模 7），而 `tm_mday`、`tm_yday`、分、秒都正确。**`datetime.datetime.fromtimestamp` 因此抛 `ValueError: hour must be in 0..23`。**
 
 **已排除（都测过）：**整数 `//` 和 `%` 与 qemu 一致；`SMULH`/`UMULH`（编译器「除以常量」的手法）七条检查全过；`strftime`/`gmtime` 的调用本身正常。
 

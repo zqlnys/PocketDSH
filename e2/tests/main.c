@@ -2503,6 +2503,34 @@ static void test_scalar_immediates(void) {
     }
 
     {
+        // The quotient t/86400 as libc computes it: smulh, asr, then a subtract whose third operand
+        // is a register shifted by 63. That last form is the one no test covered, and it is the
+        // correction term for negative inputs - `sub x0, x0, x2, asr #63` adds one when x2 is
+        // negative.
+        static const struct { int64_t t; int64_t quot; } q[] = {
+            {100, 0}, {6399, 0}, {86400, 1}, {2000000000, 23148}, {-1, 0}, {-86400, -1},
+            {-100, 0}, {1073741823, 12427},
+        };
+        for (unsigned i = 0; i < sizeof(q) / sizeof(q[0]); i++) {
+            e2_machine m;
+            e2_machine_init(&m, 0, 1 << 20);
+            const uint64_t at = 0x30000000ULL;
+            e2_memory_map_at(&m.mem, at, 0x2000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+            const uint32_t seq[3] = {0x9B407C40u, 0x934DFC00u, 0xCB82FC00u};
+            e2_memory_write(&m.mem, at, seq, sizeof(seq));
+            m.cpu.pc = at;
+            m.cpu.x[2] = (uint64_t)q[i].t;
+            m.cpu.x[0] = 0x1845C8A0CE512957ULL;   // the magic the disassembly loads
+            e2_step(&m);   // smulh
+            e2_step(&m);   // asr
+            e2_step(&m);   // sub with asr #63
+            CHECK((int64_t)m.cpu.x[0] == q[i].quot, "quotient of %lld/86400 (got %lld)",
+                  (long long)q[i].t, (long long)(int64_t)m.cpu.x[0]);
+            e2_memory_destroy(&m.mem);
+        }
+    }
+
+    {
         // The exact three instructions libc's gmtime uses to get the hour out of the seconds:
         // remainder by 86400 with msub, then the 0x91a2b3c5 multiply and shift that divides by 3600.
         // Checked as a sequence rather than one instruction at a time, because the hour being wrong

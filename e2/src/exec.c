@@ -408,7 +408,17 @@ addsub_imm:
         switch (shift_type) {
             case 0: operand <<= shift_amount; break;                                   // LSL
             case 1: operand >>= shift_amount; break;                                   // LSR
-            case 2: operand = (uint64_t)((int64_t)(operand << (64 - width)) >> (64 - width)) >> shift_amount; break;  // ASR
+            case 2: {                                                                  // ASR
+                // The sign extension has to be followed by an arithmetic shift, on a signed
+                // value. Casting back to unsigned in between turned this into a logical shift:
+                // `sub x0, x0, x2, asr #63` computed +1 for x2 = -1 instead of -1, so every
+                // negative correction in libc's division-by-multiplication went the wrong way.
+                int64_t signed_operand = (int64_t)(operand << (64 - width));
+                signed_operand >>= (64 - width);
+                signed_operand >>= shift_amount;
+                operand = (uint64_t)signed_operand;
+                break;
+            }
             case 3: {                                                                  // ROR
                 unsigned r = shift_amount % width;
                 operand = r ? ((operand >> r) | (operand << (width - r))) : operand;

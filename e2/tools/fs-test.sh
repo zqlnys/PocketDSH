@@ -591,5 +591,30 @@ case "$async_out" in
     *) fail=$((fail + 1)); printf '  FAIL asyncio-loop\n    got: %s\n' "$async_out" ;;
 esac
 
+echo "time"
+
+# gmtime and strftime, which were wrong for every value below 2^30 until the arithmetic-shift bug was
+# found: tm_hour was 24 too high and tm_wday one day low. The comparison is against qemu's own output
+# for the same program rather than a hard-coded string.
+if [ -x "$ROOT/usr/bin/python3.12" ]; then
+    time_prog='import time
+for n in (0, 100, 3600, 86400, 1000000, 2000000000):
+    t = time.gmtime(n)
+    print(n, t.tm_year, t.tm_mon, t.tm_mday, t.tm_hour, t.tm_min, t.tm_wday)
+print(time.strftime("%Y-%m-%d", time.gmtime(1700000000)))'
+    printf '%s\n' "$time_prog" > "$WORK/time_probe.py" 2>/dev/null || true
+    mine_time=$(E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" PYTHONHOME=/usr LANG=C.UTF-8 E2_CAP=300000000 \
+        timeout 200 "$RUNE" "$ROOT/usr/bin/python3.12" /workspace/time_probe.py 2>&1 \
+        | sed -n '/^[0-9]/p;/^20/p')
+    their_time=$(timeout 200 qemu-aarch64-static -L "$ROOT" "$ROOT/usr/bin/python3.12" \
+        "$WORK/time_probe.py" 2>&1 | sed -n '/^[0-9]/p;/^20/p')
+    if [ -n "$mine_time" ] && [ "$mine_time" = "$their_time" ]; then
+        pass=$((pass + 1))
+    else
+        fail=$((fail + 1)); printf '  FAIL time-gmtime\n    mine:  %s\n    qemu:  %s\n' \
+            "$(printf '%s' "$mine_time" | tr '\n' '|')" "$(printf '%s' "$their_time" | tr '\n' '|')"
+    fi
+fi
+
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
