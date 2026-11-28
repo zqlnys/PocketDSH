@@ -2537,6 +2537,36 @@ static void test_scalar_immediates(void) {
     }
 
     {
+        // Building a 64-bit constant from movz and four movks. The compiler materialises every large
+        // constant this way, and log2's range reduction adds one; a movk with the wrong shift gives a
+        // constant that is subtly wrong, which is exactly what a range reduction landing on the wrong
+        // value looks like.
+        static const struct { uint32_t insn; uint64_t start, want; const char *what; } mk[] = {
+            {0xD28BEC43u, 0, 0x0000000000005F62ULL, "movz x3,#0x5f62"},
+            {0xF2A00123u, 0x5F62, 0x0000000000095F62ULL, "movk x3,#0x9 lsl 16"},
+            {0xF2C00003u, 0x95F62, 0x0000000000095F62ULL, "movk x3,#0 lsl 32 keeps the rest"},
+            {0xF2E308A3u, 0x0845C8A0CE512957ULL, 0x1845C8A0CE512957ULL, "movk x3,#0x1845 lsl 48"},
+            {0xF2D91403u, 0x18450000CE512957ULL, 0x1845C8A0CE512957ULL, "movk x3,#0xc8a0 lsl 32"},
+            {0xF2B9CA23u, 0x1845C8A000002957ULL, 0x1845C8A0CE512957ULL, "movk x3,#0xce51 lsl 16"},
+            {0xD2852AE3u, 0xFFFFFFFFFFFFFFFFULL, 0x0000000000002957ULL, "movz x3,#0x2957 clears the rest"},
+        };
+        for (unsigned i = 0; i < sizeof(mk) / sizeof(mk[0]); i++) {
+            e2_machine m;
+            e2_machine_init(&m, 0, 1 << 20);
+            const uint64_t at = 0x30000000ULL;
+            e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+            e2_memory_write(&m.mem, at, &mk[i].insn, 4);
+            m.cpu.pc = at;
+            m.cpu.x[3] = mk[i].start;
+            m.cpu.x[2] = mk[i].start;
+            e2_step(&m);
+            const uint64_t got = m.cpu.x[3];
+            CHECK(got == mk[i].want, "%s (got 0x%llx)", mk[i].what, (unsigned long long)got);
+            e2_memory_destroy(&m.mem);
+        }
+    }
+
+    {
         // AND with a 64-bit logical immediate. The immediate is encoded as a bitmask (N, immr, imms)
         // rather than a literal, and log2 masks a double's exponent bits with one. A wrong decode
         // makes the mask itself wrong, which would explain a reduced value whose low half is garbage
