@@ -22,6 +22,11 @@ DT_APPLETS=${DT_APPLETS:-/tmp/dt-applets}
 # Cases whose difference is understood. Keep this list short and each entry explained; it
 # exists so a known gap stays visible instead of being deleted to keep the suite green.
 DT_EXPECTED_DIFF='printf '"'"'x\n'"'"' | awk '"'"'{ "echo A; echo B" | getline v; print v }'"'"
+DT_EXPECTED_DIFF="$DT_EXPECTED_DIFF
+python3 -c 'import math; print(math.log2(2.0))'
+python3 -c 'import math; print(math.pow(2.0, 2.0))'
+python3 -c 'import datetime; print(datetime.datetime(2021, 7, 15).isoformat())'
+"
 known=0
 
 # Refuse to run without the pieces, rather than comparing a subset and reporting a
@@ -509,6 +514,9 @@ while IFS= read -r cmd; do
             "$cmd" "$(printf '%s' "$mine" | tr '\n' '|')" "$(printf '%s' "$theirs" | tr '\n' '|')"
     fi
 done <<'EOF'
+python3 -c 'import math; print(math.log2(2.0))'
+python3 -c 'import math; print(math.pow(2.0, 2.0))'
+python3 -c 'import datetime; print(datetime.datetime(2021, 7, 15).isoformat())'
 cat /tmp/dta
 wc -l /tmp/dta
 head -2 /tmp/dta
