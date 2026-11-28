@@ -2537,6 +2537,38 @@ static void test_scalar_immediates(void) {
     }
 
     {
+        // The fused multiply-add family, which libc's log2 uses for its polynomial. A wrong one gives a
+        // result that is subtly off, and because the polynomial is evaluated from the same reduced
+        // value every time that error can look like a constant.
+        double out = 0;
+        e2_machine m;
+        e2_machine_init(&m, 0, 1 << 20);
+        const uint64_t at = 0x30000000ULL;
+        e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+        static const struct { uint32_t insn; double want; const char *what; } fu[] = {
+            {0x1F420C20u, 3.0 * 5.0 + 2.0, "fmadd 3*5+2"},
+            {0x1F428C20u, 3.0 * 5.0 - 2.0, "fmsub 3*5-2"},
+            {0x1F620C20u, -(3.0 * 5.0) + 2.0, "fnmadd -(3*5)+2"},
+            {0x1F628C20u, -(3.0 * 5.0) - 2.0, "fnmsub -(3*5)-2"},
+        };
+        for (unsigned i = 0; i < sizeof(fu) / sizeof(fu[0]); i++) {
+            e2_memory_write(&m.mem, at, &fu[i].insn, 4);
+            m.cpu.pc = at;
+            m.cpu.v[1][0] = 0x4008000000000000ULL;   // d1 = 3.0
+            m.cpu.v[2][0] = 0x4014000000000000ULL;   // d2 = 5.0
+            m.cpu.v[3][0] = 0x4000000000000000ULL;   // d3 = 2.0
+            e2_step(&m);
+            out = 0;
+            memcpy(&out, &m.cpu.v[0][0], sizeof(out));
+            e2_memory_destroy(&m.mem);
+            e2_machine_init(&m, 0, 1 << 20);
+            e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+            CHECK(out == fu[i].want, "%s (got %.17g)", fu[i].what, out);
+        }
+        e2_memory_destroy(&m.mem);
+    }
+
+    {
         // The three operations at the top of musl's log2, with the encodings taken from the library
         // itself rather than assembled: ubfx to pick a table index out of the exponent bits, a mask
         // that isolates them, and the subtract that removes them. A wrong ubfx here chooses the wrong
