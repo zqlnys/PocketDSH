@@ -2503,6 +2503,40 @@ static void test_scalar_immediates(void) {
     }
 
     {
+        // Shifted-register operands on add and sub, all three shift kinds plus their edge amounts.
+        // The ASR case here is the one that was wrong for every negative operand, and reproducing it
+        // at all three widths is what keeps it from coming back in a slightly different form.
+        static const struct {
+            uint32_t insn; uint64_t a, b, want; const char *what;
+        } sr[] = {
+            {0x8B020020u, 5, 7, 12, "add lsl #0"},
+            {0x8B420420u, 0, 0xFF, 0x7F, "add lsr #1"},
+            {0x8B82FC20u, 1, (uint64_t)-1, 0, "add asr #63 of -1 is all ones, so 1 + -1 = 0"},
+            {0x8B820420u, 0, (uint64_t)-2, (uint64_t)-1, "add asr #1 of -2"},
+            {0xCB020C20u, 100, 3, 100 - (3 << 3), "sub lsl #3"},
+            {0xCB428020u, (uint64_t)-1, ~0ULL, 0xFFFFFFFF00000000ULL, "sub lsr #32 of all ones"},
+            {0xCB820420u, 0, (uint64_t)-4, 2, "sub asr #1 of -4 is +2"},
+            {0x4B827C20u, 0, 0x80000000u, 1, "sub w asr #31 of 0x80000000 is +1"},
+        };
+        for (unsigned i = 0; i < sizeof(sr) / sizeof(sr[0]); i++) {
+            e2_machine m;
+            e2_machine_init(&m, 0, 1 << 20);
+            const uint64_t at = 0x30000000ULL;
+            e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+            e2_memory_write(&m.mem, at, &sr[i].insn, 4);
+            m.cpu.pc = at;
+            m.cpu.x[1] = sr[i].a;
+            m.cpu.x[2] = sr[i].b;
+            e2_step(&m);
+            const bool is32 = (sr[i].insn & 0x80000000u) == 0;
+            const uint64_t got = is32 ? (m.cpu.x[0] & 0xFFFFFFFFu) : m.cpu.x[0];
+            CHECK(got == (is32 ? (sr[i].want & 0xFFFFFFFFu) : sr[i].want), "%s (got 0x%llx)",
+                  sr[i].what, (unsigned long long)got);
+            e2_memory_destroy(&m.mem);
+        }
+    }
+
+    {
         // The quotient t/86400 as libc computes it: smulh, asr, then a subtract whose third operand
         // is a register shifted by 63. That last form is the one no test covered, and it is the
         // correction term for negative inputs - `sub x0, x0, x2, asr #63` adds one when x2 is
