@@ -54,7 +54,7 @@ xml.etree.ElementTree  curses  curses.panel
 | **`awk` 的 `"cmd" \| getline` 和 `system()` 不工作** | 两者都经 `popen`，它要 `clone(CLONE_VM\|CLONE_VFORK\|SIGCHLD, stack)`。非 NULL 的栈让这条路径被当作线程，返回 `EINVAL`，于是 `system()` 返回 -1、`getline` 拿到空串。**`vfork`（58）已实现为 fork，但 busybox 走的是 clone。试过把 `CLONE_VM\|CLONE_VFORK` 当 fork 处理，进程在内核态死掉，比原来更糟，已撤回。** |
 | **`math.hypot()` 两个及以上参数返回 `nan`** | `libm.hypot` 经 ctypes 直接调用返回 5.0，**所以 musl 没坏**；`math.so` 的导入表里没有 `hypot`，**所以 `math.hypot` 从不调它**，走的是 CPython 自己的 `vector_norm`。分支已被区分开：`hypot(0,0)`、`hypot(inf,1)`、`hypot(nan,1)` 三条提前返回**全对**，只有有限值的累加路径错——而且 `hypot(3.0, 0.0)` 也错，所以只要**有第二个元素**就进那条路。**`math.dist` 是 `vector_norm` 的另一个调用方，它把范围分得更清楚：**一维得到 3.0（正确），二维得到 `nan`（错误）。**所以不是 `math.hypot` 对单个参数有提前返回——是 `vector_norm` 本身一个元素对、两个元素错。**
 
-`nan` 最可能来自 `sqrt` 收到负参数。**已排除**：`frexp`、`ldexp`（含负指数）、`sqrt`、`fabs`、`CCMP`、`FCMP`、以及 `sqrt` 之前那三十条 Dekker 累加指令（在 E2 里精确算出 25.0）。**拿到 CPython 3.12 的源码之后，那个「第二次迭代才会碰到的东西」有了名字：**
+**那个循环已经被整段验证过了**：按指令展开、用 `vec = {3, 4}`、`max = 4` 跑一遍，它交给 `sqrt` 的值**精确是 `0.390625`**，开方得 `0.625`，除以 `scale` 就是 5。**零件和组合都对，所以问题不在 `vector_norm` 的算术里，而在它之前**——`max` 怎么算、`found_nan` 怎么置、坐标数组怎么填。`math.dist` 还要先把两个点相减再填数组，那边更可疑。**已排除**：`frexp`、`ldexp`（含负指数）、`sqrt`、`fabs`、`CCMP`、`FCMP`、以及 `sqrt` 之前那三十条 Dekker 累加指令（在 E2 里精确算出 25.0）。**拿到 CPython 3.12 的源码之后，那个「第二次迭代才会碰到的东西」有了名字：**
 
 ```c
 if (max == 0.0 || n <= 1) return max;      // n<=1 直接返回，所以一维正确
