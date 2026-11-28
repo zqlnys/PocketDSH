@@ -616,5 +616,25 @@ print(time.strftime("%Y-%m-%d", time.gmtime(1700000000)))'
     fi
 fi
 
+echo "datetime"
+
+# datetime.datetime loses its year, month and day: __reduce__ shows the first four bytes of the object's
+# data array as zero while the time of day is right. date, time and timedelta are fine, the arguments
+# arrive and validate, and eleven-argument calls work - all measured. Pinned here so the day it starts
+# working is visible, rather than the defect living only in a note.
+if [ -x "$ROOT/usr/bin/python3.12" ]; then
+    dt_out=$(E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" PYTHONHOME=/usr LANG=C.UTF-8 E2_CAP=300000000 \
+        timeout 200 "$RUNE" "$ROOT/usr/bin/python3.12" -c \
+        'import datetime; d=datetime.datetime(2021,7,15,11,22,33); print(d.isoformat(), datetime.date(2021,7,15).isoformat())' \
+        2>&1 | head -1)
+    case "$dt_out" in
+        "0000-00-00T11:22:33 2021-07-15") pass=$((pass + 1)) ;;
+        "2021-07-15T11:22:33 2021-07-15")
+            fail=$((fail + 1))
+            printf '  NOTE datetime works now - remove this case and the limitation in CAPABILITIES.md\n' ;;
+        *) fail=$((fail + 1)); printf '  FAIL datetime behaviour changed: %s\n' "$dt_out" ;;
+    esac
+fi
+
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
