@@ -63,7 +63,26 @@ pr = dl_mul(x, x);              // 无损平方
 sm = dl_fast_sum(csum, pr.hi);  // 无损加法
 ```
 
-**而 `dl_mul` 是 `double z = x*y; double zz = fma(x, y, -z);`**——那会内联成 `fmsub`。
+**`dl_mul` 有两个版本，而这个构建里编译进去的是**不用 `fma` 的那一个**——`math.so` 既没有导入 `fma`，也没有任何 `fmsub` 指令（只有一条无关的 `fnmsub`）。所以实际跑的是：**
+
+```c
+static DoubleLength dl_split(double x) {
+    double t = x * 134217729.0;      // 2^27 + 1
+    double hi = t - (t - x);
+    double lo = x - hi;
+    return (DoubleLength) {hi, lo};
+}
+static DoubleLength dl_mul(double x, double y) {
+    DoubleLength xx = dl_split(x), yy = dl_split(y);
+    double p = xx.hi * yy.hi;
+    double q = xx.hi * yy.lo + xx.lo * yy.hi;
+    double z = p + q;
+    double zz = p - z + q + xx.lo * yy.lo;
+    return (DoubleLength) {z, zz};
+}
+```
+
+**全是 `fmul` 和 `fsub`，没有融合指令。**
 
 **E2 的 `fmsub(3,5,2)` 给出 `-13`，正确值是 `13`。**若确实如此，`x=y=0.75` 那次调用的修正项会是 `-1.125` 而不是 `0`，`frac1` 因此偏掉，`sqrt(csum-1+fracs)` 就可能收到负数——**而这只在 n≥2 时发生。**
 
