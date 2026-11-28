@@ -2537,6 +2537,38 @@ static void test_scalar_immediates(void) {
     }
 
     {
+        // FCMP, which is how C's isnan and every float comparison reach NZCV. vector_norm counts NaNs by
+        // testing x != x; if an equal pair compared unequal, every coordinate would look like a NaN and
+        // hypot would return Py_NAN for every arity of two or more - which is the observed behaviour.
+        static const struct {
+            uint64_t a, b; bool n, z, c, v; const char *what;
+        } fc[] = {
+            {0x4008000000000000ULL, 0x4008000000000000ULL, false, true, true, false, "3.0 == 3.0"},
+            {0x3FF0000000000000ULL, 0x4000000000000000ULL, true, false, false, false, "1.0 < 2.0"},
+            {0x4000000000000000ULL, 0x3FF0000000000000ULL, false, false, true, false, "2.0 > 1.0"},
+            {0x7FF8000000000000ULL, 0x3FF0000000000000ULL, false, false, true, true, "NaN is unordered"},
+            {0x7FF8000000000000ULL, 0x7FF8000000000000ULL, false, false, true, true, "NaN against itself is unordered"},
+        };
+        for (unsigned i = 0; i < sizeof(fc) / sizeof(fc[0]); i++) {
+            e2_machine m;
+            e2_machine_init(&m, 0, 1 << 20);
+            const uint64_t at = 0x30000000ULL;
+            e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+            const uint32_t insn = 0x1E612000u;   // fcmp d0, d1
+            e2_memory_write(&m.mem, at, &insn, 4);
+            m.cpu.pc = at;
+            m.cpu.v[0][0] = fc[i].a;
+            m.cpu.v[1][0] = fc[i].b;
+            e2_step(&m);
+            CHECK(m.cpu.flags.n == fc[i].n && m.cpu.flags.z == fc[i].z &&
+                  m.cpu.flags.c == fc[i].c && m.cpu.flags.v == fc[i].v,
+                  "%s (NZCV=%d%d%d%d)", fc[i].what, (int)m.cpu.flags.n, (int)m.cpu.flags.z,
+                  (int)m.cpu.flags.c, (int)m.cpu.flags.v);
+            e2_memory_destroy(&m.mem);
+        }
+    }
+
+    {
         // The body of musl's hypot up to the call to sqrt: a Dekker split of both squares and their
         // accumulation. With d0 = 3 and d3 = 4 the value handed to sqrt must be 25; a small negative
         // there would make sqrt return nan, which is the observed behaviour.
