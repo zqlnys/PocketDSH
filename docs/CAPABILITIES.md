@@ -59,8 +59,6 @@ xml.etree.ElementTree  curses  curses.panel
 
 | 症状 | 影响 |
 | --- | --- |
-| **`LANG=C` 且没有 `LC_ALL` 时，长参数被截断** | **精确边界：9 个字符及以下的参数完好，10 个及以上被截成 2 个字符。** `python3.12 - /aaaaaaaaa` 得到 `arg1 9`，而 `/aaaaaaaaaa` 得到 `arg1 2`。同样的长度在 `LANG=C.UTF-8` 下完全正常（`arg1 11`）。**已缓解**：`LC_ALL` 现在真的会透传到 guest（此前桥接层设了它、harness 没透传，等于空操作）。**已排除**：harness 传给 guest 的 argv 是完整的（`[argv] 1` 追踪可见）；`mbrtowc` 在 C locale 下经 ctypes 实测正确（`setlocale` → "C"，`MB_CUR_MAX` → 1，每字节返回长度 1）；关闭 `PYTHONCOERCECLOCALE` 不改变结果；`sys.argv[0]` 在两种 locale 下都是 1 个字符，但那是 `python3 -` 的正常行为，不是缺陷。**四轮之后停止追查**——缓解措施有效，触发条件是用户显式 `unset LC_ALL` 再 `export LANG=C`，继续投入的回报低于成本 |
-| **`pow()`、`math.hypot()`、`math.log2()` 结果错误** |
 | 限制 | 原因 |
 | --- | --- |
 | **没有网络** | 只支持 `socketpair`，没有任何会 `connect` 的东西。**`ssl` 能导入、CA 证书齐全，但发不出 HTTPS 请求。** |
@@ -133,6 +131,7 @@ qemu:  b'\x07\xe5\x07\x0f\x0b\x16!\x00\x00\x00'
 ```
 
 **前四个字节（年高低位、月、日）是零，从第五个起（时、分、秒）完全正确。**`date` 走同一个 `check_date_fields` 且结果正确，所以值不是在校验里丢的，是在这四次字节写入之前或之中丢的 |
+| **`pow()` 和 `math.log2()` 结果错误** | 仍然存在，未修复；`math.hypot()` 的原因已单独定位（见上），与这两者不同 |
 | **`prlimit64` 只报告不执行** | 设置新的 rlimit 会被接受但忽略 |
 | **符号链接的绝对目标不工作** | `/tmp/link -> /tmp/target` 这样的链接，`open` 会返回 `ENOENT`：目标是按**宿主**路径解析的，不经过 guest 映射。**相对目标正常**。这是真限制，不是回归 |
 | **exec 最多携带 32 个参数和 64 个环境变量** | 超过时返回 `E2BIG`（真内核的上限高得多）。上限受限于每次 exec 的栈上缓冲区；`run_proc` 是嵌套的，把它调大会把栈风险换成一个更少见的错误 |
