@@ -2537,6 +2537,32 @@ static void test_scalar_immediates(void) {
     }
 
     {
+        // The whole vector_norm loop, unrolled for two coordinates and run instruction by instruction.
+        // With vec = {3, 4} and max = 4 the value handed to sqrt must be 0.390625; anything else means the
+        // loop itself is where math.hypot and math.dist go wrong.
+        static const uint32_t vn[] = { 0x1E630888u, 0x1E70090Bu, 0x1E68396Cu, 0x1E6C3969u, 0x1E69390Au, 0x1E69092Du, 0x1E6A092Eu, 0x1E69094Fu, 0x1E6F29CEu, 0x1E6E29A8u, 0x1E6839AFu, 0x1E6E29EFu, 0x1E6A094Cu, 0x1E6C29EFu, 0x1E68280Du, 0x1E6D380Eu, 0x1E6829CEu, 0x1E6041A0u, 0x1E6F2821u, 0x1E6E2842u, 0x1E6308A8u, 0x1E70090Bu, 0x1E68396Cu, 0x1E6C3969u, 0x1E69390Au, 0x1E69092Du, 0x1E6A092Eu, 0x1E69094Fu, 0x1E6F29CEu, 0x1E6E29A8u, 0x1E6839AFu, 0x1E6E29EFu, 0x1E6A094Cu, 0x1E6C29EFu, 0x1E68280Du, 0x1E6D380Eu, 0x1E6829CEu, 0x1E6041A0u, 0x1E6F2821u, 0x1E6E2842u, 0x1E622832u, 0x1E713813u, 0x1E722A74u };
+        e2_machine m;
+        e2_machine_init(&m, 0, 1 << 20);
+        const uint64_t base = 0x30000000ULL;
+        e2_memory_map_at(&m.mem, base, 0x2000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+        e2_memory_write(&m.mem, base, vn, sizeof(vn));
+        m.cpu.pc = base;
+        m.cpu.v[0][0] = 0x3FF0000000000000ULL;   /* csum = 1.0 */
+        m.cpu.v[1][0] = 0x0000000000000000ULL;   /* frac1 = 0 */
+        m.cpu.v[2][0] = 0x0000000000000000ULL;   /* frac2 = 0 */
+        m.cpu.v[3][0] = 0x3FC0000000000000ULL;   /* scale = 0.125 */
+        m.cpu.v[4][0] = 0x4008000000000000ULL;   /* vec[0] = 3.0 */
+        m.cpu.v[5][0] = 0x4010000000000000ULL;   /* vec[1] = 4.0 */
+        m.cpu.v[16][0] = 0x419A000002000000ULL;  /* 2^27 + 1 */
+        m.cpu.v[17][0] = 0x3FF0000000000000ULL;  /* 1.0 */
+        for (unsigned i = 0; i < sizeof(vn) / sizeof(vn[0]); i++) e2_step(&m);
+        double arg = 0;
+        memcpy(&arg, &m.cpu.v[20][0], 8);
+        CHECK(arg == 0.390625, "value passed to sqrt by the loop (got %.17g)", arg);
+        e2_memory_destroy(&m.mem);
+    }
+
+    {
         // dl_fast_sum, the compensated add the vector_norm loop uses to accumulate squares. The correction
         // term is what carries the bits the addition would otherwise drop.
         static const uint32_t fs[] = { 0x1E612802u, 0x1E623803u, 0x1E612864u };
