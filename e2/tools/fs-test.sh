@@ -636,5 +636,26 @@ if [ -x "$ROOT/usr/bin/python3.12" ]; then
     esac
 fi
 
+echo "conformance"
+
+# Forty-six standard-library results compared value by value against qemu. This began as a survey and
+# found three defects a test-per-feature approach had missed - a mis-decoded movi, a logical shift where
+# an arithmetic one belonged, and log2's range reduction - so it stays as coverage rather than as a note.
+if [ -x "$ROOT/usr/bin/python3.12" ]; then
+    cp tools/conformance.py "$WORK/conformance.py" 2>/dev/null || true
+    conf_mine=$(E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" PYTHONHOME=/usr LANG=C.UTF-8 E2_CAP=900000000 \
+        timeout 400 "$RUNE" "$ROOT/usr/bin/python3.12" /workspace/conformance.py 2>&1 | grep -E "^[a-z]")
+    conf_theirs=$(timeout 400 qemu-aarch64-static -L "$ROOT" "$ROOT/usr/bin/python3.12" \
+        "$WORK/conformance.py" 2>&1 | grep -E "^[a-z]")
+    if [ -z "$conf_mine" ]; then
+        fail=$((fail + 1)); printf '  FAIL conformance\n    produced nothing\n'
+    elif [ "$conf_mine" = "$conf_theirs" ]; then
+        pass=$((pass + 1))
+    else
+        fail=$((fail + 1))
+        printf '  FAIL conformance\n%s\n' "$(diff <(printf '%s\n' "$conf_theirs") <(printf '%s\n' "$conf_mine") | head -6)"
+    fi
+fi
+
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
