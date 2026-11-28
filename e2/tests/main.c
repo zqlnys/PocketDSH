@@ -2537,6 +2537,41 @@ static void test_scalar_immediates(void) {
     }
 
     {
+        // CCMP, which libc's hypot uses to decide between the finite and non-finite paths without
+        // branching: `cmp x2,#0x7ff` then `ccmp x0,#0x0,#0x4,ne` then `b.eq`. If the conditional
+        // compare sets the wrong flags, that branch goes to the infinity-and-nan path for ordinary
+        // arguments - which is one way hypot could return nan for 3 and 4.
+        static const struct {
+            uint32_t insn; int n, z, c, v; uint64_t x0, x2; int want_z; const char *what;
+        } cc[] = {
+            // ccmp x0,#0x0,#0x4,ne with Z=0 (from an unequal compare): the immediate is 0 and x0 is
+            // large, so the comparison is unequal and Z stays 0.
+            {0xFA401804u, 0, 0, 0, 0, 0x4010000000000000ULL, 0, 0, "ccmp immediate, x0 != 0"},
+            // With the same setup but x0 = 0 the comparison is equal, so Z becomes 1.
+            {0xFA401804u, 0, 0, 0, 0, 0, 0, 1, "ccmp immediate, x0 == 0"},
+            // When the condition fails the flags come from the instruction itself: nzcv = 4 sets Z.
+            {0xFA401804u, 0, 1, 0, 0, 0x4010000000000000ULL, 0, 1, "ccmp with the condition false (ne needs Z=0)"},
+        };
+        for (unsigned i = 0; i < sizeof(cc) / sizeof(cc[0]); i++) {
+            e2_machine m;
+            e2_machine_init(&m, 0, 1 << 20);
+            const uint64_t at = 0x30000000ULL;
+            e2_memory_map_at(&m.mem, at, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+            e2_memory_write(&m.mem, at, &cc[i].insn, 4);
+            m.cpu.pc = at;
+            m.cpu.x[0] = cc[i].x0;
+            m.cpu.x[2] = cc[i].x2;
+            m.cpu.flags.n = cc[i].n;
+            m.cpu.flags.z = cc[i].z;
+            m.cpu.flags.c = cc[i].c;
+            m.cpu.flags.v = cc[i].v;
+            e2_step(&m);
+            CHECK((int)m.cpu.flags.z == cc[i].want_z, "%s (Z=%d)", cc[i].what, (int)m.cpu.flags.z);
+            e2_memory_destroy(&m.mem);
+        }
+    }
+
+    {
         // The range reduction of musl's log2 as a sequence, with the encodings taken from the library:
         // mov a 64-bit constant, add it to the value's bits, extract a table index, mask the exponent
         // off. A wrong step here makes the polynomial evaluate at the wrong point, and for an exact
