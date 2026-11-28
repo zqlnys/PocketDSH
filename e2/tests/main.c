@@ -2537,6 +2537,29 @@ static void test_scalar_immediates(void) {
     }
 
     {
+        // dl_split as CPython's math module compiles it when fma is unavailable - the version that is
+        // actually in math.so, which imports no fma and contains no fmsub. Split 0.75 and the two halves
+        // must be 0.75 and 0.0 exactly; a wrong hi or lo here feeds a wrong correction into vector_norm
+        // and is the kind of thing that only shows up on the second coordinate.
+        static const uint32_t split[] = {0x1E620801u, 0x1E603823u, 0x1E633824u, 0x1E643805u};
+        e2_machine m;
+        e2_machine_init(&m, 0, 1 << 20);
+        const uint64_t base = 0x30000000ULL;
+        e2_memory_map_at(&m.mem, base, 0x1000, E2_PROT_READ | E2_PROT_WRITE | E2_PROT_EXEC);
+        e2_memory_write(&m.mem, base, split, sizeof(split));
+        m.cpu.pc = base;
+        m.cpu.v[0][0] = 0x3FE8000000000000ULL;   // d0 = 0.75
+        m.cpu.v[2][0] = 0x419A000002000000ULL;   // d2 = 134217729.0 (2^27 + 1)
+        for (unsigned i = 0; i < 4; i++) e2_step(&m);
+        double hi = 0, lo = 0;
+        memcpy(&hi, &m.cpu.v[4][0], 8);
+        memcpy(&lo, &m.cpu.v[5][0], 8);
+        CHECK(hi == 0.75, "dl_split hi for 0.75 (got %.17g)", hi);
+        CHECK(lo == 0.0, "dl_split lo for 0.75 (got %.17g)", lo);
+        e2_memory_destroy(&m.mem);
+    }
+
+    {
         // FCMP, which is how C's isnan and every float comparison reach NZCV. vector_norm counts NaNs by
         // testing x != x; if an equal pair compared unequal, every coordinate would look like a NaN and
         // hypot would return Py_NAN for every arity of two or more - which is the observed behaviour.
