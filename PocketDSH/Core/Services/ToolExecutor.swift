@@ -403,14 +403,12 @@ final class ToolExecutor {
             guard let e2Runtime else {
                 return .failure("Tier D is not linked in this build.")
             }
-            // A fresh guest per command.
-            //
-            // The session works, its own test passes, and switching the tool to it still takes the
-            // test host down - once by crashing, and after the process table was cleared, by not
-            // finishing at all. Two different failures in the same place mean the place is wrong,
-            // not the last guess: a session that outlives one call does not fit a runner that shares
-            // a process with a hundred others, and making it fit is a design job.
-            let result = await e2Runtime.run(command: command, workspace: workspace.root)
+            // The session, retried after the fixes that came out of the crashes: the process table is
+            // now cleared at the start of every run rather than inherited, sessions are serialised on a
+            // mutex with the join outside it, the guest's streams come from its own descriptor table
+            // instead of a process-wide redirect, and a run ends any leftover session before starting.
+            // run_linux is where a user's cd and variables are meant to survive between commands.
+            let result = await e2Runtime.runSession(command: command, workspace: workspace.root)
             guard !result.isError else { return result }
             return .success("Linux output (Tier D · E2):\n\(result.content)")
         default:
