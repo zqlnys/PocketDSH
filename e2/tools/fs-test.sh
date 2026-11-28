@@ -657,5 +657,24 @@ if [ -x "$ROOT/usr/bin/python3.12" ]; then
     fi
 fi
 
+# The conformance script checks functions one at a time. This checks that a program using several of them
+# together produces the same answer - different failures show up when the output of one library is fed to
+# the next.
+if [ -x "$ROOT/usr/bin/python3.12" ]; then
+    cp tools/realistic.py "$WORK/realistic.py" 2>/dev/null || true
+    real_mine=$(E2_ROOT="$ROOT" E2_WORKSPACE="$WORK" PYTHONHOME=/usr LANG=C.UTF-8 E2_CAP=400000000 \
+        timeout 300 "$RUNE" "$ROOT/usr/bin/python3.12" /workspace/realistic.py 2>&1 \
+        | grep -vE '^$|^\[ *[a-z]+ [0-9]+\] instructions=')
+    real_theirs=$(timeout 300 qemu-aarch64-static -L "$ROOT" "$ROOT/usr/bin/python3.12" \
+        "$WORK/realistic.py" 2>&1 | grep -v '^$')
+    if [ -n "$real_mine" ] && [ "$real_mine" = "$real_theirs" ]; then
+        pass=$((pass + 1))
+    else
+        fail=$((fail + 1))
+        printf '  FAIL realistic-program\n%s\n' \
+            "$(diff <(printf '%s\n' "$real_theirs") <(printf '%s\n' "$real_mine") | head -6)"
+    fi
+fi
+
 printf 'fs test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
