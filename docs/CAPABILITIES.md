@@ -113,7 +113,9 @@ sub   x0, x0, x2, asr #63     ← 带移位寄存器的 SUB
 **`x0` 是 `t / 86400`；它错了，余数就错，小时就错。**下一步该测的是**带移位操作数的 `SUB`**（`sub xD, xN, xM, asr #63`）这种形式。
 | **`datetime.datetime` 的前三个字段恒为零** | **位置参数也一样**——不是关键字参数的问题，上一轮记错了。规律很精确：`datetime(2020,1,1,5,6,7)` 得到年 0、月 0、日 0，而时 5、分 6、秒 7 **正确**。`datetime.date(2020,5,6)` 三个参数**全对**。后果：`fromtimestamp(ts, timezone.utc)` 抛 `ValueError: fromutc: dt.tzinfo is not self`（它拿到的 tzinfo 是 `None`）。**其它 C 层关键字（`sorted`、`int`、`str.split`、`round`、`pow`、`bytes.hex`）都正常**
 
-**调用形式已排除**：位置参数、star-args、`__new__` 直接调用、以及把类绑定到别的名字再调用，四种都给全零。而 `datetime.time`、`datetime.timedelta`、`datetime.date` 都正常。**所以问题在 `datetime.datetime` 的构造函数内部，与调用约定无关** |
+**调用形式已排除**：位置参数、star-args、`__new__` 直接调用、以及把类绑定到别的名字再调用，四种都给全零。而 `datetime.time`、`datetime.timedelta`、`datetime.date` 都正常。**所以问题在 `datetime.datetime` 的构造函数内部，与调用约定无关**
+
+**再往下排除一层**：`_datetime.datetime.__new__(C.datetime, 2021, 7, 15, 11, 22, 33, 0, None)` 也得到 `0000-00-00T11:22:33`，**所以不是 `datetime.py` 的 Python 包装，是 C 模块里 `new_datetime_ex2` 这一层**。同时 `d.ctime()` 输出里有乱码字符，`d.replace(year=2022)` 抛异常 |
 | **`prlimit64` 只报告不执行** | 设置新的 rlimit 会被接受但忽略 |
 | **符号链接的绝对目标不工作** | `/tmp/link -> /tmp/target` 这样的链接，`open` 会返回 `ENOENT`：目标是按**宿主**路径解析的，不经过 guest 映射。**相对目标正常**。这是真限制，不是回归 |
 | **exec 最多携带 32 个参数和 64 个环境变量** | 超过时返回 `E2BIG`（真内核的上限高得多）。上限受限于每次 exec 的栈上缓冲区；`run_proc` 是嵌套的，把它调大会把栈风险换成一个更少见的错误 |
